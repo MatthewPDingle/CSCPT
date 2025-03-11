@@ -4,20 +4,29 @@
 - Backend: `cd cscp/backend && uvicorn app.main:app --reload`
 - Frontend: `cd cscp/frontend && npm start`
 
+## Lint & Format Commands
+- Python: `cd cscp/backend && black . && mypy .`
+- Frontend: `cd cscp/frontend && npm run lint && npm run format`
+
 ## Test Commands
-- Backend: `cd cscp/backend && pytest` (Single test: `pytest path/to/test.py::test_name`)
+- Backend: `cd cscp/backend && pytest` (Single test: `pytest path/to/test.py::test_name -v`)
 - Frontend: `cd cscp/frontend && npm test` (Single test: `npm test -- -t "test name"`)
 
 ## Code Style
-- Python: PEP 8, type annotations, docstrings
-- JavaScript: Airbnb JavaScript Style Guide, TypeScript preferred
-- Formatting: Black for Python, Prettier for JS/TS
-- Imports: Group standard library, third-party, and local imports
-- Naming: snake_case for Python, camelCase for JS/TS
-- Error handling: Use try/except with specific exceptions, never silent fails
+- Python: PEP 8, type annotations, docstrings (Google style)
+- JavaScript: Airbnb Style Guide, TypeScript interfaces for type safety
+- Formatting: Black for Python, ESLint/Prettier for JS/TS
+- Imports: Group standard library, third-party, local imports (alphabetized)
+- Naming: snake_case (Python), camelCase (JS/TS), PascalCase (React components)
+- Error Handling: Use specific exceptions, never silent fails, proper logging
+
+## Git Workflow
+- Branch naming: `feature/`, `fix/`, `docs/`, `refactor/`, `test/` prefix + issue number
+- Commit style: Present tense, imperative mood, include issue number
+- PR requirements: Reference issue, tests pass, docs updated
 
 ## Repository Structure
-- Backend: FastAPI in Python
-- Frontend: React/TypeScript 
-- AI: Python models in cscp/ai directory
-- Documentation: Markdown files in docs/
+- Backend: FastAPI (Python) in cscp/backend
+- Frontend: React/TypeScript in cscp/frontend
+- AI: Python models in cscp/ai
+- Tests: Unit/integration tests in cscp/tests
