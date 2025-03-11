@@ -1,16 +1,16 @@
 # CLAUDE.md - Project Guidelines
 
 ## Build & Run Commands
-- Backend: `cd cscp/backend && uvicorn app.main:app --reload`
-- Frontend: `cd cscp/frontend && npm start`
+- Backend: `cd backend && uvicorn app.main:app --reload`
+- Frontend: `cd frontend && npm start`
 
 ## Lint & Format Commands
-- Python: `cd cscp/backend && black . && mypy .`
-- Frontend: `cd cscp/frontend && npm run lint && npm run format`
+- Python: `cd backend && black . && mypy .`
+- Frontend: `cd frontend && npm run lint && npm run format`
 
 ## Test Commands
-- Backend: `cd cscp/backend && pytest` (Single test: `pytest path/to/test.py::test_name -v`)
-- Frontend: `cd cscp/frontend && npm test` (Single test: `npm test -- -t "test name"`)
+- Backend: `cd backend && pytest` (Single test: `pytest path/to/test.py::test_name -v`)
+- Frontend: `cd frontend && npm test` (Single test: `npm test -- -t "test name"`)
 
 ## Code Style
 - Python: PEP 8, type annotations, docstrings (Google style)
@@ -26,7 +26,7 @@
 - PR requirements: Reference issue, tests pass, docs updated
 
 ## Repository Structure
-- Backend: FastAPI (Python) in cscp/backend
-- Frontend: React/TypeScript in cscp/frontend
-- AI: Python models in cscp/ai
-- Tests: Unit/integration tests in cscp/tests
+- Backend: FastAPI (Python) in backend/
+- Frontend: React/TypeScript in frontend/
+- AI: Python models in ai/
+- Tests: Unit/integration tests in tests/

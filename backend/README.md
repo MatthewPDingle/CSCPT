@@ -21,7 +21,7 @@ This backend provides:
 ```bash
 # Clone the repository (if not already done)
 git clone https://github.com/your-username/cscpt.git
-cd cscpt/cscp/backend
+cd cscpt/backend
 
 # Create a virtual environment (optional but recommended)
 python -m venv venv
