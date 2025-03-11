@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cscp-backend"
+name = "cscpt-backend"
 version = "0.1.0"
 description = "Chip Swinger Championship Poker Trainer Backend"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
-    {name = "CSCP Team", email = "example@example.com"},
+    {name = "CSCPT Team", email = "example@example.com"},
 ]
 dependencies = [
     "fastapi>=0.95.0",
@@ -24,6 +24,9 @@ dev = [
     "black>=23.3.0",
     "mypy>=1.2.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
 
 [tool.black]
 line-length = 88
