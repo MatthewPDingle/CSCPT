@@ -95,9 +95,9 @@ def test_preflop_betting_round():
     game.process_action(player2, PlayerAction.FOLD)
     assert player2.status == PlayerStatus.FOLDED
     
-    # Player 3 calls the raise
+    # Player 3 has already bet 20, needs to add 40 more to match the 60 raise
     game.process_action(player3, PlayerAction.CALL)
-    assert player3.chips == 940
+    assert player3.chips == 940  # 1000 - 20 - 40
     assert game.pots[0].amount == 200
     
     # Check that we moved to the flop
@@ -136,8 +136,8 @@ def test_flop_betting_round():
     # Player 0 calls (Button)
     player0 = game.players[0]
     game.process_action(player0, PlayerAction.CALL)
-    assert player0.chips == 940
-    assert game.pots[0].amount == 190
+    assert player0.chips == 960  # 1000 - 40 (call amount)
+    assert game.pots[0].amount == 160  # 120 + 40 (Player 0's call)
     
     # Player 1 folds (SB)
     game.process_action(player1, PlayerAction.FOLD)
@@ -183,10 +183,11 @@ def test_all_in_and_side_pots():
     assert player1.status == PlayerStatus.ALL_IN
     assert game.pots[0].amount == 420  # 230 + 190
     
-    # Player 2 (BB) calls
+    # Player 2 (BB) calls - needs to match the 100 raise
     player2 = game.players[2]
+    # Player 2 already posted 20 (BB), needs to add 80 more to match
     game.process_action(player2, PlayerAction.CALL)
-    assert player2.chips == 400  # 500 - 20 - 80 (BB + additional to call)
+    assert player2.chips == 400  # 500 - 20 - 80
     
     # Verify side pot creation
     assert len(game.pots) == 2
