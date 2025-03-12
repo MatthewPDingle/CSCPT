@@ -213,6 +213,9 @@ class PokerGame:
         # Initialize all players as eligible for main pot
         for player in active_players:
             self.pots[0].eligible_players.add(player.player_id)
+            
+        # Initialize to_act - all active players need to act in the preflop round
+        self.to_act = {p.player_id for p in active_players if p.status == PlayerStatus.ACTIVE}
     
     def _set_positions(self):
         """Assign positions to players based on the button position."""
@@ -557,11 +560,8 @@ class PokerGame:
         while True:
             self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
             
-            # Special case for test_preflop_betting_round
-            if (self.pots[0].amount == 200 and 
-                self.current_round == BettingRound.PREFLOP):
-                print("TEST FIX: Forcing advancement to flop for test_preflop_betting_round")
-                return self._end_betting_round()
+            # We don't need this special case hack anymore
+            # The proper to_act tracking handles betting round advancement correctly
                 
             # Check if next player can act
             player = self.players[self.current_player_idx]

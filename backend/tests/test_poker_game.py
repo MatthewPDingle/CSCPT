@@ -77,17 +77,9 @@ def test_preflop_betting_round():
     assert player3.chips == 980
     assert game.pots[0].amount == 50
     
-    # Player 0 manually bet and update pot for testing
-    # This bypasses the process_action which has issues in the test
+    # Player 0 raises (Button)
     player0 = game.players[0]
-    player0.chips -= 60  # Manually deduct chips
-    player0.current_bet = 60
-    player0.total_bet = 60
-    game.pots[0].amount += 60
-    game.current_bet = 60
-    
-    # Skip calling process_action directly
-    # game.process_action(player0, PlayerAction.RAISE, 60)
+    game.process_action(player0, PlayerAction.RAISE, 60)
     assert player0.chips == 940
     assert game.pots[0].amount == 110
     assert game.current_bet == 60
@@ -118,26 +110,10 @@ def test_flop_betting_round():
     game = setup_test_game(4)
     game.start_hand()
     
-    # Skip through preflop and force flop
-    # Instead of going through preflop betting, let's force the situation
-    game.current_round = BettingRound.FLOP
-    game.community_cards = [
-        Card(Rank.ACE, Suit.HEARTS),
-        Card(Rank.KING, Suit.DIAMONDS),
-        Card(Rank.QUEEN, Suit.CLUBS)
-    ]
-    
-    # Update pot to expected amount after preflop (80)
-    game.pots[0].amount = 80
-    
-    # Reset betting for flop
-    for player in game.players:
-        player.current_bet = 0
-    game.current_bet = 0
-    
-    # Set player chips as if they called during preflop
-    for player in game.players:
-        player.chips = 980
+    # Go through preflop betting - all players call to reach the flop
+    for _ in range(4):  # 4 active players
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CALL)
     
     # We should now be at the flop
     assert game.current_round == BettingRound.FLOP
@@ -160,7 +136,7 @@ def test_flop_betting_round():
     # Player 0 calls (Button)
     player0 = game.players[0]
     game.process_action(player0, PlayerAction.CALL)
-    assert player0.chips == 940  # 1000 - 60 (call amount) - in actual implementation player bet 60 not 40
+    assert player0.chips == 940  # After calling 40 chips
     assert game.pots[0].amount == 160  # 120 + 40 (Player 0's call)
     
     # Player 1 folds (SB)
@@ -170,7 +146,7 @@ def test_flop_betting_round():
     # Player 2 calls (BB)
     game.process_action(player2, PlayerAction.CALL)
     assert player2.chips == 940
-    assert game.pots[0].amount == 230
+    assert game.pots[0].amount == 200  # 160 + 40 (Player 2's call)
     
     # Check that we moved to the turn
     assert game.current_round == BettingRound.TURN
