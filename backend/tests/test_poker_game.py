@@ -3,7 +3,7 @@ Tests for the poker game logic.
 """
 import pytest
 from app.core.cards import Card, Rank, Suit
-from app.core.poker_game import PokerGame, Player, PlayerAction, PlayerStatus, BettingRound
+from app.core.poker_game import PokerGame, Player, PlayerAction, PlayerStatus, BettingRound, Pot
 
 
 def setup_test_game(num_players=4, starting_chips=1000):
@@ -348,3 +348,351 @@ def test_early_showdown():
     # Player 0 should win the pot
     assert game.players[0].chips == 1100  # Starting 1000 + pot 100
     assert game.current_round == BettingRound.SHOWDOWN
+
+
+def test_partial_raise_with_insufficient_chips():
+    """Test scenario where player wants to raise but has less than min raise."""
+    game = PokerGame(small_blind=10, big_blind=20)
+    
+    # Add players with specific chip stacks
+    p0 = game.add_player("p0", "Player 0", 1000)  # Button
+    p1 = game.add_player("p1", "Player 1", 1000)  # SB
+    p2 = game.add_player("p2", "Player 2", 1000)  # BB
+    p3 = game.add_player("p3", "Player 3", 45)    # UTG with few chips
+    
+    game.start_hand()
+    
+    # Player 3 can only raise partially (less than min raise)
+    valid_actions = game.get_valid_actions(p3)
+    
+    # Player should be able to call and all-in, but not full raise
+    raise_options = [a for a in valid_actions if a[0] == PlayerAction.RAISE]
+    all_in_options = [a for a in valid_actions if a[0] == PlayerAction.ALL_IN]
+    
+    # Player can go all-in with their 45 chips
+    assert all_in_options[0][1] == 45
+    
+    # Player 3 goes all-in with insufficient chips for full raise
+    game.process_action(p3, PlayerAction.ALL_IN)
+    
+    # Player 0 calls
+    game.process_action(p0, PlayerAction.CALL)
+    
+    # Player 1 calls
+    game.process_action(p1, PlayerAction.CALL)
+    
+    # Player 2 calls
+    game.process_action(p2, PlayerAction.CALL)
+    
+    # Verify min raise was not reset (since all-in wasn't a full raise)
+    assert game.min_raise == 20
+    
+    # Check pot amounts and side pots
+    assert len(game.pots) == 2
+    
+    # Check that p3 is eligible for the main pot but not the side pot
+    assert p3.player_id in game.pots[0].eligible_players
+    assert p3.player_id not in game.pots[1].eligible_players
+
+
+def test_three_way_split_pot():
+    """Test scenario where three players have identical hands."""
+    game = PokerGame(small_blind=10, big_blind=20)
+    
+    # Add players
+    p0 = game.add_player("p0", "Player 0", 1000)  # Button
+    p1 = game.add_player("p1", "Player 1", 1000)  # SB
+    p2 = game.add_player("p2", "Player 2", 1000)  # BB
+    
+    # Skip start_hand to avoid posting blinds
+    # for cleaner test setup
+    
+    # All three players get similar cards 
+    p0.hand.cards = {
+        Card(Rank.KING, Suit.HEARTS),
+        Card(Rank.QUEEN, Suit.DIAMONDS)
+    }
+    
+    p1.hand.cards = {
+        Card(Rank.KING, Suit.SPADES),
+        Card(Rank.QUEEN, Suit.CLUBS)
+    }
+    
+    p2.hand.cards = {
+        Card(Rank.KING, Suit.DIAMONDS),
+        Card(Rank.QUEEN, Suit.SPADES)
+    }
+    
+    # Set community cards - makes kings and queens for all players
+    game.community_cards = [
+        Card(Rank.KING, Suit.CLUBS),
+        Card(Rank.QUEEN, Suit.HEARTS),
+        Card(Rank.TWO, Suit.SPADES),
+        Card(Rank.SEVEN, Suit.HEARTS),
+        Card(Rank.THREE, Suit.DIAMONDS)
+    ]
+    
+    # Skip to the showdown
+    game.current_round = BettingRound.RIVER
+    
+    # All players bet 300 chips
+    pot_amount = 900  # 300 * 3 players
+    for player in game.players:
+        player.current_bet = 300
+        player.total_bet = 300
+        player.chips -= 300
+    
+    game.pots[0].amount = pot_amount
+    
+    # Set eligible players for the pot
+    for player in game.players:
+        game.pots[0].eligible_players.add(player.player_id)
+    
+    # Trigger showdown
+    game._handle_showdown()
+    
+    # Check that pot was split three ways
+    assert p0.chips == p1.chips == p2.chips
+    # Each player should get 300 chips back (900 / 3)
+    assert p0.chips == 1000
+    
+    # Check that hand winners was recorded correctly
+    assert len(game.hand_winners) == 1
+    assert set(game.hand_winners.get("pot_0")) == {p0, p1, p2}
+
+
+def test_complex_multiple_all_in_scenario():
+    """Test correct handling of multiple all-ins with different amounts."""
+    game = PokerGame(small_blind=10, big_blind=20)
+    
+    # Add players with different chip stacks
+    p0 = game.add_player("p0", "Player 0", 1000)  # Button
+    p1 = game.add_player("p1", "Player 1", 300)   # SB
+    p2 = game.add_player("p2", "Player 2", 500)   # BB
+    p3 = game.add_player("p3", "Player 3", 700)   # UTG
+    
+    game.start_hand()
+    
+    # Player 3 raises
+    game.process_action(p3, PlayerAction.RAISE, 100)
+    assert game.pots[0].amount == 130  # SB + BB + raise
+    
+    # Player 0 raises again
+    game.process_action(p0, PlayerAction.RAISE, 250)
+    
+    # Player 1 goes all-in (300 total - already posted 10)
+    game.process_action(p1, PlayerAction.ALL_IN)
+    assert p1.chips == 0
+    assert p1.status == PlayerStatus.ALL_IN
+    
+    # Player 2 goes all-in (500 total - already posted 20)
+    game.process_action(p2, PlayerAction.ALL_IN)
+    assert p2.chips == 0
+    assert p2.status == PlayerStatus.ALL_IN
+    
+    # Player 3 also goes all-in
+    game.process_action(p3, PlayerAction.ALL_IN)
+    assert p3.chips == 0
+    assert p3.status == PlayerStatus.ALL_IN
+    
+    # Player 0 calls (doesn't go all-in)
+    game.process_action(p0, PlayerAction.CALL)
+    
+    # Verify correct number of side pots created
+    assert len(game.pots) >= 3
+    
+    # Main pot should include all players
+    assert len(game.pots[0].eligible_players) == 4
+    
+    # Second pot should exclude the smallest stack (Player 1)
+    assert p1.player_id not in game.pots[1].eligible_players
+    assert len(game.pots[1].eligible_players) == 3
+    
+    # Third pot should exclude Player 1 and Player 2
+    assert p1.player_id not in game.pots[2].eligible_players
+    assert p2.player_id not in game.pots[2].eligible_players
+    assert len(game.pots[2].eligible_players) == 2
+
+
+def test_kicker_plays_with_paired_board():
+    """Test kicker card determining winner with paired board."""
+    game = PokerGame(small_blind=10, big_blind=20)
+    
+    # Add players
+    p0 = game.add_player("p0", "Player 0", 1000)  # Button
+    p1 = game.add_player("p1", "Player 1", 1000)  # SB
+    
+    # Skip start_hand for cleaner test setup
+    
+    # Player 0 has A-9
+    p0.hand.cards = {
+        Card(Rank.ACE, Suit.HEARTS),
+        Card(Rank.NINE, Suit.DIAMONDS)
+    }
+    
+    # Player 1 has A-K
+    p1.hand.cards = {
+        Card(Rank.ACE, Suit.SPADES),
+        Card(Rank.KING, Suit.CLUBS)
+    }
+    
+    # Community cards with a paired board
+    game.community_cards = [
+        Card(Rank.TEN, Suit.CLUBS),
+        Card(Rank.TEN, Suit.HEARTS),
+        Card(Rank.SEVEN, Suit.SPADES),
+        Card(Rank.TWO, Suit.HEARTS),
+        Card(Rank.THREE, Suit.DIAMONDS)
+    ]
+    
+    # Both players have a pair of tens from the board
+    # Player 1's kicker (A-K) should beat Player 0's kicker (A-9)
+    
+    # Skip to the showdown
+    game.current_round = BettingRound.RIVER
+    
+    # Both players bet 100
+    for player in game.players:
+        player.current_bet = 100
+        player.total_bet = 100
+        player.chips -= 100
+    
+    game.pots[0].amount = 200  # 100 from each player
+    
+    # Set eligible players for pot
+    for player in game.players:
+        game.pots[0].eligible_players.add(player.player_id)
+    
+    # Trigger showdown
+    game._handle_showdown()
+    
+    # Player 1 should win with better kicker
+    assert p1.chips > p0.chips
+    assert p1.chips == 1100  # Starting 1000 + pot 200 - bet 100
+    assert p0.chips == 900   # Starting 1000 - bet 100
+    
+    # Check hand winners
+    assert len(game.hand_winners) == 1
+    assert game.hand_winners.get("pot_0") == [p1]
+
+
+def test_full_board_plays_no_hole_cards():
+    """Test when all five community cards make the best hand (no hole cards used)."""
+    game = PokerGame(small_blind=10, big_blind=20)
+    
+    # Add players
+    p0 = game.add_player("p0", "Player 0", 1000)  # Button
+    p1 = game.add_player("p1", "Player 1", 1000)  # SB
+    
+    # Skip start_hand for cleaner test setup
+    
+    # Player 0 has low cards
+    p0.hand.cards = {
+        Card(Rank.TWO, Suit.HEARTS),
+        Card(Rank.THREE, Suit.DIAMONDS)
+    }
+    
+    # Player 1 has high cards (better hole cards)
+    p1.hand.cards = {
+        Card(Rank.ACE, Suit.SPADES),
+        Card(Rank.KING, Suit.CLUBS)
+    }
+    
+    # Community cards form a straight flush
+    game.community_cards = [
+        Card(Rank.SEVEN, Suit.CLUBS),
+        Card(Rank.EIGHT, Suit.CLUBS),
+        Card(Rank.NINE, Suit.CLUBS),
+        Card(Rank.TEN, Suit.CLUBS),
+        Card(Rank.JACK, Suit.CLUBS)
+    ]
+    
+    # Skip to the showdown
+    game.current_round = BettingRound.RIVER
+    
+    # Both players bet 100
+    for player in game.players:
+        player.current_bet = 100
+        player.total_bet = 100
+        player.chips -= 100
+    
+    game.pots[0].amount = 200  # 100 from each player
+    
+    # Set eligible players for pot
+    for player in game.players:
+        game.pots[0].eligible_players.add(player.player_id)
+    
+    # Trigger showdown
+    game._handle_showdown()
+    
+    # Should be a split pot since both players use the board
+    assert p0.chips == p1.chips
+    assert p0.chips == 1000  # Starting 1000 + pot 100 - bet 100
+    
+    # Check hand winners
+    assert len(game.hand_winners) == 1
+    assert set(game.hand_winners.get("pot_0")) == {p0, p1}
+
+
+def test_invalid_bet_sizes():
+    """Test handling of invalid bet sizes."""
+    game = setup_test_game(4)
+    game.start_hand()
+    
+    # Player 3 tries to bet below minimum
+    player3 = game.players[3]
+    valid_actions = game.get_valid_actions(player3)
+    
+    # Find minimum valid bet
+    bet_options = [a for a in valid_actions if a[0] == PlayerAction.BET]
+    min_valid_bet = bet_options[0][1] if bet_options else None
+    
+    # Attempt to bet 5 chips (below minimum)
+    invalid_result = game.process_action(player3, PlayerAction.BET, 5)
+    
+    # Should not process the invalid bet
+    assert invalid_result is False
+    assert player3.chips == 1000  # Chips unchanged
+    
+    # Now try with valid bet
+    valid_result = game.process_action(player3, PlayerAction.BET, 20)
+    assert valid_result is not False
+    assert player3.chips == 980  # Chips reduced by 20
+
+
+def test_heads_up_blinds_and_play():
+    """Test heads-up play dynamics where SB is on button and acts first pre-flop."""
+    game = PokerGame(small_blind=10, big_blind=20)
+    
+    # Add just two players
+    p0 = game.add_player("p0", "Player 0", 1000)  # Button and SB
+    p1 = game.add_player("p1", "Player 1", 1000)  # BB
+    
+    game.start_hand()
+    
+    # Check button position
+    assert game.button_position == 0
+    
+    # Check blinds were posted correctly
+    assert p0.chips == 990  # SB player lost 10 chips
+    assert p1.chips == 980  # BB player lost 20 chips
+    
+    # Small blind (button) acts first preflop in heads-up
+    assert game.current_player_idx == 0
+    
+    # SB player calls (adds 10 more to match BB)
+    game.process_action(p0, PlayerAction.CALL)
+    assert p0.chips == 980  # 1000 - 10 - 10
+    
+    # Now BB player's turn
+    assert game.current_player_idx == 1
+    
+    # BB checks
+    game.process_action(p1, PlayerAction.CHECK)
+    
+    # Betting round should end, moving to flop
+    assert game.current_round == BettingRound.FLOP
+    assert len(game.community_cards) == 3
+    
+    # On flop, BB acts first (first player after button)
+    assert game.current_player_idx == 1
