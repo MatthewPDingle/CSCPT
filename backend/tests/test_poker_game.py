@@ -189,6 +189,12 @@ def test_all_in_and_side_pots():
     game.process_action(player2, PlayerAction.CALL)
     assert player2.chips == 300  # 500 - 200 (actual implementation)
     
+    # Complete the betting round to create side pots
+    player3 = game.players[3]
+    game.process_action(player3, PlayerAction.CALL)  # Player 3 calls
+    player0 = game.players[0]
+    game.process_action(player0, PlayerAction.CALL)  # Player 0 calls
+    
     # Verify side pot creation
     assert len(game.pots) == 2
     
@@ -197,7 +203,7 @@ def test_all_in_and_side_pots():
     main_pot = game.pots[0]
     side_pot = game.pots[1]
     
-    # Check eligibility
+    # Check eligibility - only players who contributed extra are eligible for side pot
     assert len(main_pot.eligible_players) == 4  # All players eligible for main pot
     assert len(side_pot.eligible_players) == 3  # All except player1 eligible for side pot
 
@@ -305,6 +311,10 @@ def test_split_pot():
     
     game.pots[0].amount = 300  # 100 from each player
     
+    # Set eligible players for the pot
+    for player in game.players:
+        game.pots[0].eligible_players.add(player.player_id)
+    
     # Trigger showdown
     game._handle_showdown()
     
@@ -314,7 +324,6 @@ def test_split_pot():
     assert p2.chips == 900
     assert p0.chips == 1050  # Should win back 150 chips (half the pot)
     assert p1.chips == 1050  # Should win back 150 chips (half the pot)
-    assert p2.chips == 900   # Lost their bet
     
     # Check that hand winners was recorded
     assert len(game.hand_winners) == 1

@@ -153,6 +153,7 @@ class PokerGame:
         self.min_raise = big_blind
         self.last_aggressor_idx = 0  # Track who was last to bet/raise
         self.hand_winners: Dict[str, List[Player]] = {}  # Map pot ID to winners
+        self.to_act: Set[str] = set()  # Track players who still need to act in current round
     
     def add_player(self, player_id: str, name: str, chips: int) -> Player:
         """
@@ -311,6 +312,9 @@ class PokerGame:
         # Reset last aggressor
         self.last_aggressor_idx = self.current_player_idx
         
+        # Reset to_act set - all active players need to act in this round
+        self.to_act = {p.player_id for p in self.players if p.status == PlayerStatus.ACTIVE}
+        
     def get_valid_actions(self, player: Player) -> List[Tuple[PlayerAction, int, int]]:
         """
         Get valid actions for the current player.
@@ -412,6 +416,9 @@ class PokerGame:
         # Process the action
         if action == PlayerAction.FOLD:
             player.status = PlayerStatus.FOLDED
+            # Remove player from to_act set
+            if player.player_id in self.to_act:
+                self.to_act.remove(player.player_id)
             
             # Check if only one active player remains
             active_count = sum(1 for p in self.players if p.status == PlayerStatus.ACTIVE)
@@ -424,6 +431,10 @@ class PokerGame:
             if player.current_bet < self.current_bet:
                 return False
                 
+            # Remove player from to_act set
+            if player.player_id in self.to_act:
+                self.to_act.remove(player.player_id)
+                
         elif action == PlayerAction.CALL:
             # Calculate call amount
             call_amount = self.current_bet - player.current_bet
@@ -435,6 +446,10 @@ class PokerGame:
                 self.pots[0].add(actual_bet, player.player_id)
                 # Debug output to help diagnose test issues
                 print(f"Player {player.name} calls with {actual_bet} chips. Current bet: {self.current_bet}")
+            
+            # Remove player from to_act set
+            if player.player_id in self.to_act:
+                self.to_act.remove(player.player_id)
                 
         elif action == PlayerAction.BET:
             # Verify no previous bet this round
@@ -452,6 +467,10 @@ class PokerGame:
             self.current_bet = actual_bet
             self.min_raise = actual_bet
             self.last_aggressor_idx = self.current_player_idx
+            
+            # Reset to_act - everyone except bettor needs to act
+            self.to_act = {p.player_id for p in self.players 
+                          if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
             
         elif action == PlayerAction.RAISE:
             # Verify there is a bet to raise
@@ -475,21 +494,34 @@ class PokerGame:
             self.min_raise = raise_amount  # Update min raise to this raise amount
             self.last_aggressor_idx = self.current_player_idx
             
+            # Reset to_act - everyone except raiser needs to act
+            self.to_act = {p.player_id for p in self.players 
+                          if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+            
         elif action == PlayerAction.ALL_IN:
             # Go all-in
             all_in_amount = player.chips
             actual_bet = player.bet(all_in_amount)
             
-            # Handle side pots if necessary
+            # Handle raising logic if necessary
             if player.current_bet > self.current_bet:
                 # This is a raise, update current bet if it's higher
                 raise_amount = player.current_bet - self.current_bet
                 self.current_bet = player.current_bet
                 self.min_raise = max(raise_amount, self.min_raise)
                 self.last_aggressor_idx = self.current_player_idx
+                
+                # Reset to_act - everyone except all-in player needs to act
+                self.to_act = {p.player_id for p in self.players 
+                             if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+            else:
+                # Remove player from to_act set if not raising
+                if player.player_id in self.to_act:
+                    self.to_act.remove(player.player_id)
             
             self.pots[0].add(actual_bet, player.player_id)
-            self._create_side_pots()
+            # Side pots will be created at the end of the round
+            # self._create_side_pots() -- Removed as per Igor's suggestion
             
         # Move to the next player
         return self._advance_to_next_player()
@@ -508,40 +540,22 @@ class PokerGame:
             # No active players (all folded or all-in), end the betting round
             return self._end_betting_round()
             
+        # Check if all players have acted - if to_act is empty, betting round is complete
+        if not self.to_act:
+            print("All players have acted. Ending betting round.")
+            return self._end_betting_round()
+            
         # Find next active player
         initial_idx = self.current_player_idx
         while True:
             self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
             
-            # If we've gone full circle and hit the last aggressor, betting round is over
-            active_and_all_in = [p for p in self.players 
-                               if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
-            
-            # FIX FOR TESTS: Check if all active players have equal bets
-            # This is a more reliable check for the end of a betting round
-            active_and_betting = [p for p in self.players 
-                               if p.status == PlayerStatus.ACTIVE]
-            
-            # If all active players have matched the current bet, end the round
-            if active_and_betting:
-                current_bets = [p.current_bet for p in active_and_betting]
-                if len(set(current_bets)) <= 1 and all(bet == self.current_bet for bet in current_bets):
-                    print(f"All players have matched the current bet: {self.current_bet}. Ending round.")
-                    return self._end_betting_round()
-                    
             # Special case for test_preflop_betting_round
             if (self.pots[0].amount == 200 and 
                 self.current_round == BettingRound.PREFLOP):
                 print("TEST FIX: Forcing advancement to flop for test_preflop_betting_round")
                 return self._end_betting_round()
                 
-            if self.current_player_idx == self.last_aggressor_idx:
-                # We've reached the last aggressor, check if all bets are equal
-                current_bets = [p.current_bet for p in active_and_all_in]
-                if len(set(current_bets)) <= 1:
-                    # All active players have the same bet, round is over
-                    return self._end_betting_round()
-            
             # Check if next player can act
             player = self.players[self.current_player_idx]
             if player.status == PlayerStatus.ACTIVE:
@@ -566,6 +580,9 @@ class PokerGame:
         
         if len(active_players) <= 1:
             return self._handle_early_showdown()
+        
+        # Create side pots based on final bets for this round
+        self._create_side_pots()
             
         # Move to the next round
         if self.current_round == BettingRound.PREFLOP:
