@@ -67,3 +67,14 @@ Example:
 - Implement integration tests for component interactions
 - Test edge cases and error conditions
 - Verify performance for computationally intensive operations
+
+## Problem-Solving Approach
+
+When tackling complex problems or debugging issues:
+
+- **Think deeply and carefully** before implementing solutions
+- **Think out loud or use a scratchpad** to organize your thoughts when approaching difficult problems
+- Break down complex problems into smaller, manageable steps
+- Consider multiple approaches before selecting the optimal solution
+- Document your reasoning for significant implementation decisions
+- When debugging, use systematic hypothesis testing rather than random changes
