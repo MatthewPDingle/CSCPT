@@ -229,14 +229,21 @@ class PokerGame:
         """Post the small and big blinds."""
         active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
         
+        if len(active_players) == 2:  # Heads-up play
+            # In heads-up, button posts SB and opponent posts BB
+            sb_pos = self.button_position
+            bb_pos = (self.button_position + 1) % 2
+        else:
+            # Normal play
+            sb_pos = (self.button_position + 1) % len(active_players)
+            bb_pos = (self.button_position + 2) % len(active_players)
+        
         # Small blind
-        sb_pos = (self.button_position + 1) % len(active_players)
         sb_player = active_players[sb_pos]
         sb_amount = sb_player.bet(self.small_blind)
         self.pots[0].add(sb_amount, sb_player.player_id)
         
         # Big blind
-        bb_pos = (self.button_position + 2) % len(active_players)
         bb_player = active_players[bb_pos]
         bb_amount = bb_player.bet(self.big_blind)
         self.pots[0].add(bb_amount, bb_player.player_id)
@@ -533,8 +540,9 @@ class PokerGame:
             # Side pots will be created at the end of the round
             # self._create_side_pots() -- Removed as per Igor's suggestion
             
-        # Move to the next player
-        return self._advance_to_next_player()
+        # Move to the next player and return True since the action was processed successfully
+        self._advance_to_next_player()
+        return True
     
     def _advance_to_next_player(self) -> bool:
         """
