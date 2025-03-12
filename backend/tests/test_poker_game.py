@@ -639,25 +639,25 @@ def test_invalid_bet_sizes():
     game = setup_test_game(4)
     game.start_hand()
     
-    # Player 3 tries to bet below minimum
+    # Player 3 (UTG) is facing a bet (the BB of 20)
     player3 = game.players[3]
-    valid_actions = game.get_valid_actions(player3)
     
-    # Find minimum valid bet
-    bet_options = [a for a in valid_actions if a[0] == PlayerAction.BET]
-    min_valid_bet = bet_options[0][1] if bet_options else None
+    # In preflop, the correct action is RAISE not BET (since BB is already a bet)
+    # Attempt to raise to 25 (below minimum raise)
+    call_amount = 20
+    min_raise_amount = 20  # Min raise equals the BB
+    min_total = call_amount + min_raise_amount  # Should be 40
     
-    # Attempt to bet 5 chips (below minimum)
-    invalid_result = game.process_action(player3, PlayerAction.BET, 5)
+    invalid_result = game.process_action(player3, PlayerAction.RAISE, 25)
     
-    # Should not process the invalid bet
+    # Should not process the invalid raise
     assert invalid_result is False
     assert player3.chips == 1000  # Chips unchanged
     
-    # Now try with valid bet
-    valid_result = game.process_action(player3, PlayerAction.BET, 20)
+    # Now try with valid raise to 40 (call 20 + min raise 20)
+    valid_result = game.process_action(player3, PlayerAction.RAISE, 40)
     assert valid_result is not False
-    assert player3.chips == 980  # Chips reduced by 20
+    assert player3.chips == 960  # 1000 - 40
 
 
 def test_heads_up_blinds_and_play():
@@ -696,3 +696,39 @@ def test_heads_up_blinds_and_play():
     
     # On flop, BB acts first (first player after button)
     assert game.current_player_idx == 1
+
+
+def test_betting_across_multiple_rounds():
+    """Test bet/raise validation across different betting rounds."""
+    game = setup_test_game(3)  # Just 3 players for simplicity
+    game.start_hand()
+    
+    # In preflop, there's already a bet (BB), so players must use RAISE not BET
+    
+    # Everyone calls to reach the flop
+    for _ in range(3):
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CALL)
+    
+    # Now we're on the flop, where there's no bet yet
+    assert game.current_round == BettingRound.FLOP
+    assert game.current_bet == 0
+    
+    # First player tries invalid bet amount
+    player = game.players[game.current_player_idx]
+    # Use BET action with too small of a bet (below BB)
+    invalid_bet_result = game.process_action(player, PlayerAction.BET, 10)
+    assert invalid_bet_result is False
+    
+    # Same player tries valid bet
+    valid_bet_result = game.process_action(player, PlayerAction.BET, 20)
+    assert valid_bet_result is not False
+    
+    # Second player tries too small raise (below minimum)
+    player = game.players[game.current_player_idx]
+    invalid_raise_result = game.process_action(player, PlayerAction.RAISE, 30)  # Valid raise would be 40+
+    assert invalid_raise_result is False
+    
+    # Second player makes a valid raise
+    valid_raise_result = game.process_action(player, PlayerAction.RAISE, 50)
+    assert valid_raise_result is not False
