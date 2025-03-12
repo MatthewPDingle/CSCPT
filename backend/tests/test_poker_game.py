@@ -264,7 +264,8 @@ def test_split_pot():
     p1 = game.add_player("p1", "Player 1", 1000)  # SB
     p2 = game.add_player("p2", "Player 2", 1000)  # BB
     
-    game.start_hand()
+    # Skip start_hand to avoid posting blinds
+    # This makes the test cleaner by avoiding the blind chips
     
     # Force identical hands for players 0 and 1
     # Both get a pair of kings
@@ -296,7 +297,7 @@ def test_split_pot():
     # Skip to the showdown
     game.current_round = BettingRound.RIVER
     
-    # All players bet 100
+    # All players bet 100 (no blinds involved)
     for player in game.players:
         player.current_bet = 100
         player.total_bet = 100
@@ -309,8 +310,11 @@ def test_split_pot():
     
     # Check that pot was split between players 0 and 1
     assert p0.chips == p1.chips
-    assert p0.chips > 900  # Should have won back some chips
-    assert p2.chips == 900  # Lost their bet
+    # Losers get nothing back
+    assert p2.chips == 900
+    assert p0.chips == 1050  # Should win back 150 chips (half the pot)
+    assert p1.chips == 1050  # Should win back 150 chips (half the pot)
+    assert p2.chips == 900   # Lost their bet
     
     # Check that hand winners was recorded
     assert len(game.hand_winners) == 1
