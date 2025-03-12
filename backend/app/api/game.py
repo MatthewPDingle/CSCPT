@@ -120,6 +120,39 @@ async def start_game(game_id: str) -> GameStateModel:
     return _game_to_model(game_id, game)
 
 
+@router.post("/next-hand/{game_id}", response_model=GameStateModel)
+async def next_hand(game_id: str) -> GameStateModel:
+    """
+    Start the next hand in an existing game.
+    
+    Args:
+        game_id: The ID of the game
+        
+    Returns:
+        The updated game state
+    """
+    if game_id not in active_games:
+        raise HTTPException(status_code=404, detail="Game not found")
+        
+    game = active_games[game_id]
+    
+    # Check if current hand is complete
+    if game.current_round != BettingRound.SHOWDOWN:
+        raise HTTPException(
+            status_code=400, 
+            detail="Current hand is not complete"
+        )
+        
+    # Move the button
+    game.move_button()
+    
+    # Start new hand
+    game.start_hand()
+    
+    # Convert to API model
+    return _game_to_model(game_id, game)
+
+
 @router.post("/action/{game_id}", response_model=ActionResponse)
 async def player_action(
     game_id: str, 
@@ -181,8 +214,25 @@ async def player_action(
         )
         
     # Process the action
-    # TODO: Implement actual action processing
-    # This is a placeholder for the actual poker game logic
+    amount = action_request.amount
+    success = game.process_action(player, action, amount)
+    
+    if not success:
+        return ActionResponse(
+            success=False,
+            message=f"Failed to process action {action.name}",
+            game_state=_game_to_model(game_id, game)
+        )
+    
+    # Check if we need to automatically advance the game (e.g., when all players have checked/called)
+    # This happens when the betting round is complete but we're not at showdown yet
+    if game.current_round == BettingRound.SHOWDOWN:
+        # Hand is complete, get new game state
+        return ActionResponse(
+            success=True,
+            message=f"Hand complete. Winners: {_format_winners(game)}",
+            game_state=_game_to_model(game_id, game)
+        )
     
     # Return success
     return ActionResponse(
@@ -190,6 +240,22 @@ async def player_action(
         message=f"Action {action.name} processed",
         game_state=_game_to_model(game_id, game)
     )
+
+
+def _format_winners(game: PokerGame) -> str:
+    """Format the winners for the response message."""
+    if not game.hand_winners:
+        return "No winners yet"
+        
+    result = []
+    for pot_id, winners in game.hand_winners.items():
+        winner_names = [p.name for p in winners]
+        if len(winner_names) == 1:
+            result.append(f"{winner_names[0]} wins {pot_id}")
+        else:
+            result.append(f"{', '.join(winner_names)} split {pot_id}")
+            
+    return "; ".join(result)
 
 
 def _game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
