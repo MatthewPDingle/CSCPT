@@ -11,6 +11,9 @@ interface Player {
   isActive: boolean;
   isCurrent: boolean;
   isDealer: boolean;
+  isButton?: boolean;
+  isSB?: boolean;
+  isBB?: boolean;
 }
 
 interface PlayerSeatProps {
@@ -111,22 +114,42 @@ const PlayerCards = styled.div<{ isHuman: boolean }>`
   min-height: 53px; /* Ensure consistent height even without cards */
 `;
 
-const DealerButton = styled.div`
+// Base style for all position markers
+const PositionMarker = styled.div`
   position: absolute;
-  top: -8px;
-  right: -8px;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background-color: #f39c12;
   color: white;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: bold;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   border: 1.5px solid white;
+  z-index: 5;
+`;
+
+// Button marker (Dealer position)
+const ButtonMarker = styled(PositionMarker)`
+  top: -8px;
+  right: -8px;
+  background-color: #f39c12; // Orange
+`;
+
+// Small blind marker
+const SmallBlindMarker = styled(PositionMarker)`
+  top: -8px;
+  left: -8px;
+  background-color: #3498db; // Blue
+`;
+
+// Big blind marker
+const BigBlindMarker = styled(PositionMarker)`
+  top: 20px;
+  left: -12px;
+  background-color: #e74c3c; // Red
 `;
 
 const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) => {
@@ -141,7 +164,9 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
       <PlayerInfo isHuman={isHuman} isDealer={player.id === 'dealer'}>
         <PlayerName isHuman={isHuman}>{player.name}</PlayerName>
         <ChipCount isHuman={isHuman}>${player.chips}</ChipCount>
-        {player.isDealer && <DealerButton>D</DealerButton>}
+        {player.isButton && <ButtonMarker>B</ButtonMarker>}
+        {player.isSB && <SmallBlindMarker>SB</SmallBlindMarker>}
+        {player.isBB && <BigBlindMarker>BB</BigBlindMarker>}
       </PlayerInfo>
       
       <PlayerCards isHuman={isHuman}>

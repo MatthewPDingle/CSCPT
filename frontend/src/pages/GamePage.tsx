@@ -75,17 +75,17 @@ const SizeButton = styled.button<{ active: boolean }>`
 const initialGameState = {
   players: [
     // Human player (position following alphabetical order)
-    { id: 'player', name: 'You', chips: 1000, position: 9, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
+    { id: 'player', name: 'You', chips: 1000, position: 9, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
     
     // AI players in alphabetical order (used for clockwise seating from dealer)
-    { id: 'ai1', name: 'Alice', chips: 900, position: 1, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
-    { id: 'ai2', name: 'Bob', chips: 1200, position: 2, cards: [null, null], isActive: true, isCurrent: true, isDealer: false },
-    { id: 'ai3', name: 'Charlie', chips: 1500, position: 3, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
-    { id: 'ai4', name: 'Dave', chips: 800, position: 4, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
-    { id: 'ai5', name: 'Eve', chips: 1100, position: 5, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
-    { id: 'ai6', name: 'Frank', chips: 950, position: 6, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
-    { id: 'ai7', name: 'Grace', chips: 1050, position: 7, cards: [null, null], isActive: true, isCurrent: false, isDealer: false },
-    { id: 'ai8', name: 'Hank', chips: 1300, position: 8, cards: [null, null], isActive: true, isCurrent: false, isDealer: false }
+    { id: 'ai1', name: 'Alice', chips: 900, position: 1, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: true, isSB: false, isBB: false },
+    { id: 'ai2', name: 'Bob', chips: 1200, position: 2, cards: [null, null], isActive: true, isCurrent: true, isDealer: false, isButton: false, isSB: true, isBB: false },
+    { id: 'ai3', name: 'Charlie', chips: 1500, position: 3, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: true },
+    { id: 'ai4', name: 'Dave', chips: 800, position: 4, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
+    { id: 'ai5', name: 'Eve', chips: 1100, position: 5, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
+    { id: 'ai6', name: 'Frank', chips: 950, position: 6, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
+    { id: 'ai7', name: 'Grace', chips: 1050, position: 7, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
+    { id: 'ai8', name: 'Hank', chips: 1300, position: 8, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false }
   ],
   communityCards: [null, null, null, null, null],
   pot: 0,
