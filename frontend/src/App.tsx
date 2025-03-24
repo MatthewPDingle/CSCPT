@@ -5,6 +5,7 @@ import './App.css';
 // Pages
 import HomePage from './pages/HomePage';
 import GamePage from './pages/GamePage';
+import LobbyPage from './pages/LobbyPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
       <div className="App">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/game" element={<GamePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

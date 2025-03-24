@@ -44,7 +44,7 @@ const HomePage: React.FC = () => {
         Practice your poker skills against AI opponents with different play styles.
         Improve your game and get real-time feedback on your decisions.
       </Subtitle>
-      <StartGameButton to="/game">Start Game</StartGameButton>
+      <StartGameButton to="/lobby">Setup & Play Game</StartGameButton>
     </HomeContainer>
   );
 };
