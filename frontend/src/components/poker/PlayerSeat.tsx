@@ -114,9 +114,19 @@ const PlayerCards = styled.div<{ isHuman: boolean }>`
   min-height: 53px; /* Ensure consistent height even without cards */
 `;
 
+// Create a container for the markers
+const MarkersContainer = styled.div`
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: flex;
+  flex-direction: row-reverse; // Ensures Button is rightmost
+  gap: 4px;
+  z-index: 5;
+`;
+
 // Base style for all position markers
 const PositionMarker = styled.div`
-  position: absolute;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -128,11 +138,6 @@ const PositionMarker = styled.div`
   font-weight: bold;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   border: 1.5px solid white;
-  z-index: 5;
-  
-  /* All markers positioned at the top-right corner */
-  top: -8px;
-  right: -8px;
 `;
 
 // Button marker (Dealer position)
@@ -142,13 +147,11 @@ const ButtonMarker = styled(PositionMarker)`
 
 // Small blind marker 
 const SmallBlindMarker = styled(PositionMarker)`
-  transform: translateX(-26px); // Offset to the left of the Button marker
   background-color: #3498db; // Blue
 `;
 
 // Big blind marker
 const BigBlindMarker = styled(PositionMarker)`
-  transform: translateX(-52px); // Offset further left
   background-color: #e74c3c; // Red
 `;
 
@@ -164,9 +167,15 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
       <PlayerInfo isHuman={isHuman} isDealer={player.id === 'dealer'}>
         <PlayerName isHuman={isHuman}>{player.name}</PlayerName>
         <ChipCount isHuman={isHuman}>${player.chips}</ChipCount>
-        {player.isButton && <ButtonMarker>B</ButtonMarker>}
-        {player.isSB && <SmallBlindMarker>SB</SmallBlindMarker>}
-        {player.isBB && <BigBlindMarker>BB</BigBlindMarker>}
+        
+        {/* Container for all markers */}
+        {(player.isButton || player.isSB || player.isBB) && (
+          <MarkersContainer>
+            {player.isButton && <ButtonMarker>B</ButtonMarker>}
+            {player.isSB && <SmallBlindMarker>SB</SmallBlindMarker>}
+            {player.isBB && <BigBlindMarker>BB</BigBlindMarker>}
+          </MarkersContainer>
+        )}
       </PlayerInfo>
       
       <PlayerCards isHuman={isHuman}>
