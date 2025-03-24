@@ -154,7 +154,7 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
               name: 'Dealer',
               chips: 0,
               position: -1, // Special position for dealer
-              cards: [null, null],
+              cards: [], // Empty cards array for dealer
               isActive: true,
               isCurrent: false,
               isDealer: true
