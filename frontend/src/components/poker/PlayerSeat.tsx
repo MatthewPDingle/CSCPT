@@ -129,26 +129,26 @@ const PositionMarker = styled.div`
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   border: 1.5px solid white;
   z-index: 5;
+  
+  /* All markers positioned at the top-right corner */
+  top: -8px;
+  right: -8px;
 `;
 
 // Button marker (Dealer position)
 const ButtonMarker = styled(PositionMarker)`
-  top: -8px;
-  right: -8px;
   background-color: #f39c12; // Orange
 `;
 
-// Small blind marker
+// Small blind marker 
 const SmallBlindMarker = styled(PositionMarker)`
-  top: -8px;
-  left: -8px;
+  transform: translateX(-26px); // Offset to the left of the Button marker
   background-color: #3498db; // Blue
 `;
 
 // Big blind marker
 const BigBlindMarker = styled(PositionMarker)`
-  top: 20px;
-  left: -12px;
+  transform: translateX(-52px); // Offset further left
   background-color: #e74c3c; // Red
 `;
 
