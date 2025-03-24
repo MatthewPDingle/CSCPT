@@ -108,6 +108,7 @@ const PlayerCards = styled.div<{ isHuman: boolean }>`
   transform: scale(0.75);
   transform-origin: top center;
   filter: drop-shadow(0 5px 5px rgba(0, 0, 0, 0.5));
+  min-height: 53px; /* Ensure consistent height even without cards */
 `;
 
 const DealerButton = styled.div`
@@ -144,13 +145,22 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
       </PlayerInfo>
       
       <PlayerCards isHuman={isHuman}>
-        {player.cards.map((card, index) => (
-          <Card 
-            key={index} 
-            card={card}
-            faceDown={!isHuman} // Only show the human player's cards
-          />
-        ))}
+        {player.id === 'dealer' ? (
+          // Empty div placeholders for dealer (invisible)
+          <>
+            <div style={{ width: '36px', height: '0px' }}></div>
+            <div style={{ width: '36px', height: '0px' }}></div>
+          </>
+        ) : (
+          // Regular cards for players
+          player.cards.map((card, index) => (
+            <Card 
+              key={index} 
+              card={card}
+              faceDown={!isHuman} // Only show the human player's cards
+            />
+          ))
+        )}
       </PlayerCards>
     </SeatContainer>
   );

@@ -97,7 +97,7 @@ const getPlayerPosition = (playerId: string) => {
   
   const seatPositions = {
     // Dealer position
-    "dealer": { x: '50%', y: '12%' },    // Top middle (dealer)
+    "dealer": { x: '50%', y: '5%' },    // Top middle (dealer) - moved even higher
     
     // Player positions in clockwise order from dealer
     "alice":  { x: '72%', y: '12%' },    // Top right (moved more towards middle)
