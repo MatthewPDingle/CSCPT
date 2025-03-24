@@ -6,6 +6,7 @@ interface Player {
   id: string;
   name: string;
   chips: number;
+  position: number;
   cards: (string | null)[];
   isActive: boolean;
   isCurrent: boolean;
@@ -23,6 +24,7 @@ interface PositionProps {
   y: string;
   isActive: boolean;
   isCurrent: boolean;
+  isHuman: boolean;
 }
 
 const SeatContainer = styled.div<PositionProps>`
@@ -34,59 +36,96 @@ const SeatContainer = styled.div<PositionProps>`
   flex-direction: column;
   align-items: center;
   z-index: 10;
-  transition: all 0.2s ease-in-out;
+  transition: all 0.3s ease-in-out;
   
   ${props => props.isCurrent && `
-    box-shadow: 0 0 15px 5px rgba(255, 215, 0, 0.7);
-    border-radius: 10px;
+    box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.8);
+  `}
+  
+  /* Removed the scaling for human player so all players are the same size */
+  ${props => props.isHuman && `
+    z-index: 20;
   `}
   
   ${props => !props.isActive && `
     opacity: 0.5;
+    filter: grayscale(70%);
   `}
 `;
 
-const PlayerInfo = styled.div`
-  background-color: rgba(0, 0, 0, 0.7);
+interface PlayerInfoProps {
+  isHuman: boolean;
+  isDealer?: boolean;
+}
+
+const PlayerInfo = styled.div<PlayerInfoProps>`
+  background-color: ${props => {
+    if (props.isDealer) return 'rgba(155, 89, 182, 0.85)';
+    if (props.isHuman) return 'rgba(41, 128, 185, 0.85)';
+    return 'rgba(0, 0, 0, 0.75)';
+  }};
   color: white;
   padding: 0.5rem;
-  border-radius: 5px;
+  border-radius: 6px;
   text-align: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
   min-width: 100px;
+  max-width: 110px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  border: ${props => {
+    if (props.isDealer) return '2px solid #8e44ad';
+    if (props.isHuman) return '2px solid #3498db';
+    return 'none';
+  }};
 `;
 
-const PlayerName = styled.div`
+const PlayerName = styled.div<{ isHuman: boolean }>`
   font-weight: bold;
-  font-size: 0.9rem;
-  margin-bottom: 0.2rem;
+  /* Same font size for all players */
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
-const ChipCount = styled.div`
-  font-size: 0.8rem;
+const ChipCount = styled.div<{ isHuman: boolean }>`
+  /* Same font size for all players */
+  font-size: 0.75rem;
+  font-weight: ${props => props.isHuman ? 'bold' : 'normal'};
+  background-color: rgba(0, 0, 0, 0.3);
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  display: inline-block;
+  margin-top: 0.15rem;
 `;
 
-const PlayerCards = styled.div`
+const PlayerCards = styled.div<{ isHuman: boolean }>`
   display: flex;
   gap: 0.3rem;
-  transform: scale(0.8);
+  /* Same scale for all players */
+  transform: scale(0.75);
+  transform-origin: top center;
+  filter: drop-shadow(0 5px 5px rgba(0, 0, 0, 0.5));
 `;
 
 const DealerButton = styled.div`
   position: absolute;
-  top: -15px;
-  right: -15px;
-  width: 25px;
-  height: 25px;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background-color: white;
-  color: black;
+  background-color: #f39c12;
+  color: white;
   display: flex;
   justify-content: center;
   align-items: center;
   font-size: 0.8rem;
   font-weight: bold;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  border: 1.5px solid white;
 `;
 
 const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) => {
@@ -96,14 +135,15 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
       y={position.y} 
       isActive={player.isActive}
       isCurrent={player.isCurrent}
+      isHuman={isHuman}
     >
-      <PlayerInfo>
-        <PlayerName>{player.name}</PlayerName>
-        <ChipCount>${player.chips}</ChipCount>
+      <PlayerInfo isHuman={isHuman} isDealer={player.id === 'dealer'}>
+        <PlayerName isHuman={isHuman}>{player.name}</PlayerName>
+        <ChipCount isHuman={isHuman}>${player.chips}</ChipCount>
         {player.isDealer && <DealerButton>D</DealerButton>}
       </PlayerInfo>
       
-      <PlayerCards>
+      <PlayerCards isHuman={isHuman}>
         {player.cards.map((card, index) => (
           <Card 
             key={index} 
