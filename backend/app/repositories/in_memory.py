@@ -63,12 +63,18 @@ class InMemoryRepository(Generic[T], Repository[T]):
         with self.lock:
             if not filters:
                 # Return all entities if no filters provided
-                return list(copy.deepcopy(self.data.values()))
+                return [copy.deepcopy(entity) for entity in self.data.values()]
             
             # Apply filters
             result = []
             for entity in self.data.values():
-                entity_dict = entity.dict()
+                # Use model_dump() instead of dict() for Pydantic v2 compatibility
+                try:
+                    entity_dict = entity.model_dump()
+                except AttributeError:
+                    # Fallback for older Pydantic versions
+                    entity_dict = entity.dict()
+                
                 matches = True
                 
                 for key, value in filters.items():
@@ -105,7 +111,12 @@ class InMemoryRepository(Generic[T], Repository[T]):
         """
         with self.lock:
             # Ensure the entity has an ID
-            entity_dict = entity.dict()
+            try:
+                entity_dict = entity.model_dump()
+            except AttributeError:
+                # Fallback for older Pydantic versions
+                entity_dict = entity.dict()
+                
             if "id" not in entity_dict or not entity_dict["id"]:
                 raise ValueError("Entity must have an ID")
                 
@@ -130,7 +141,12 @@ class InMemoryRepository(Generic[T], Repository[T]):
             KeyError: If the entity doesn't exist
         """
         with self.lock:
-            entity_dict = entity.dict()
+            try:
+                entity_dict = entity.model_dump()
+            except AttributeError:
+                # Fallback for older Pydantic versions
+                entity_dict = entity.dict()
+                
             entity_id = entity_dict["id"]
             
             if entity_id not in self.data:

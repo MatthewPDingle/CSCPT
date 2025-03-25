@@ -74,10 +74,18 @@ class RepositoryPersistence:
             with self.lock:
                 # Get all data from repository
                 with repository.lock:
+                    entities_data = []
+                    for entity in repository.data.values():
+                        try:
+                            entities_data.append(entity.model_dump())
+                        except AttributeError:
+                            # Fallback for older Pydantic versions
+                            entities_data.append(entity.dict())
+                            
                     data = {
                         "timestamp": datetime.now().isoformat(),
                         "type": repo_name,
-                        "entities": [entity.dict() for entity in repository.data.values()]
+                        "entities": entities_data
                     }
                 
                 # Write to temporary file first for atomic operation
@@ -129,7 +137,11 @@ class RepositoryPersistence:
                     
                     for entity_dict in data["entities"]:
                         # Convert entity dict back to model
-                        entity = model_class.parse_obj(entity_dict)
+                        try:
+                            entity = model_class.model_validate(entity_dict)
+                        except AttributeError:
+                            # Fallback for older Pydantic versions
+                            entity = model_class.parse_obj(entity_dict)
                         repository.data[entity.id] = entity
                         
                 return True
