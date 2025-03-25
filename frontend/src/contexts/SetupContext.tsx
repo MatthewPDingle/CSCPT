@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useRef } from 'react';
 
 // Player archetype types
 export type Archetype = 'TAG' | 'LAG' | 'TightPassive' | 'CallingStation' | 'Maniac' | 'Beginner' | 'Unpredictable';
@@ -10,7 +10,7 @@ export type GameMode = 'cash' | 'tournament';
 export type TournamentTier = 'Local' | 'Regional' | 'National' | 'International';
 
 // Tournament stage types
-export type TournamentStage = 'Early' | 'Mid' | 'MoneyBubble' | 'PostBubble' | 'FinalTable';
+export type TournamentStage = 'Beginning' | 'Mid' | 'Money Bubble' | 'Post Bubble' | 'Final Table';
 
 // Ante value type
 export type AnteValueType = 'SB' | 'BB' | '2xBB';
@@ -131,11 +131,11 @@ const defaultConfig: GameConfig = {
   },
   tournament: {
     tier: 'Local',
-    stage: 'Early',
+    stage: 'Beginning',
     payoutStructure: 'Standard',
     buyInAmount: 100,
     levelDuration: 15,
-    startingChips: 50000,
+    startingChips: 100000,
     totalPlayers: 50,
     startingBigBlind: 100,
     startingSmallBlind: 50,
@@ -186,11 +186,8 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
       
       // Migrate from Random to Unpredictable if needed
       if (parsedConfig.tournament.archetypeDistribution.Random !== undefined) {
-        // Copy Random value to Unpredictable
         parsedConfig.tournament.archetypeDistribution.Unpredictable = 
           parsedConfig.tournament.archetypeDistribution.Random;
-        
-        // Delete the old Random property
         delete parsedConfig.tournament.archetypeDistribution.Random;
       }
       
@@ -225,12 +222,9 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
   ) => {
     setConfig(prevConfig => {
       const newCashGame = { ...prevConfig.cashGame, [key]: value };
-
-      // If table size changes, regenerate players
       if (key === 'tableSize' && typeof value === 'number') {
         newCashGame.players = generateDefaultPlayers(value as number);
       }
-
       const newConfig = { ...prevConfig, cashGame: newCashGame };
       localStorage.setItem('gameSetup', JSON.stringify(newConfig));
       return newConfig;
@@ -243,7 +237,6 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
     value: GameConfig['tournament'][K]
   ) => {
     setConfig(prevConfig => {
-      // If tier changes, update the default distribution
       if (key === 'tier' && typeof value === 'string') {
         const tier = value as TournamentTier;
         const newTournament = { 
@@ -268,115 +261,94 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
     setConfig(prevConfig => {
       const players = [...prevConfig.cashGame.players];
       const playerIndex = players.findIndex(p => p.position === position);
-      
       if (playerIndex !== -1) {
         players[playerIndex] = { ...players[playerIndex], ...data };
       }
-      
       const newConfig = {
         ...prevConfig,
-        cashGame: {
-          ...prevConfig.cashGame,
-          players
-        }
+        cashGame: { ...prevConfig.cashGame, players }
       };
-      
       localStorage.setItem('gameSetup', JSON.stringify(newConfig));
       return newConfig;
     });
   };
 
+  // Use a ref to prevent recursive updates
+  const isUpdatingDistribution = useRef(false);
+
   // Update tournament archetype distribution
   const updateArchetypeDistribution = (archetype: Archetype, percentage: number) => {
+    if (isUpdatingDistribution.current) return;
+    isUpdatingDistribution.current = true;
+    
     setConfig(prevConfig => {
-      // Create a copy of the current distribution
-      const newDistribution = { ...prevConfig.tournament.archetypeDistribution };
-      
-      // Ensure percentage is an integer
-      const newPercentage = Math.round(percentage);
-      
-      // Get the current value of the changed archetype
-      const oldValue = newDistribution[archetype];
-      
-      // If no change or percentage is invalid, return existing config
-      if (newPercentage === oldValue || newPercentage < 0 || newPercentage > 100) {
-        return prevConfig;
-      }
-      
-      // Calculate the delta (change in value)
-      const delta = newPercentage - oldValue;
-      
-      // Set the new value for the changed archetype
-      newDistribution[archetype] = newPercentage;
-      
-      // Get other archetypes (excluding the one being changed)
-      const otherArchetypes = Object.keys(newDistribution).filter(
-        key => key !== archetype
-      ) as Archetype[];
-      
-      // Calculate the sum of all other archetype values
-      const totalOther = otherArchetypes.reduce(
-        (sum, key) => sum + newDistribution[key], 
-        0
-      );
-      
-      // If there are other archetypes with non-zero values, distribute the delta
-      if (totalOther > 0) {
-        // Store original values before adjustment
-        const originalValues: Record<Archetype, number> = {} as Record<Archetype, number>;
-        otherArchetypes.forEach(key => {
-          originalValues[key] = newDistribution[key];
+      try {
+        const originalDistribution = { ...prevConfig.tournament.archetypeDistribution };
+        const newPercentage = Math.round(percentage);
+        const oldValue = originalDistribution[archetype];
+        
+        if (newPercentage === oldValue || newPercentage < 0 || newPercentage > 100) {
+          return prevConfig;
+        }
+        
+        const delta = newPercentage - oldValue;
+        const newDistribution = { ...originalDistribution };
+        newDistribution[archetype] = newPercentage;
+        
+        const otherArchetypes = Object.keys(originalDistribution).filter(
+          key => key !== archetype
+        ) as Archetype[];
+        
+        const totalOther = otherArchetypes.reduce(
+          (sum, key) => sum + originalDistribution[key], 
+          0
+        );
+        
+        if (totalOther > 0) {
+          otherArchetypes.forEach(key => {
+            const proportion = originalDistribution[key] / totalOther;
+            const adjustedValue = originalDistribution[key] - (proportion * delta);
+            newDistribution[key] = adjustedValue;
+          });
+        } else if (otherArchetypes.length > 0) {
+          if (newPercentage < 100) {
+            newDistribution[otherArchetypes[0]] = 100 - newPercentage;
+          }
+        }
+        
+        Object.keys(newDistribution).forEach(key => {
+          newDistribution[key as Archetype] = Math.round(newDistribution[key as Archetype]);
         });
         
-        // Distribute the negative of the delta proportionally among other archetypes
-        otherArchetypes.forEach(key => {
-          // Calculate the proportion of this archetype relative to the total of others
-          const proportion = originalValues[key] / totalOther;
-          // Apply the proportional adjustment: new_value = old_value - (old_value / total_other) * delta
-          newDistribution[key] = Math.max(0, originalValues[key] - (proportion * delta));
+        const total = Object.values(newDistribution).reduce((sum, val) => sum + val, 0);
+        if (total !== 100) {
+          const difference = 100 - total;
+          const adjustableArchetypes = otherArchetypes.filter(key => newDistribution[key] > 0);
+          
+          if (adjustableArchetypes.length > 0) {
+            const maxArchetype = adjustableArchetypes.reduce((max, key) => 
+              newDistribution[key] > newDistribution[max] ? key : max, 
+              adjustableArchetypes[0]);
+            newDistribution[maxArchetype] += difference;
+          } else if (newDistribution[archetype] + difference <= 100 && newDistribution[archetype] + difference >= 0) {
+            newDistribution[archetype] += difference;
+          }
+        }
+        
+        Object.keys(newDistribution).forEach(key => {
+          newDistribution[key as Archetype] = Math.max(0, Math.min(100, newDistribution[key as Archetype]));
         });
-      } else if (newPercentage < 100 && otherArchetypes.length > 0) {
-        // If all other archetypes are 0, assign the remainder to the first one
-        newDistribution[otherArchetypes[0]] = 100 - newPercentage;
-      }
-      
-      // Round values to integers
-      otherArchetypes.forEach(key => {
-        newDistribution[key] = Math.round(newDistribution[key]);
-      });
-      
-      // Final check to ensure total is exactly 100
-      const total = Object.values(newDistribution).reduce((sum, val) => sum + val, 0);
-      if (total !== 100) {
-        const difference = 100 - total;
         
-        // Find archetypes that can be adjusted (not the one just changed)
-        const adjustableArchetypes = otherArchetypes.filter(key => newDistribution[key] > 0);
+        const newConfig = {
+          ...prevConfig,
+          tournament: { ...prevConfig.tournament, archetypeDistribution: newDistribution }
+        };
         
-        if (adjustableArchetypes.length > 0) {
-          // Find the largest value
-          const maxArchetype = adjustableArchetypes.reduce((max, key) => 
-            newDistribution[key] > newDistribution[max] ? key : max, 
-            adjustableArchetypes[0]);
-            
-          // Apply the adjustment to the largest value
-          newDistribution[maxArchetype] += difference;
-        } else if (newPercentage + difference <= 100 && newPercentage + difference >= 0) {
-          // If no other archetypes can be adjusted, modify the changed one
-          newDistribution[archetype] += difference;
-        }
+        localStorage.setItem('gameSetup', JSON.stringify(newConfig));
+        return newConfig;
+      } finally {
+        setTimeout(() => { isUpdatingDistribution.current = false; }, 0);
       }
-      
-      const newConfig = {
-        ...prevConfig,
-        tournament: {
-          ...prevConfig.tournament,
-          archetypeDistribution: newDistribution
-        }
-      };
-      
-      localStorage.setItem('gameSetup', JSON.stringify(newConfig));
-      return newConfig;
     });
   };
 
@@ -392,12 +364,8 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
       const tier = prevConfig.tournament.tier;
       const newConfig = {
         ...prevConfig,
-        tournament: {
-          ...prevConfig.tournament,
-          archetypeDistribution: defaultDistributions[tier]
-        }
+        tournament: { ...prevConfig.tournament, archetypeDistribution: defaultDistributions[tier] }
       };
-      
       localStorage.setItem('gameSetup', JSON.stringify(newConfig));
       return newConfig;
     });

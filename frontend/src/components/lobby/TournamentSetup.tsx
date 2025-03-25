@@ -359,11 +359,11 @@ const TournamentSetup: React.FC<TournamentSetupProps> = ({ onNext }) => {
   
   // Tournament stage descriptions
   const stageDescriptions: Record<TournamentStage, string> = {
-    Early: "Initial stages with deep stacks relative to blinds. Most players are still in the tournament.",
+    Beginning: "Initial stages with deep stacks relative to blinds. Most players are still in the tournament.",
     Mid: "Medium stacks, rising blinds, players starting to adapt their strategies.",
-    MoneyBubble: "Approaching the money bubble where play tightens as players try to survive.",
-    PostBubble: "After reaching the money, play loosens up as players aim for final table.",
-    FinalTable: "Final table play with ICM considerations and high pressure situations."
+    "Money Bubble": "Approaching the money bubble where play tightens as players try to survive.",
+    "Post Bubble": "After reaching the money, play loosens up as players aim for final table.",
+    "Final Table": "Final table play with ICM considerations and high pressure situations."
   };
   
   return (
@@ -404,7 +404,8 @@ const TournamentSetup: React.FC<TournamentSetupProps> = ({ onNext }) => {
             ))}
           </StageOptionsContainer>
           <InfoText>
-            Tournament stage affects stack depths, blind levels, and optimal strategies
+            Choose which stage of a tournament to begin your practice. "Beginning" starts at the first level, 
+            while other options fast-forward to different stages with appropriate blind levels and stack depths.
           </InfoText>
         </FormGroup>
         
