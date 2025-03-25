@@ -62,7 +62,7 @@ cscp/
 #### Backend Foundation
 - [x] Set up FastAPI project structure
 - [ ] Implement WebSocket support for real-time gameplay
-- [ ] Create in-memory data storage for prototype
+- [x] Create in-memory data storage for prototype
 - [x] Create basic API endpoints for game management
 
 ### Phase 2: Core Features
@@ -86,10 +86,10 @@ cscp/
 - [ ] Implement adaptive play based on table dynamics
 
 #### Data Layer
-- [ ] Create abstract data access layer
-- [ ] Implement repository pattern for game data
-- [ ] Add local storage adapters
-- [ ] Design data models with future DB migration in mind
+- [x] Create abstract data access layer
+- [x] Implement repository pattern for game data
+- [x] Add local storage adapters
+- [x] Design data models with future DB migration in mind
 
 #### Statistics System
 - [ ] Design statistics tracking framework
