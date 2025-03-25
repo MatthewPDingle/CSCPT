@@ -40,42 +40,47 @@ cscp/
 ### Phase 1: Foundation
 
 #### Core Poker Engine
-- [ ] Implement card representation and deck management
-- [ ] Design hand evaluation algorithm
-- [ ] Create betting round logic
-- [ ] Implement basic game flow (deal, bet, showdown)
-- [ ] Design player action validation
+- [x] Implement card representation and deck management
+- [x] Design hand evaluation algorithm
+- [x] Create betting round logic
+- [x] Implement basic game flow (deal, bet, showdown)
+- [x] Design player action validation
 
 #### Basic UI
-- [ ] Set up React frontend project structure
-- [ ] Create poker table component
-- [ ] Implement card visualization
-- [ ] Design player position UI
-- [ ] Build basic action controls (fold, call, raise)
+- [x] Set up React frontend project structure
+- [x] Create poker table component
+- [x] Implement card visualization
+- [x] Design player position UI
+- [x] Build basic action controls (fold, call, raise)
 
 #### Initial AI Integration
-- [ ] Design LLM prompt engineering approach
+- [x] Design LLM prompt engineering approach
 - [ ] Implement basic API abstraction for LLM providers
 - [ ] Create simple player agent implementation (1-2 archetypes)
 - [ ] Design agent response parsing
 
 #### Backend Foundation
-- [ ] Set up FastAPI project structure
+- [x] Set up FastAPI project structure
 - [ ] Implement WebSocket support for real-time gameplay
 - [ ] Design database schema for game state
-- [ ] Create basic API endpoints for game management
+- [x] Create basic API endpoints for game management
 
 ### Phase 2: Core Features
 
 #### Complete Game Mechanics
 - [ ] Implement side pot calculations
 - [ ] Add blinds and antes handling
-- [ ] Create tournament structure support
+- [x] Create tournament structure support
+- [x] Implement tournament tier selection (Local, Regional, National, International)
+- [x] Add tournament stage selection (Beginning, Mid, Money Bubble, Post Bubble, Final Table)
 - [ ] Implement cash game mechanics
 - [ ] Add hand history tracking
 
 #### Full Player Archetype Implementation
 - [ ] Implement all player archetypes (TAG, LAG, etc.)
+- [x] Create individual archetype selection UI for cash games
+- [x] Implement percentage distribution UI for tournament archetypes
+- [ ] Design default archetype distributions for each tournament tier
 - [ ] Design dynamic player profiling system
 - [ ] Create opponent modeling functionality
 - [ ] Implement adaptive play based on table dynamics

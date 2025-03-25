@@ -135,7 +135,7 @@ const defaultConfig: GameConfig = {
     payoutStructure: 'Standard',
     buyInAmount: 100,
     levelDuration: 15,
-    startingChips: 100000,
+    startingChips: 50000,
     totalPlayers: 50,
     startingBigBlind: 100,
     startingSmallBlind: 50,
