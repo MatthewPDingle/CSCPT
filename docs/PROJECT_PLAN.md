@@ -62,7 +62,7 @@ cscp/
 #### Backend Foundation
 - [x] Set up FastAPI project structure
 - [ ] Implement WebSocket support for real-time gameplay
-- [ ] Design database schema for game state
+- [ ] Create in-memory data storage for prototype
 - [x] Create basic API endpoints for game management
 
 ### Phase 2: Core Features
@@ -85,6 +85,12 @@ cscp/
 - [ ] Create opponent modeling functionality
 - [ ] Implement adaptive play based on table dynamics
 
+#### Data Layer
+- [ ] Create abstract data access layer
+- [ ] Implement repository pattern for game data
+- [ ] Add local storage adapters
+- [ ] Design data models with future DB migration in mind
+
 #### Statistics System
 - [ ] Design statistics tracking framework
 - [ ] Implement real-time stats calculation
@@ -98,10 +104,10 @@ cscp/
 - [ ] Add pre-action advice functionality
 
 #### User Management
-- [ ] Implement user authentication
-- [ ] Create user profile management
-- [ ] Add session persistence
-- [ ] Design game history storage
+- [ ] Implement basic user identification (local storage)
+- [ ] Create basic profile management
+- [ ] Add local session persistence
+- [ ] Design local game history storage
 
 ### Phase 3: Advanced Features
 
@@ -129,6 +135,13 @@ cscp/
 - [ ] Create customizable themes
 - [ ] Design accessibility features
 
+#### Database Integration
+- [ ] Evaluate and set up Supabase project
+- [ ] Design proper database schema
+- [ ] Implement authentication with Supabase
+- [ ] Migrate from local storage to Supabase
+- [ ] Create data migration scripts
+
 #### Performance Optimization
 - [ ] Implement caching strategies
 - [ ] Optimize LLM context management
@@ -150,10 +163,12 @@ cscp/
 - [ ] Create developer documentation
 
 #### Monetization Features
+- [ ] Integrate Supabase with payment processor (Stripe)
 - [ ] Implement subscription management
 - [ ] Add in-app purchases
 - [ ] Create premium feature gating
 - [ ] Design analytics for monetization performance
+- [ ] Implement secure access control for premium features
 
 ## Pull Request Workflow for Coding Agents
 

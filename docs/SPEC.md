@@ -9,13 +9,17 @@ This specification outlines the development of an interactive poker training app
 #### Game Setup
 - **Poker Variant:** Exclusively Texas Hold'em.
 - **Training Environments:**
-  - Cash game
+  - Cash game with configurable buy-in and blind structure
   - Tournament with customizable parameters:
-    - Tournament level (buy-in, stakes)
-    - Tournament stage (early, mid, late, final table)
-    - Player's stack size
-    - Common payout structures
-- **Table Customization:** User selects table size (2–9 players).
+    - Tournament tier (Local, Regional, National, International) defining player caliber
+    - Tournament stage to start at:
+      - Early stage
+      - Mid stage
+      - Approaching money bubble
+      - After money bubble
+      - Final table
+    - Payout structures
+- **Table Customization:** User selects default table size (2–9 players).
 - **Player Archetypes:**
   - Tight Aggressive (TAG)
   - Loose Aggressive (LAG)
@@ -23,7 +27,11 @@ This specification outlines the development of an interactive poker training app
   - Calling Station
   - Maniac
   - Beginner (Noob)
-  - Custom or random assignment based on training environment
+  - **Archetype Assignment:**
+    - Cash Game: Individual selection for each opponent at the table
+    - Tournament: Percentage distribution of archetypes with default mixes based on tournament tier
+      - For example, Local tier might have 50% Beginner, 20% Maniac, 15% LAG, 10% Calling Station, 2% Tight Passive, 3% TAG
+      - Higher tiers progressively include more skilled archetypes
 
 #### Player Control and AI Integration
 - **User-Controlled Player:**
@@ -74,17 +82,26 @@ This specification outlines the development of an interactive poker training app
 - **UI/UX:** User-friendly, emphasizing realism and intuitive interaction.
 
 #### Backend
-- **Framework:** Python (FastAPI or Django REST Framework) or Node.js.
-- **Data Storage:** PostgreSQL or MongoDB.
+- **Framework:** Python (FastAPI) for game logic and API endpoints.
+- **Data Storage:** 
+  - Initial: In-memory storage for prototype development
+  - Production: Supabase (PostgreSQL) with managed authentication and storage
 - **Real-time communication:** WebSockets.
+- **Database Architecture:** 
+  - Repository pattern for data access abstraction
+  - Local storage adapters during development
+  - Structured for easy migration to Supabase in later phases
 
 #### AI Integration Layer
 - API layer abstracting interactions with multiple LLM providers.
 - Robust handling of API requests, context injection, adaptive context windowing, response parsing.
 
 ### Monetization Opportunities
-- Subscription-based premium coaching features and analytics.
+- Subscription-based premium coaching features and analytics through Supabase/Stripe integration.
 - In-app purchases (scenarios, advanced AI models, coaching).
+- Tiered membership model with increasing features and benefits.
+- Secure access control for premium features.
+- Analytics dashboard for subscription performance.
 - Affiliate partnerships with poker platforms/events.
 
 ### Development Phases
@@ -102,10 +119,15 @@ This specification outlines the development of an interactive poker training app
 
 **Phase 3: Advanced Analytics and Monetization**
 - Comprehensive player analytics and historical tracking
-- Full monetization features
+- Supabase integration for managed authentication and data storage
+- Full monetization features via Supabase/Stripe integration
 - Expanded API integration (Meta, xAI)
+- Smooth migration from local storage to cloud database
 
 ### Deliverables
 - Fully functional interactive poker trainer application.
 - API abstraction for diverse LLM providers.
 - Modular design supporting future expansions.
+- Scalable subscription-based service through Supabase.
+- Secure user authentication and payment processing.
+- Analytics dashboard for both gameplay and business metrics.
