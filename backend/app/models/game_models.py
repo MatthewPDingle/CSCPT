@@ -52,12 +52,29 @@ class PlayerModel(BaseModel):
         }
 
 
+class PotModel(BaseModel):
+    """API model representing a pot in the game."""
+    name: str
+    amount: int
+    eligible_player_ids: List[str]
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "name": "Main Pot",
+                "amount": 200,
+                "eligible_player_ids": ["p1", "p2", "p3"]
+            }
+        }
+
+
 class GameStateModel(BaseModel):
     """API model representing the current game state."""
     game_id: str
     players: List[PlayerModel]
     community_cards: List[CardModel]
-    pot: int
+    pots: List[PotModel]
+    total_pot: int
     current_round: str
     button_position: int
     current_player_idx: int
@@ -99,7 +116,14 @@ class GameStateModel(BaseModel):
                     {"rank": "J", "suit": "H"},
                     {"rank": "Q", "suit": "H"}
                 ],
-                "pot": 30,
+                "pots": [
+                    {
+                        "name": "Main Pot",
+                        "amount": 30,
+                        "eligible_player_ids": ["p1", "p2"]
+                    }
+                ],
+                "total_pot": 30,
                 "current_round": "FLOP",
                 "button_position": 0,
                 "current_player_idx": 0,

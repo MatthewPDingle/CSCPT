@@ -68,7 +68,7 @@ cscp/
 ### Phase 2: Core Features
 
 #### Complete Game Mechanics
-- [ ] Implement side pot calculations
+- [x] Implement side pot calculations
 - [ ] Add blinds and antes handling
 - [x] Create tournament structure support
 - [x] Implement tournament tier selection (Local, Regional, National, International)
