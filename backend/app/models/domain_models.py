@@ -5,7 +5,7 @@ These models represent the core business entities and are used throughout the ap
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import List, Dict, Optional, Set, Union
+from typing import List, Dict, Optional, Set, Union, Any
 
 from pydantic import BaseModel, Field
 
@@ -187,6 +187,120 @@ class CashGameInfo(BaseModel):
     table_size: int
 
 
+class HandMetrics(BaseModel):
+    """Analytics metrics for a hand."""
+    preflop_raise_count: int = 0
+    preflop_call_count: int = 0
+    flop_cbet_attempted: bool = False
+    flop_cbet_successful: bool = False
+    showdown_reached: bool = False
+    all_in_confrontation: bool = False
+    players_seeing_flop: int = 0
+    aggression_factor: float = 0.0  # (bets+raises)/calls
+    largest_pot_in_game_so_far: bool = False
+
+
+class ActionDetail(BaseModel):
+    """Detailed record of a player action for hand history."""
+    action_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    player_id: str
+    action_type: PlayerAction
+    amount: Optional[int] = None
+    timestamp: datetime = Field(default_factory=datetime.now)
+    position_relative_to_dealer: int
+    position_in_action_sequence: int
+    stack_before: int
+    stack_after: int
+    pot_before: int = 0
+    pot_after: int = 0
+    bet_facing: int = 0
+    all_in: bool = False
+
+
+class PotResult(BaseModel):
+    """Result of a pot at showdown."""
+    pot_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    pot_name: str  # "Main Pot", "Side Pot 1", etc.
+    amount: int
+    eligible_players: List[str] = Field(default_factory=list)
+    winners: List[str] = Field(default_factory=list)
+    winning_hand_type: Optional[str] = None
+    winning_hand_cards: List[str] = Field(default_factory=list)
+
+
+class PlayerHandSnapshot(BaseModel):
+    """Player state at the beginning of a hand."""
+    player_id: str
+    position: int
+    name: str
+    is_human: bool
+    archetype: Optional[ArchetypeEnum] = None
+    stack_start: int
+    stack_end: int = 0
+    hole_cards: List[str] = Field(default_factory=list)
+    is_dealer: bool = False
+    is_small_blind: bool = False
+    is_big_blind: bool = False
+    final_hand_rank: Optional[str] = None
+    final_hand_cards: List[str] = Field(default_factory=list)
+    vpip: bool = False  # Voluntarily put money in pot
+    pfr: bool = False   # Pre-flop raise
+    won_amount: int = 0
+    showed_cards: bool = False
+
+
+class HandHistory(BaseModel):
+    """Complete record of a single hand played."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    game_id: str
+    hand_number: int
+    timestamp_start: datetime = Field(default_factory=datetime.now)
+    timestamp_end: Optional[datetime] = None
+    dealer_position: int
+    small_blind: int
+    big_blind: int
+    ante: int = 0
+    table_size: int
+    tournament_level: Optional[int] = None
+    
+    # Card information
+    community_cards: List[str] = Field(default_factory=list)
+    
+    # Starting state
+    players: List[PlayerHandSnapshot] = Field(default_factory=list)
+    
+    # Actions during the hand
+    betting_rounds: Dict[str, List[ActionDetail]] = Field(default_factory=dict)
+    
+    # Results
+    pot_results: List[PotResult] = Field(default_factory=list)
+    total_pot: int = 0
+    
+    # Metrics for analytics
+    metrics: HandMetrics = Field(default_factory=HandMetrics)
+
+
+class PlayerStats(BaseModel):
+    """Aggregated player statistics."""
+    player_id: str
+    hands_played: int = 0
+    vpip: float = 0.0  # Voluntary Put $ In Pot %
+    pfr: float = 0.0   # Pre-Flop Raise %
+    af: float = 0.0    # Aggression Factor
+    wtsd: float = 0.0  # Went To Showdown %
+    won_at_showdown: float = 0.0  # W$SD - Won $ At Showdown %
+    wapf: float = 0.0  # Won After Pre-Flop %
+    cbet_attempt: float = 0.0  # Continuation Bet Attempt %
+    cbet_success: float = 0.0  # Continuation Bet Success %
+    three_bet: float = 0.0     # 3-Bet %
+    fold_to_three_bet: float = 0.0  # Fold to 3-Bet %
+    avg_win: float = 0.0     # Average winning amount
+    avg_loss: float = 0.0    # Average losing amount
+    biggest_win: int = 0     # Biggest pot won
+    biggest_loss: int = 0    # Biggest pot lost
+    bb_per_hand: float = 0.0  # Big blinds won/lost per hand
+
+
 class Game(BaseModel):
     """Main game entity that holds the complete state of a poker game."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -196,6 +310,7 @@ class Game(BaseModel):
     players: List[Player] = Field(default_factory=list)
     current_hand: Optional[Hand] = None
     hand_history: List[Hand] = Field(default_factory=list)
+    hand_history_ids: List[str] = Field(default_factory=list)  # References to detailed hand histories
     # Game type specific info
     tournament_info: Optional[TournamentInfo] = None
     cash_game_info: Optional[CashGameInfo] = None

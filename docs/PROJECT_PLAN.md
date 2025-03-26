@@ -74,7 +74,7 @@ cscp/
 - [x] Implement tournament tier selection (Local, Regional, National, International)
 - [x] Add tournament stage selection (Beginning, Mid, Money Bubble, Post Bubble, Final Table)
 - [ ] Implement cash game mechanics
-- [ ] Add hand history tracking
+- [x] Add hand history tracking
 
 #### Full Player Archetype Implementation
 - [ ] Implement all player archetypes (TAG, LAG, etc.)

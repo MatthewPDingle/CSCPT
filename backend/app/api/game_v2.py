@@ -1,229 +1,125 @@
 """
-Game API endpoints using the repository pattern and service layer.
-This is an improved version that uses the new storage system.
+Game API endpoints (v2) for the poker application.
+This version integrates with the GameService and includes hand history functionality.
 """
-from typing import Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Path, Query, Depends
+from typing import Dict, List, Optional, Any
+from fastapi import APIRouter, HTTPException, Depends, Query
 
-from app.models.domain_models import (
-    Game, Player, Hand, ActionHistory, GameType, 
-    GameStatus, PlayerAction, PlayerStatus
-)
+from app.models.domain_models import GameType, HandHistory, PlayerStats
 from app.services.game_service import GameService
 
 router = APIRouter(prefix="/v2/game", tags=["game"])
 
 # Dependency to get the game service
-def get_game_service():
-    """Get the game service instance."""
+def get_game_service() -> GameService:
+    """Get the game service singleton."""
     return GameService()
 
-
-@router.post("/create", response_model=Game)
-async def create_game(
-    game_type: GameType,
-    name: Optional[str] = None,
-    buy_in: Optional[int] = None,
-    small_blind: Optional[int] = None,
-    big_blind: Optional[int] = None,
-    ante: Optional[int] = None,
-    tier: Optional[str] = None,
-    stage: Optional[str] = None,
-    starting_chips: Optional[int] = None,
-    game_service: GameService = Depends(get_game_service)
-) -> Game:
+@router.get("/history/{game_id}", response_model=List[Dict[str, Any]])
+async def get_game_hand_histories(
+    game_id: str,
+    service: GameService = Depends(get_game_service)
+) -> List[Dict[str, Any]]:
     """
-    Create a new poker game.
-    
-    Args:
-        game_type: Type of game (cash or tournament)
-        name: Optional name for the game
-        buy_in: Buy-in amount for cash games
-        small_blind: Small blind amount
-        big_blind: Big blind amount
-        ante: Ante amount
-        tier: Tournament tier
-        stage: Tournament stage
-        starting_chips: Starting chips for tournament
-        
-    Returns:
-        The created game
-    """
-    options = {}
-    
-    # Set options based on game type
-    if game_type == GameType.CASH:
-        if buy_in is not None:
-            options["buy_in"] = buy_in
-        if small_blind is not None:
-            options["min_bet"] = small_blind * 2
-        if ante is not None:
-            options["ante"] = ante
-    else:  # Tournament
-        if tier is not None:
-            options["tier"] = tier
-        if stage is not None:
-            options["stage"] = stage
-        if starting_chips is not None:
-            options["starting_chips"] = starting_chips
-            
-    # Create the game
-    game = game_service.create_game(game_type, name, **options)
-    return game
-
-
-@router.get("/{game_id}", response_model=Game)
-async def get_game(
-    game_id: str = Path(..., title="The ID of the game to get"),
-    game_service: GameService = Depends(get_game_service)
-) -> Game:
-    """
-    Get a game by ID.
-    
-    Args:
-        game_id: ID of the game to get
-        
-    Returns:
-        The game
-        
-    Raises:
-        HTTPException: If the game doesn't exist
-    """
-    game = game_service.get_game(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
-    return game
-
-
-@router.post("/{game_id}/join", response_model=Game)
-async def join_game(
-    game_id: str = Path(..., title="The ID of the game to join"),
-    name: str = Query(..., title="The player's name"),
-    is_human: bool = Query(True, title="Whether the player is human"),
-    archetype: Optional[str] = Query(None, title="The AI archetype for AI players"),
-    position: Optional[int] = Query(None, title="The position at the table"),
-    game_service: GameService = Depends(get_game_service)
-) -> Game:
-    """
-    Join a game as a player.
-    
-    Args:
-        game_id: ID of the game to join
-        name: Player name
-        is_human: Whether the player is human
-        archetype: AI archetype for AI players
-        position: Optional position at the table
-        
-    Returns:
-        The updated game
-        
-    Raises:
-        HTTPException: If there's an error joining the game
-    """
-    try:
-        game, player = game_service.add_player(
-            game_id=game_id,
-            name=name,
-            is_human=is_human,
-            archetype=archetype,
-            position=position
-        )
-        return game
-    except (ValueError, KeyError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/{game_id}/start", response_model=Game)
-async def start_game(
-    game_id: str = Path(..., title="The ID of the game to start"),
-    game_service: GameService = Depends(get_game_service)
-) -> Game:
-    """
-    Start a poker game.
-    
-    Args:
-        game_id: ID of the game to start
-        
-    Returns:
-        The updated game
-        
-    Raises:
-        HTTPException: If there's an error starting the game
-    """
-    try:
-        game = game_service.start_game(game_id)
-        return game
-    except (ValueError, KeyError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/{game_id}/action", response_model=Game)
-async def player_action(
-    game_id: str = Path(..., title="The ID of the game"),
-    player_id: str = Query(..., title="The ID of the player taking the action"),
-    action: PlayerAction = Query(..., title="The action to take"),
-    amount: Optional[int] = Query(None, title="The amount for bet/raise actions"),
-    game_service: GameService = Depends(get_game_service)
-) -> Game:
-    """
-    Take an action in a poker game.
-    
-    Args:
-        game_id: ID of the game
-        player_id: ID of the player taking the action
-        action: The action to take
-        amount: The amount for bet/raise actions
-        
-    Returns:
-        The updated game
-        
-    Raises:
-        HTTPException: If there's an error processing the action
-    """
-    try:
-        game = game_service.process_action(
-            game_id=game_id,
-            player_id=player_id,
-            action=action,
-            amount=amount
-        )
-        return game
-    except (ValueError, KeyError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.get("/list/active", response_model=List[Game])
-async def list_active_games(
-    game_service: GameService = Depends(get_game_service)
-) -> List[Game]:
-    """
-    List all active games.
-    
-    Returns:
-        List of active games
-    """
-    return game_service.game_repo.get_active_games()
-
-
-@router.get("/{game_id}/history", response_model=List[ActionHistory])
-async def get_game_history(
-    game_id: str = Path(..., title="The ID of the game"),
-    game_service: GameService = Depends(get_game_service)
-) -> List[ActionHistory]:
-    """
-    Get the action history for a game.
+    Get all hand histories for a game.
     
     Args:
         game_id: ID of the game
         
     Returns:
-        List of action history records
-        
-    Raises:
-        HTTPException: If the game doesn't exist
+        List of hand histories
     """
-    game = game_service.get_game(game_id)
+    game = service.get_game(game_id)
     if not game:
-        raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Get hand histories from service
+    hand_histories = service.get_game_hand_histories(game_id)
+    
+    # Convert to dictionaries for API response
+    return [hand.dict() for hand in hand_histories]
+
+@router.get("/history/{game_id}/{hand_id}", response_model=Dict[str, Any])
+async def get_hand_history(
+    game_id: str,
+    hand_id: str,
+    service: GameService = Depends(get_game_service)
+) -> Dict[str, Any]:
+    """
+    Get detailed history for a specific hand.
+    
+    Args:
+        game_id: ID of the game
+        hand_id: ID of the hand
         
-    return game_service.action_repo.get_by_game(game_id)
+    Returns:
+        Detailed hand history
+    """
+    game = service.get_game(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+        
+    hand_history = service.get_hand_history(hand_id)
+    if not hand_history:
+        raise HTTPException(status_code=404, detail="Hand history not found")
+        
+    if hand_history.game_id != game_id:
+        raise HTTPException(status_code=403, detail="Hand does not belong to this game")
+        
+    return hand_history.dict()
+
+@router.get("/player/{player_id}/stats", response_model=Dict[str, Any])
+async def get_player_statistics(
+    player_id: str,
+    game_id: Optional[str] = None,
+    service: GameService = Depends(get_game_service)
+) -> Dict[str, Any]:
+    """
+    Get detailed statistics for a player.
+    
+    Args:
+        player_id: ID of the player
+        game_id: Optional ID of a specific game to limit stats to
+        
+    Returns:
+        Player statistics
+    """
+    stats = service.get_player_stats(player_id, game_id)
+    if not stats:
+        raise HTTPException(status_code=404, detail="Player or stats not found")
+        
+    return stats.dict()
+
+@router.get("/player/{player_id}/hands", response_model=List[Dict[str, Any]])
+async def get_player_hands(
+    player_id: str,
+    game_id: Optional[str] = None,
+    limit: int = Query(10, ge=1, le=100),
+    service: GameService = Depends(get_game_service)
+) -> List[Dict[str, Any]]:
+    """
+    Get hands a player has participated in.
+    
+    Args:
+        player_id: ID of the player
+        game_id: Optional ID of a specific game to limit hands to
+        limit: Maximum number of hands to return
+        
+    Returns:
+        List of hand histories
+    """
+    # Get repository from service
+    hand_history_repo = service.repo_factory.get_repository(service.hand_history_repo.__class__)
+    
+    # Get hands for player
+    hands = hand_history_repo.get_by_player(player_id)
+    
+    # Filter by game_id if provided
+    if game_id:
+        hands = [h for h in hands if h.game_id == game_id]
+        
+    # Sort by timestamp (newest first) and limit
+    hands = sorted(hands, key=lambda h: h.timestamp_start, reverse=True)[:limit]
+    
+    # Convert to dictionaries for API response
+    return [hand.dict() for hand in hands]

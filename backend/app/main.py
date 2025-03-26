@@ -10,7 +10,8 @@ from app.api.game import router as game_router
 from app.api.game_v2 import router as game_v2_router
 from app.repositories.persistence import RepositoryPersistence, PersistenceScheduler
 from app.repositories.in_memory import (
-    GameRepository, UserRepository, HandRepository, ActionHistoryRepository
+    GameRepository, UserRepository, HandRepository, ActionHistoryRepository,
+    HandHistoryRepository
 )
 
 # Repository persistence setup
@@ -23,7 +24,8 @@ scheduler = PersistenceScheduler(
         GameRepository,
         UserRepository,
         HandRepository,
-        ActionHistoryRepository
+        ActionHistoryRepository,
+        HandHistoryRepository
     ]
 )
 

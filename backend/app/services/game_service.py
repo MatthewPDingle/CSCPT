@@ -13,12 +13,13 @@ from app.core.poker_game import PokerGame
 from app.models.domain_models import (
     Game, Player, Hand, ActionHistory, GameType, GameStatus, 
     BettingRound, PlayerAction, PlayerStatus, TournamentInfo, CashGameInfo,
-    BlindLevel
+    BlindLevel, HandHistory
 )
 from app.repositories.in_memory import (
     GameRepository, UserRepository, ActionHistoryRepository, HandRepository,
-    RepositoryFactory
+    HandHistoryRepository, RepositoryFactory
 )
+from app.services.hand_history_service import HandHistoryRecorder
 
 
 class GameService:
@@ -29,12 +30,14 @@ class GameService:
     
     def __init__(self):
         """Initialize the game service with repositories."""
-        factory = RepositoryFactory.get_instance()
-        self.game_repo = factory.get_repository(GameRepository)
-        self.user_repo = factory.get_repository(UserRepository)
-        self.action_repo = factory.get_repository(ActionHistoryRepository)
-        self.hand_repo = factory.get_repository(HandRepository)
+        self.repo_factory = RepositoryFactory.get_instance()
+        self.game_repo = self.repo_factory.get_repository(GameRepository)
+        self.user_repo = self.repo_factory.get_repository(UserRepository)
+        self.action_repo = self.repo_factory.get_repository(ActionHistoryRepository)
+        self.hand_repo = self.repo_factory.get_repository(HandRepository)
+        self.hand_history_repo = self.repo_factory.get_repository(HandHistoryRepository)
         self.poker_games: Dict[str, PokerGame] = {}
+        self.hand_history_recorder = HandHistoryRecorder(self.repo_factory)
     
     def create_game(
         self, 
@@ -329,6 +332,45 @@ class GameService:
         # Save the hand
         self.hand_repo.create(hand)
         
+        # Create or get poker game instance
+        if game.id not in self.poker_games:
+            if game.type == GameType.TOURNAMENT:
+                sb = game.tournament_info.current_small_blind
+                bb = game.tournament_info.current_big_blind
+                ante = game.tournament_info.current_ante
+                tournament_level = game.tournament_info.current_level
+            else:  # Cash game
+                sb = game.cash_game_info.min_bet // 2
+                bb = game.cash_game_info.min_bet
+                ante = game.cash_game_info.ante
+                tournament_level = None
+                
+            # Create new poker game instance
+            poker_game = PokerGame(
+                small_blind=sb,
+                big_blind=bb,
+                ante=ante,
+                game_id=game.id,
+                hand_history_recorder=self.hand_history_recorder
+            )
+            
+            # Set tournament level if applicable
+            if tournament_level:
+                poker_game.tournament_level = tournament_level
+                
+            # Add players to poker game
+            for player in game.players:
+                if player.status != PlayerStatus.OUT:
+                    poker_game.add_player(player.id, player.name, player.chips)
+                    
+            self.poker_games[game.id] = poker_game
+        else:
+            # Use existing poker game
+            poker_game = self.poker_games[game.id]
+            
+        # Start a hand in the poker game
+        poker_game.start_hand()
+        
         return hand
     
     def advance_tournament_level(self, game_id: str) -> Game:
@@ -535,9 +577,6 @@ class GameService:
         
         if not player:
             raise KeyError(f"Player {player_id} not found in game {game_id}")
-            
-        # TODO: Implement the actual poker logic for processing actions
-        # For now, just record the action
         
         # Create action history record
         action_history = ActionHistory(
@@ -549,13 +588,111 @@ class GameService:
             round=game.current_hand.current_round
         )
         
-        # Save the action
+        # Save the action in the action repository
         self.action_repo.create(action_history)
         
         # Add the action to the hand
         game.current_hand.actions.append(action_history)
         
+        # Process the action in the poker game
+        if game_id in self.poker_games:
+            poker_game = self.poker_games[game_id]
+            
+            # Find the player in the poker game
+            poker_player = None
+            for p in poker_game.players:
+                if p.player_id == player_id:
+                    poker_player = p
+                    break
+                    
+            if poker_player:
+                # Convert the domain action to poker game action
+                action_map = {
+                    PlayerAction.FOLD: 'FOLD',
+                    PlayerAction.CHECK: 'CHECK', 
+                    PlayerAction.CALL: 'CALL',
+                    PlayerAction.BET: 'BET',
+                    PlayerAction.RAISE: 'RAISE',
+                    PlayerAction.ALL_IN: 'ALL_IN'
+                }
+                
+                # Get the corresponding poker game action from the class, not the instance
+                from app.core.poker_game import PlayerAction as PokerPlayerAction
+                poker_action = getattr(PokerPlayerAction, action_map[action])
+                
+                # Process the action
+                poker_game.process_action(poker_player, poker_action, amount)
+                
+                # If the hand is over, start a new one
+                from app.core.poker_game import BettingRound
+                if poker_game.current_round == BettingRound.SHOWDOWN:
+                    # Record end of hand in domain model
+                    game.current_hand.ended_at = datetime.now()
+                    
+                    # Add to hand history
+                    game.hand_history.append(game.current_hand)
+                    
+                    # Update hand history IDs list if we have a hand history ID
+                    if poker_game.current_hand_id:
+                        game.hand_history_ids.append(poker_game.current_hand_id)
+                    
+                    # Start a new hand
+                    self._start_new_hand(game)
+                
+                # Update player states
+                for i, p in enumerate(game.players):
+                    if i < len(poker_game.players):
+                        poker_p = poker_game.players[i]
+                        if p.id == poker_p.player_id:
+                            # Update chips, status, etc.
+                            p.chips = poker_p.chips
+                            from app.core.poker_game import PlayerStatus as PokerPlayerStatus
+                            status_map = {
+                                PokerPlayerStatus.ACTIVE: PlayerStatus.ACTIVE,
+                                PokerPlayerStatus.FOLDED: PlayerStatus.FOLDED,
+                                PokerPlayerStatus.ALL_IN: PlayerStatus.ALL_IN,
+                                PokerPlayerStatus.OUT: PlayerStatus.OUT
+                            }
+                            p.status = status_map.get(poker_p.status, PlayerStatus.ACTIVE)
+        
         # Update the game
         self.game_repo.update(game)
         
         return game
+    
+    def get_hand_history(self, hand_id: str) -> Optional[HandHistory]:
+        """
+        Get detailed hand history by ID.
+        
+        Args:
+            hand_id: ID of the hand history to retrieve
+            
+        Returns:
+            The hand history if found, None otherwise
+        """
+        return self.hand_history_repo.get(hand_id)
+    
+    def get_game_hand_histories(self, game_id: str) -> List[HandHistory]:
+        """
+        Get all hand histories for a game.
+        
+        Args:
+            game_id: ID of the game
+            
+        Returns:
+            List of hand histories for the game
+        """
+        return self.hand_history_repo.get_by_game(game_id)
+    
+    def get_player_stats(self, player_id: str, game_id: Optional[str] = None) -> Any:
+        """
+        Get statistics for a player.
+        
+        Args:
+            player_id: ID of the player
+            game_id: Optional game ID to limit stats to a specific game
+            
+        Returns:
+            Player statistics object
+        """
+        return self.hand_history_repo.get_player_stats(player_id, game_id)

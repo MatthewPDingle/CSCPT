@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, TypeVar, Generic, Any, Type
 
 from pydantic import BaseModel
 
-from app.models.domain_models import Game, User, ActionHistory, Hand
+from app.models.domain_models import Game, User, ActionHistory, Hand, HandHistory, PlayerStats, PlayerAction
 from app.repositories.base import Repository
 
 T = TypeVar('T', bound=BaseModel)
@@ -233,6 +233,147 @@ class HandRepository(InMemoryRepository[Hand]):
     def get_by_game(self, game_id: str) -> List[Hand]:
         """Get all hands for a game."""
         return self.list({"game_id": game_id})
+
+
+class HandHistoryRepository(InMemoryRepository[HandHistory]):
+    """Repository for HandHistory entities."""
+    def __init__(self):
+        super().__init__(HandHistory)
+        
+    def get_by_game(self, game_id: str) -> List[HandHistory]:
+        """Get all hand histories for a game."""
+        return self.list({"game_id": game_id})
+        
+    def get_by_player(self, player_id: str) -> List[HandHistory]:
+        """Get all hands a player participated in."""
+        result = []
+        with self.lock:
+            for hand in self.data.values():
+                player_ids = [p.player_id for p in hand.players]
+                if player_id in player_ids:
+                    result.append(copy.deepcopy(hand))
+        return result
+        
+    def get_player_stats(self, player_id: str, game_id: Optional[str] = None) -> PlayerStats:
+        """
+        Calculate aggregate stats for a player.
+        
+        Args:
+            player_id: ID of the player to calculate stats for
+            game_id: Optional game ID to limit stats to a specific game
+            
+        Returns:
+            A PlayerStats object with calculated statistics
+        """
+        hands = self.get_by_player(player_id)
+        
+        # Filter by game_id if provided
+        if game_id:
+            hands = [h for h in hands if h.game_id == game_id]
+            
+        if not hands:
+            return PlayerStats(player_id=player_id)
+            
+        # Initialize stats
+        stats = PlayerStats(player_id=player_id)
+        stats.hands_played = len(hands)
+        
+        # Counters for various stats
+        vpip_count = 0
+        pfr_count = 0
+        showdown_count = 0
+        won_showdown_count = 0
+        aggressive_actions = 0
+        passive_actions = 0
+        cbet_attempts = 0
+        cbet_successes = 0
+        won_after_preflop = 0
+        total_winnings = 0
+        total_losses = 0
+        win_count = 0
+        loss_count = 0
+        
+        # Calculate stats from hands
+        for hand in hands:
+            # Find player in hand
+            player = next((p for p in hand.players if p.player_id == player_id), None)
+            if not player:
+                continue
+                
+            # VPIP and PFR
+            if player.vpip:
+                vpip_count += 1
+            if player.pfr:
+                pfr_count += 1
+                
+            # Showdown stats
+            if hand.metrics.showdown_reached:
+                showdown_count += 1
+                if player.won_amount > 0:
+                    won_showdown_count += 1
+                    
+            # Aggression stats
+            for round_name, actions in hand.betting_rounds.items():
+                for action in actions:
+                    if action.player_id == player_id:
+                        if action.action_type in [PlayerAction.BET, PlayerAction.RAISE]:
+                            aggressive_actions += 1
+                        elif action.action_type == PlayerAction.CALL:
+                            passive_actions += 1
+                            
+            # C-bet stats
+            preflop_actions = hand.betting_rounds.get("PREFLOP", [])
+            if preflop_actions and preflop_actions[-1].player_id == player_id:
+                flop_actions = hand.betting_rounds.get("FLOP", [])
+                if flop_actions:
+                    first_to_act = next((a for a in flop_actions 
+                                       if a.player_id == player_id), None)
+                    if first_to_act and first_to_act.action_type in [PlayerAction.BET, PlayerAction.RAISE]:
+                        cbet_attempts += 1
+                        if all(a.action_type == PlayerAction.FOLD 
+                             for a in flop_actions 
+                             if a.player_id != player_id and a.position_in_action_sequence > first_to_act.position_in_action_sequence):
+                            cbet_successes += 1
+            
+            # Won without showdown
+            if player.won_amount > 0 and not hand.metrics.showdown_reached:
+                won_after_preflop += 1
+                
+            # Winnings and losses
+            if player.won_amount > 0:
+                total_winnings += player.won_amount
+                win_count += 1
+                stats.biggest_win = max(stats.biggest_win, player.won_amount)
+            elif player.won_amount < 0:
+                total_losses += abs(player.won_amount)
+                loss_count += 1
+                stats.biggest_loss = max(stats.biggest_loss, abs(player.won_amount))
+                
+        # Calculate percentages and averages
+        if stats.hands_played > 0:
+            stats.vpip = vpip_count / stats.hands_played * 100
+            stats.pfr = pfr_count / stats.hands_played * 100
+            stats.wapf = won_after_preflop / stats.hands_played * 100
+            stats.bb_per_hand = (total_winnings - total_losses) / stats.hands_played
+            
+        if showdown_count > 0:
+            stats.wtsd = showdown_count / stats.hands_played * 100
+            stats.won_at_showdown = won_showdown_count / showdown_count * 100
+            
+        if passive_actions > 0:
+            stats.af = aggressive_actions / passive_actions
+            
+        if cbet_attempts > 0:
+            stats.cbet_attempt = cbet_attempts / stats.hands_played * 100
+            stats.cbet_success = cbet_successes / cbet_attempts * 100
+            
+        if win_count > 0:
+            stats.avg_win = total_winnings / win_count
+            
+        if loss_count > 0:
+            stats.avg_loss = total_losses / loss_count
+            
+        return stats
 
 
 # Factory to get repository instances
