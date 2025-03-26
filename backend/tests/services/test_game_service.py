@@ -259,3 +259,145 @@ class TestGameService:
                 player_id=inactive_player.id,
                 action=PlayerAction.CALL
             )
+            
+    def test_tournament_blind_structure_generation(self, game_service):
+        """Test generating a blind structure for a tournament."""
+        game = game_service.create_game(
+            game_type=GameType.TOURNAMENT, 
+            name="Blind Structure Test", 
+            tier="Regional",
+            stage="Beginning",
+            starting_chips=10000,
+            starting_big_blind=100,
+            starting_small_blind=50,
+            ante_enabled=True,
+            ante_start_level=3
+        )
+        
+        # Generate blind structure
+        game = game_service.generate_tournament_blind_structure(game.id)
+        
+        # Verify structure was created
+        assert game.tournament_info.blind_structure is not None
+        assert len(game.tournament_info.blind_structure) > 0
+        
+        # Verify first level matches starting blinds
+        level1 = game.tournament_info.blind_structure[0]
+        assert level1.level == 1
+        assert level1.small_blind == 50
+        assert level1.big_blind == 100
+        assert level1.ante == 0  # No ante at level 1
+        
+        # Verify level 3 has antes
+        level3 = game.tournament_info.blind_structure[2]
+        assert level3.level == 3
+        assert level3.ante > 0
+        
+    def test_tournament_blind_progression(self, game_service):
+        """Test advancing tournament levels and blind increases."""
+        game = game_service.create_game(
+            game_type=GameType.TOURNAMENT, 
+            name="Blind Progression Test", 
+            tier="Local",
+            stage="Beginning",
+            starting_chips=10000,
+            starting_big_blind=100,
+            starting_small_blind=50,
+            ante_enabled=True,
+            ante_start_level=3
+        )
+        
+        # Add players
+        _, player1 = game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
+        _, player2 = game_service.add_player(game_id=game.id, name="Player 2", is_human=False, archetype="TAG")
+        
+        # Start the game
+        game = game_service.start_game(game.id)
+        
+        # Verify initial blind values
+        assert game.current_hand.small_blind == 50
+        assert game.current_hand.big_blind == 100
+        assert game.current_hand.ante == 0
+        
+        # Advance to level 2
+        game = game_service.advance_tournament_level(game.id)
+        
+        # Verify level was updated
+        assert game.tournament_info.current_level == 2
+        
+        # The current hand still has old blinds, but tournament info has new values
+        assert game.tournament_info.current_small_blind > 50
+        assert game.tournament_info.current_big_blind > 100
+        assert game.tournament_info.current_ante == 0  # Still no ante at level 2
+        
+        # Advance to level 3 (ante should start)
+        game = game_service.advance_tournament_level(game.id)
+        
+        # Verify ante is now set in tournament info
+        assert game.tournament_info.current_level == 3
+        assert game.tournament_info.current_ante > 0
+        
+    def test_tournament_blind_structure_calculation(self, game_service):
+        """Test blind calculation formulas and rounding."""
+        # Test the internal blind calculation method
+        starting_blind = 100
+        
+        # Level 1 should be the starting blind
+        level1_blind = game_service._calculate_blind_for_level(starting_blind, 1)
+        assert level1_blind == starting_blind
+        
+        # Level 2 should be ~1.5x the starting blind
+        level2_blind = game_service._calculate_blind_for_level(starting_blind, 2)
+        assert 145 <= level2_blind <= 155  # Allowing for rounding
+        
+        # Level 5 should be significantly higher
+        level5_blind = game_service._calculate_blind_for_level(starting_blind, 5)
+        assert level5_blind > 300  # At least 3x the starting blind
+        
+        # Test the rounding to nice numbers
+        assert game_service._round_to_nice_blind(13) == 15
+        assert game_service._round_to_nice_blind(98) == 100
+        assert game_service._round_to_nice_blind(490) == 500
+        assert game_service._round_to_nice_blind(1200) == 1200
+        assert game_service._round_to_nice_blind(9200) == 9200
+        assert game_service._round_to_nice_blind(12200) == 12000  # For values > 10K, rounds to nearest 500
+        
+    def test_ante_calculation_in_tournament(self, game_service):
+        """Test ante calculation for different tournament levels."""
+        # Create a tournament with standard ante settings
+        game = game_service.create_game(
+            game_type=GameType.TOURNAMENT, 
+            name="Ante Test", 
+            tier="National",
+            stage="Beginning",
+            starting_chips=10000,
+            starting_big_blind=100,
+            starting_small_blind=50,
+            ante_enabled=True,
+            ante_start_level=3
+        )
+        
+        # Generate blind structure
+        game = game_service.generate_tournament_blind_structure(game.id)
+        
+        # Add players and start the game
+        game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
+        game_service.add_player(game_id=game.id, name="Player 2", is_human=False)
+        game = game_service.start_game(game.id)
+        
+        # Verify initial values
+        assert game.current_hand.ante == 0  # No ante at level 1
+        
+        # Check level 1-2 (no antes)
+        assert game.tournament_info.blind_structure[0].ante == 0
+        assert game.tournament_info.blind_structure[1].ante == 0
+        
+        # Check level 3+ (with antes)
+        for i in range(2, len(game.tournament_info.blind_structure)):
+            level = game.tournament_info.blind_structure[i]
+            assert level.ante > 0
+            
+            # Antes should be around 25% of the big blind
+            bb = level.big_blind
+            expected_ante = bb // 4
+            assert abs(level.ante - expected_ante) <= bb // 10  # Allow some deviation due to rounding

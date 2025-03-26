@@ -12,7 +12,8 @@ from app.core.hand_evaluator import HandEvaluator
 from app.core.poker_game import PokerGame
 from app.models.domain_models import (
     Game, Player, Hand, ActionHistory, GameType, GameStatus, 
-    BettingRound, PlayerAction, PlayerStatus, TournamentInfo, CashGameInfo
+    BettingRound, PlayerAction, PlayerStatus, TournamentInfo, CashGameInfo,
+    BlindLevel
 )
 from app.repositories.in_memory import (
     GameRepository, UserRepository, ActionHistoryRepository, HandRepository,
@@ -246,11 +247,40 @@ class GameService:
             big_blind = game.cash_game_info.min_bet
             ante = game.cash_game_info.ante
         else:  # Tournament
-            small_blind = game.tournament_info.starting_small_blind
-            big_blind = game.tournament_info.starting_big_blind
-            ante = 0
-            if game.tournament_info.ante_enabled and game.tournament_info.current_level >= game.tournament_info.ante_start_level:
+            tournament = game.tournament_info
+            
+            # Use current blinds if already set, otherwise use starting blinds
+            if tournament.current_big_blind > 0:
+                small_blind = tournament.current_small_blind
+                big_blind = tournament.current_big_blind
+                ante = tournament.current_ante
+            else:
+                # Initialize current blinds with starting values
+                small_blind = tournament.starting_small_blind
+                big_blind = tournament.starting_big_blind
+                ante = 0
+                
+                # Store these values for future reference
+                tournament.current_small_blind = small_blind
+                tournament.current_big_blind = big_blind
+                tournament.current_ante = ante
+                
+            # If using blind structure, get the current level blinds
+            if tournament.blind_structure and len(tournament.blind_structure) >= tournament.current_level:
+                level_info = tournament.blind_structure[tournament.current_level - 1]
+                small_blind = level_info.small_blind
+                big_blind = level_info.big_blind
+                ante = level_info.ante
+                
+                # Update stored values
+                tournament.current_small_blind = small_blind
+                tournament.current_big_blind = big_blind
+                tournament.current_ante = ante
+            # Otherwise use default progression logic
+            elif tournament.ante_enabled and tournament.current_level >= tournament.ante_start_level and ante == 0:
+                # Calculate ante based on big blind
                 ante = big_blind // 4
+                tournament.current_ante = ante
         
         # Create the hand
         hand = Hand(
@@ -301,6 +331,168 @@ class GameService:
         
         return hand
     
+    def advance_tournament_level(self, game_id: str) -> Game:
+        """
+        Advance to the next tournament level and update blinds.
+        
+        Args:
+            game_id: ID of the tournament game
+            
+        Returns:
+            Updated Game entity
+        """
+        game = self.game_repo.get(game_id)
+        if not game or game.type != GameType.TOURNAMENT:
+            raise ValueError("Game not found or not a tournament")
+        
+        # Get tournament info
+        tournament = game.tournament_info
+        
+        # Increment level
+        tournament.current_level += 1
+        print(f"Tournament advancing to level {tournament.current_level}")
+        
+        # If using blind structure, get new blind values
+        if tournament.blind_structure and len(tournament.blind_structure) >= tournament.current_level:
+            level_info = tournament.blind_structure[tournament.current_level - 1]
+            tournament.current_small_blind = level_info.small_blind
+            tournament.current_big_blind = level_info.big_blind
+            tournament.current_ante = level_info.ante
+            tournament.time_remaining_in_level = level_info.duration_minutes * 60
+        else:
+            # Calculate new blinds based on level
+            level = tournament.current_level
+            small_blind = self._calculate_blind_for_level(tournament.starting_small_blind, level)
+            big_blind = self._calculate_blind_for_level(tournament.starting_big_blind, level)
+            
+            # Add antes at the specified level
+            ante = 0
+            if tournament.ante_enabled and level >= tournament.ante_start_level:
+                ante = big_blind // 4
+            
+            # Update tournament info
+            tournament.current_small_blind = small_blind
+            tournament.current_big_blind = big_blind
+            tournament.current_ante = ante
+            tournament.time_remaining_in_level = tournament.level_duration * 60
+        
+        # Update the poker game if it exists
+        if game_id in self.poker_games:
+            poker_game = self.poker_games[game_id]
+            poker_game.update_blinds(
+                tournament.current_small_blind, 
+                tournament.current_big_blind, 
+                tournament.current_ante
+            )
+        
+        # Save changes
+        self.game_repo.update(game)
+        
+        return game
+        
+    def _calculate_blind_for_level(self, starting_blind: int, level: int) -> int:
+        """
+        Calculate blind amount for a specific level using standard progression.
+        
+        Args:
+            starting_blind: The initial blind amount
+            level: The tournament level
+            
+        Returns:
+            The calculated blind amount
+        """
+        if level <= 1:
+            return starting_blind
+            
+        # Standard progression: increase by ~50% each level
+        blind = starting_blind * (1.5 ** (level - 1))
+        
+        # Round to a "nice" value for readability
+        return self._round_to_nice_blind(blind)
+        
+    def _round_to_nice_blind(self, blind: float) -> int:
+        """Round a blind value to a 'nice' value for display and betting."""
+        blind = int(blind)
+        
+        if blind < 100:
+            # Round to nearest 5 below 100
+            return ((blind + 2) // 5) * 5
+        elif blind < 1000:
+            # Round to nearest 25 below 1000
+            return ((blind + 12) // 25) * 25
+        elif blind < 10000:
+            # Round to nearest 100 below 10000
+            return ((blind + 50) // 100) * 100
+        else:
+            # Round to nearest 500 above 10000
+            return ((blind + 250) // 500) * 500
+            
+    def generate_tournament_blind_structure(self, game_id: str) -> Game:
+        """
+        Generate a standard blind structure for a tournament.
+        
+        Args:
+            game_id: ID of the tournament game
+            
+        Returns:
+            Updated Game entity with blind structure
+        """
+        game = self.game_repo.get(game_id)
+        if not game or game.type != GameType.TOURNAMENT:
+            raise ValueError("Game not found or not a tournament")
+            
+        tournament = game.tournament_info
+        
+        # Clear existing blind structure
+        tournament.blind_structure = []
+        
+        # Set initial values
+        small_blind = tournament.starting_small_blind
+        big_blind = tournament.starting_big_blind
+        
+        # Determine number of levels based on tournament tier
+        num_levels = {
+            "Local": 8,
+            "Regional": 12,
+            "National": 18,
+            "International": 24
+        }.get(tournament.tier, 12)
+        
+        # Generate blind levels
+        for level in range(1, num_levels + 1):
+            # Calculate blinds for this level
+            if level > 1:
+                small_blind = self._calculate_blind_for_level(tournament.starting_small_blind, level)
+                big_blind = self._calculate_blind_for_level(tournament.starting_big_blind, level)
+                
+            # Calculate ante if applicable
+            ante = 0
+            if tournament.ante_enabled and level >= tournament.ante_start_level:
+                ante = big_blind // 4
+                
+            # Create the level
+            blind_level = BlindLevel(
+                level=level,
+                small_blind=small_blind,
+                big_blind=big_blind,
+                ante=ante,
+                duration_minutes=tournament.level_duration
+            )
+            
+            # Add to structure
+            tournament.blind_structure.append(blind_level)
+            
+        # Initialize current values
+        tournament.current_small_blind = tournament.starting_small_blind
+        tournament.current_big_blind = tournament.starting_big_blind
+        tournament.current_ante = 0
+        tournament.time_remaining_in_level = tournament.level_duration * 60
+        
+        # Save changes
+        self.game_repo.update(game)
+        
+        return game
+
     def process_action(
         self, 
         game_id: str, 

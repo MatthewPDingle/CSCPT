@@ -64,6 +64,320 @@ def test_starting_hand():
     # Check button and current player positions
     assert game.button_position == 0
     assert game.current_player_idx == 3  # Player after big blind
+    
+    
+def test_ante_collection():
+    """Test ante collection from all players."""
+    game = PokerGame(small_blind=10, big_blind=20, ante=5)
+    for i in range(4):
+        game.add_player(f"p{i}", f"Player {i}", 1000)
+    
+    game.start_hand()
+    
+    # Check total pot after blinds and antes
+    # SB(10) + BB(20) + 4 players * ante(5) = 50
+    assert game.pots[0].amount == 50
+    
+    # Check player chips after blinds and antes
+    assert game.players[0].chips == 995  # Button pays only ante
+    assert game.players[1].chips == 985  # SB + ante
+    assert game.players[2].chips == 975  # BB + ante
+    assert game.players[3].chips == 995  # UTG pays only ante
+    
+    
+def test_update_blinds_and_antes():
+    """Test updating blinds and antes between hands."""
+    game = PokerGame(small_blind=10, big_blind=20, ante=0)
+    for i in range(4):
+        game.add_player(f"p{i}", f"Player {i}", 1000)
+    
+    # Start first hand with initial blinds
+    game.start_hand()
+    assert game.pots[0].amount == 30  # SB(10) + BB(20)
+    
+    # Complete the hand
+    for _ in range(4):
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CALL)
+    
+    # Update blinds for next level
+    game.update_blinds(small_blind=25, big_blind=50, ante=10)
+    assert game.small_blind == 25
+    assert game.big_blind == 50
+    assert game.ante == 10
+    
+    # Reset chips for clean test
+    for player in game.players:
+        player.chips = 1000
+    
+    # Start second hand with new blinds and antes
+    game.start_hand()
+    
+    # Check new pot amount: SB(25) + BB(50) + 4 players * ante(10) = 115
+    assert game.pots[0].amount == 115
+    
+    # Check player chips after new blinds and antes
+    assert game.players[0].chips == 990  # Button pays only ante
+    assert game.players[1].chips == 965  # SB + ante
+    assert game.players[2].chips == 940  # BB + ante
+    assert game.players[3].chips == 990  # UTG pays only ante
+    
+    
+def test_all_in_from_ante():
+    """Test player going all-in from paying ante."""
+    game = PokerGame(small_blind=10, big_blind=20, ante=15)
+    
+    # Add players with different chip stacks
+    game.add_player("p0", "Player 0", 1000)    # Button
+    game.add_player("p1", "Player 1", 1000)    # SB
+    game.add_player("p2", "Player 2", 1000)    # BB
+    game.add_player("p3", "Player 3", 10)      # UTG with only 10 chips
+    
+    game.start_hand()
+    
+    # Check that UTG player went all-in from ante
+    assert game.players[3].chips == 0
+    assert game.players[3].status == PlayerStatus.ALL_IN
+    
+    # Check the pot amount: SB(10) + BB(20) + (3*15) + 10 = 85
+    assert game.pots[0].amount == 85
+    
+    # Check other players still have expected chips
+    assert game.players[0].chips == 985        # Button paid 15 ante
+    assert game.players[1].chips == 975        # SB paid 10 SB + 15 ante
+    assert game.players[2].chips == 965        # BB paid 20 BB + 15 ante
+    
+    
+def test_multiple_all_ins_from_ante():
+    """Test multiple players going all-in from paying ante."""
+    game = PokerGame(small_blind=10, big_blind=20, ante=25)
+    
+    # Add players with different chip stacks
+    game.add_player("p0", "Player 0", 1000)    # Button
+    game.add_player("p1", "Player 1", 15)      # SB with only 15 chips
+    game.add_player("p2", "Player 2", 18)      # BB with only 18 chips 
+    game.add_player("p3", "Player 3", 12)      # UTG with only 12 chips
+    
+    game.start_hand()
+    
+    # Check that players went all-in from antes
+    assert game.players[1].chips == 0
+    assert game.players[1].status == PlayerStatus.ALL_IN
+    assert game.players[2].chips == 0
+    assert game.players[2].status == PlayerStatus.ALL_IN
+    assert game.players[3].chips == 0
+    assert game.players[3].status == PlayerStatus.ALL_IN
+    
+    # Check the pot amount: SB(10) + BB(18) + Button ante(25) + SB ante(5) + BB ante(0) + UTG ante(12) = 70
+    assert game.pots[0].amount == 70
+    
+    # Verify button player's chips
+    assert game.players[0].chips == 975       # Button paid full 25 ante
+    
+    # Force side pot creation by ending the betting round (normally happens at showdown)
+    game._create_side_pots()
+    
+    # Verify side pots were created properly
+    assert len(game.pots) > 1  # Should have main pot and side pots
+
+
+def test_antes_with_heads_up_play():
+    """Test ante collection in heads-up play."""
+    game = PokerGame(small_blind=50, big_blind=100, ante=20)
+    
+    # Add just two players
+    game.add_player("p0", "Player 0", 1000)    # Button/SB
+    game.add_player("p1", "Player 1", 1000)    # BB
+    
+    game.start_hand()
+    
+    # In heads-up, button is SB and opponent is BB
+    # Check the pot amount: SB(50) + BB(100) + 2 players * ante(20) = 190
+    assert game.pots[0].amount == 190
+    
+    # Check player chips
+    assert game.players[0].chips == 930        # Button/SB paid 50 + 20 ante
+    assert game.players[1].chips == 880        # BB paid 100 + 20 ante
+    
+    
+def test_progressive_blinds():
+    """Test a sequence of hands with increasing blinds and antes."""
+    game = PokerGame(small_blind=25, big_blind=50, ante=0)
+    
+    # Add players
+    for i in range(4):
+        game.add_player(f"p{i}", f"Player {i}", 5000)
+    
+    # First hand with initial blinds
+    game.start_hand()
+    assert game.small_blind == 25
+    assert game.big_blind == 50
+    assert game.ante == 0
+    assert game.pots[0].amount == 75  # SB(25) + BB(50)
+    
+    # Fast-forward through the hand (all players check/call)
+    for _ in range(4):
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CALL)
+    assert game.current_round == BettingRound.FLOP
+    
+    for _ in range(4):
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CHECK)
+    assert game.current_round == BettingRound.TURN
+    
+    for _ in range(4):
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CHECK)
+    assert game.current_round == BettingRound.RIVER
+    
+    for _ in range(4):
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CHECK)
+    assert game.current_round == BettingRound.SHOWDOWN
+    
+    # Update blinds and antes for next level
+    game.update_blinds(small_blind=50, big_blind=100, ante=10)
+    
+    # Reset player chips for cleaner test
+    for player in game.players:
+        player.chips = 5000
+    
+    # Start second hand with increased blinds
+    game.start_hand()
+    
+    # Check new blind and ante values
+    assert game.small_blind == 50
+    assert game.big_blind == 100
+    assert game.ante == 10
+    
+    # Check correct collection of blinds and antes
+    # SB(50) + BB(100) + 4 players * ante(10) = 190
+    assert game.pots[0].amount == 190
+    
+    # Update blinds and antes again with a larger jump
+    game.update_blinds(small_blind=100, big_blind=200, ante=25)
+    
+    # Reset player chips
+    for player in game.players:
+        player.chips = 5000
+    
+    # Start third hand with further increased blinds
+    game.start_hand()
+    
+    # Check the new blind and ante values
+    assert game.small_blind == 100
+    assert game.big_blind == 200
+    assert game.ante == 25
+    
+    # Check correct collection of blinds and antes
+    # SB(100) + BB(200) + 4 players * ante(25) = 400
+    assert game.pots[0].amount == 400
+    
+    
+def test_min_raise_with_blind_increases():
+    """Test that minimum raise updates with blind increases."""
+    game = PokerGame(small_blind=50, big_blind=100, ante=0)
+    
+    # Add players
+    for i in range(4):
+        game.add_player(f"p{i}", f"Player {i}", 10000)
+        
+    # Start hand with initial blinds
+    game.start_hand()
+    
+    # Check initial min_raise matches big blind
+    assert game.min_raise == 100
+    
+    # First player raises minimum amount
+    player = game.players[game.current_player_idx]
+    game.process_action(player, PlayerAction.RAISE, 200)  # 100 call + 100 min raise
+    
+    # Check min_raise is still the same
+    assert game.min_raise == 100
+    
+    # Complete the hand
+    for _ in range(12):  # Skip through remaining actions to end the hand
+        player = game.players[game.current_player_idx]
+        game.process_action(player, PlayerAction.CALL)
+        
+    # Update blinds
+    game.update_blinds(small_blind=100, big_blind=200, ante=0)
+    
+    # Reset player chips
+    for player in game.players:
+        player.chips = 10000
+        
+    # Start new hand with higher blinds
+    game.start_hand()
+    
+    # Check that min_raise has been updated to match the new big blind
+    assert game.min_raise == 200
+    
+    # First player raises minimum amount
+    player = game.players[game.current_player_idx]
+    game.process_action(player, PlayerAction.RAISE, 400)  # 200 call + 200 min raise
+    
+    # Check min_raise is still correct
+    assert game.min_raise == 200
+    
+    
+def test_full_tournament_blind_progression():
+    """Test a simulated tournament with multiple blind levels and antes."""
+    # Create tournament with tournament-style blinds and antes
+    game = PokerGame(small_blind=25, big_blind=50, ante=0)
+    
+    # Add players
+    for i in range(6):
+        game.add_player(f"p{i}", f"Player {i}", 10000)
+    
+    # Simulate 10 levels with standard blind progression
+    blind_structure = [
+        {"level": 1, "sb": 25, "bb": 50, "ante": 0},
+        {"level": 2, "sb": 50, "bb": 100, "ante": 0},
+        {"level": 3, "sb": 75, "bb": 150, "ante": 15},
+        {"level": 4, "sb": 100, "bb": 200, "ante": 25},
+        {"level": 5, "sb": 150, "bb": 300, "ante": 25},
+        {"level": 6, "sb": 200, "bb": 400, "ante": 50},
+        {"level": 7, "sb": 300, "bb": 600, "ante": 75},
+        {"level": 8, "sb": 400, "bb": 800, "ante": 100},
+        {"level": 9, "sb": 500, "bb": 1000, "ante": 125},
+        {"level": 10, "sb": 750, "bb": 1500, "ante": 150}
+    ]
+    
+    # Loop through each level
+    for level_info in blind_structure:
+        # Update blinds to current level
+        game.update_blinds(
+            small_blind=level_info["sb"], 
+            big_blind=level_info["bb"], 
+            ante=level_info["ante"]
+        )
+        
+        # Reset player chips for cleaner test
+        for player in game.players:
+            player.chips = 10000
+        
+        # Start a new hand with these blinds
+        game.start_hand()
+        
+        # Verify blind/ante values are set correctly
+        assert game.small_blind == level_info["sb"]
+        assert game.big_blind == level_info["bb"]
+        assert game.ante == level_info["ante"]
+        
+        # Calculate expected pot amount
+        expected_pot = level_info["sb"] + level_info["bb"] + (level_info["ante"] * len(game.players))
+        assert game.pots[0].amount == expected_pot
+        
+        # Play through the hand
+        for _ in range(6):  # One action per player
+            player = game.players[game.current_player_idx]
+            game.process_action(player, PlayerAction.FOLD)
+            
+            # Break if hand is over
+            if game.current_round == BettingRound.SHOWDOWN:
+                break
 
 
 def test_preflop_betting_round():

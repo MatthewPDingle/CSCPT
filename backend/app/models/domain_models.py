@@ -143,6 +143,14 @@ class Hand(BaseModel):
     current_bet: int = 0
 
 
+class BlindLevel(BaseModel):
+    """Represents a single blind level in a tournament."""
+    level: int
+    small_blind: int
+    big_blind: int
+    ante: int = 0
+    duration_minutes: int = 15
+
 class TournamentInfo(BaseModel):
     """Information specific to tournament games."""
     tier: TournamentTier
@@ -161,6 +169,11 @@ class TournamentInfo(BaseModel):
     current_level: int = 1
     players_remaining: int
     archetype_distribution: Dict[str, int] = Field(default_factory=dict)
+    blind_structure: List[BlindLevel] = Field(default_factory=list)
+    current_small_blind: int = 0
+    current_big_blind: int = 0
+    current_ante: int = 0
+    time_remaining_in_level: int = 0  # in seconds
 
 
 class CashGameInfo(BaseModel):

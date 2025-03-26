@@ -139,16 +139,18 @@ class Pot:
 class PokerGame:
     """Manages a Texas Hold'em poker game."""
     
-    def __init__(self, small_blind: int, big_blind: int):
+    def __init__(self, small_blind: int, big_blind: int, ante: int = 0):
         """
         Initialize a poker game.
         
         Args:
             small_blind: Small blind amount
             big_blind: Big blind amount
+            ante: Ante amount (0 for no ante)
         """
         self.small_blind = small_blind
         self.big_blind = big_blind
+        self.ante = ante
         self.deck = Deck()
         self.players: List[Player] = []
         self.community_cards: List[Card] = []
@@ -209,6 +211,10 @@ class PokerGame:
         # Set positions
         self._set_positions()
         
+        # Collect antes if set
+        if self.ante > 0:
+            self._collect_antes()
+        
         # Post blinds
         self._post_blinds()
         
@@ -257,6 +263,26 @@ class PokerGame:
         
         self.current_bet = self.big_blind
         self.last_aggressor_idx = bb_pos  # Big blind is the last aggressor
+        
+    def _collect_antes(self):
+        """Collect antes from all active players."""
+        if self.ante <= 0:
+            return
+            
+        active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        
+        for player in active_players:
+            # Player contributes the ante amount (or all remaining chips if less)
+            ante_amount = min(self.ante, player.chips)
+            if ante_amount > 0:
+                actual_ante = player.bet(ante_amount)
+                self.pots[0].add(actual_ante, player.player_id)
+                
+                # Check if player went all-in from ante
+                if player.chips == 0:
+                    player.status = PlayerStatus.ALL_IN
+                    
+        print(f"Collected antes: {self.ante} chips from {len(active_players)} players")
     
     def deal_flop(self):
         """Deal the flop (first three community cards)."""
@@ -942,3 +968,22 @@ class PokerGame:
     def pot(self) -> int:
         """Total amount in all pots."""
         return sum(pot.amount for pot in self.pots)
+        
+    def update_blinds(self, small_blind: int, big_blind: int, ante: int = None):
+        """
+        Update the blind and ante values.
+        
+        Args:
+            small_blind: New small blind amount
+            big_blind: New big blind amount
+            ante: New ante amount (if None, keeps current value)
+        """
+        self.small_blind = small_blind
+        self.big_blind = big_blind
+        if ante is not None:
+            self.ante = ante
+        # Update min_raise to match new big blind
+        self.min_raise = big_blind
+        
+        print(f"Blinds updated to {small_blind}/{big_blind}" + 
+              (f", ante {ante}" if ante is not None and ante > 0 else ""))

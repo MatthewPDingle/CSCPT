@@ -69,7 +69,7 @@ cscp/
 
 #### Complete Game Mechanics
 - [x] Implement side pot calculations
-- [ ] Add blinds and antes handling
+- [x] Add blinds and antes handling
 - [x] Create tournament structure support
 - [x] Implement tournament tier selection (Local, Regional, National, International)
 - [x] Add tournament stage selection (Beginning, Mid, Money Bubble, Post Bubble, Final Table)
