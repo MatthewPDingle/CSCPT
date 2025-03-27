@@ -25,12 +25,15 @@ cscp/
 │   │   ├── services/   # Business logic
 │   │   └── utils/      # Helper functions
 │   └── tests/          # Backend tests
-├── ai/                 # LLM integration layer
-│   ├── agents/         # Player archetype agents
-│   ├── coach/          # Coaching functionality
-│   ├── prompts/        # LLM prompt templates
-│   ├── services/       # API abstraction
-│   └── utils/          # AI-specific utilities
+├── ai/                       # LLM integration layer
+│   ├── providers/           # LLM provider implementations
+│   │   ├── anthropic_provider.py  # Anthropic Claude API
+│   │   ├── openai_provider.py     # OpenAI GPT API
+│   │   └── gemini_provider.py     # Google Gemini API
+│   ├── agents/               # Player archetype agents
+│   ├── prompts/              # LLM prompt templates
+│   ├── examples/             # Example scripts for each provider
+│   └── tests/                # Tests for providers and services
 ├── docs/               # Documentation
 └── tests/              # Integration tests
 ```
@@ -55,7 +58,10 @@ cscp/
 
 #### Initial AI Integration
 - [x] Design LLM prompt engineering approach
-- [ ] Implement basic API abstraction for LLM providers
+- [x] Implement basic API abstraction for LLM providers
+  - [x] Anthropic Claude provider
+  - [x] OpenAI GPT provider
+  - [x] Google Gemini provider
 - [ ] Create simple player agent implementation (1-2 archetypes)
 - [ ] Design agent response parsing
 
@@ -147,6 +153,9 @@ cscp/
 - [ ] Optimize LLM context management
 - [ ] Add batch processing for AI requests
 - [ ] Improve real-time performance
+- [ ] Implement fallback mechanisms between providers
+- [ ] Add rate limiting and retry logic for API calls
+- [ ] Implement cost optimization strategies
 
 ### Phase 4: Polish & Launch
 
