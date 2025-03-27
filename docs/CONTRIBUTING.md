@@ -1,6 +1,6 @@
-# Contributing to Chip Swinger Championship Poker Trainer
+# Internal Development Guidelines for Chip Swinger Championship Poker Trainer
 
-This document provides guidelines for coding agents contributing to the Chip Swinger Championship Poker Trainer project.
+This document provides guidelines for authorized developers contributing to the proprietary Chip Swinger Championship Poker Trainer project. This is a closed-source, proprietary project. Access to this codebase requires explicit authorization from the project owner.
 
 ## Development Workflow
 

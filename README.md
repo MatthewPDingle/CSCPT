@@ -41,13 +41,15 @@ See [Getting Started](docs/GETTING_STARTED.md) for detailed setup instructions.
 - [Architecture Documentation](docs/ARCHITECTURE.md)
 - [Getting Started Guide](docs/GETTING_STARTED.md)
 
-## Contributing
+## Contributions
 
-We welcome contributions from the community! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
+This is a proprietary project and is not open for public contributions at this time.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is proprietary software. All rights reserved. No part of this project may be reproduced, distributed, or transmitted in any form or by any means without the prior written permission of the author.
+
+Copyright © 2025. All rights reserved.
 
 ## Acknowledgements
 
