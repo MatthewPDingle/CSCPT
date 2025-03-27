@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useSetup, Archetype } from '../../../contexts/SetupContext';
 
@@ -158,7 +158,7 @@ const Slider = styled.input.attrs({ type: 'range' })`
   }
 `;
 
-const TotalDisplay = styled.div`
+const TotalDisplay = styled.div<{ color?: string }>`
   margin-top: 1.5rem;
   padding: 1rem;
   background-color: rgba(255, 255, 255, 0.1);
@@ -183,7 +183,7 @@ const ArchetypeDescription = styled.p`
   margin: 0;
 `;
 
-// Archetype descriptions
+// Archetype info
 const archetypeInfo: Record<Archetype, { description: string, color: string }> = {
   TAG: {
     description: "Tight-Aggressive players are disciplined and play fewer hands but play them aggressively.",
@@ -218,15 +218,28 @@ const archetypeInfo: Record<Archetype, { description: string, color: string }> =
 const TournamentPlayerSetup: React.FC = () => {
   const { config, updateArchetypeDistribution, resetTournamentDistribution } = useSetup();
   const { archetypeDistribution } = config.tournament;
-  
-  // Calculate total percentage
-  const totalPercentage = Object.values(archetypeDistribution).reduce((sum, val) => sum + val, 0);
-  
-  // Handle slider change
-  const handleDistributionChange = (archetype: Archetype, percentage: number) => {
-    updateArchetypeDistribution(archetype, percentage);
+
+  // Local state for immediate slider feedback
+  const [localValues, setLocalValues] = useState(archetypeDistribution);
+
+  // Sync local values with context when it changes
+  useEffect(() => {
+    setLocalValues(archetypeDistribution);
+  }, [archetypeDistribution]);
+
+  // Calculate total percentage based on local values
+  const totalPercentage = Object.values(localValues).reduce((sum, val) => sum + val, 0);
+
+  // Handle slider change (immediate local update)
+  const handleSliderChange = (archetype: Archetype, value: number) => {
+    setLocalValues(prev => ({ ...prev, [archetype]: value }));
   };
-  
+
+  // Handle slider release (update context with final value)
+  const handleSliderRelease = (archetype: Archetype) => {
+    updateArchetypeDistribution(archetype, localValues[archetype]);
+  };
+
   return (
     <Container>
       <Title>Tournament Player Distribution</Title>
@@ -241,9 +254,7 @@ const TournamentPlayerSetup: React.FC = () => {
         
         <ArchetypeSliders>
           {Object.entries(archetypeDistribution).map(([archetype, percentage]) => {
-            // Safe casting of archetype
             const archetypeKey = archetype as Archetype;
-            // Use fallback color and description if archetype info not found
             const archetypeColor = archetypeInfo[archetypeKey]?.color || "#7f8c8d";
             const archetypeDesc = archetypeInfo[archetypeKey]?.description || "Player archetype";
             
@@ -254,7 +265,7 @@ const TournamentPlayerSetup: React.FC = () => {
                     {archetype}
                   </ArchetypeName>
                   <PercentageDisplay>
-                    {percentage}%
+                    {localValues[archetypeKey]}%
                   </PercentageDisplay>
                 </SliderHeader>
                 
@@ -266,15 +277,17 @@ const TournamentPlayerSetup: React.FC = () => {
                   <SliderTrack />
                   <ProgressBar 
                     style={{ 
-                      width: `${percentage}%`,
+                      width: `${localValues[archetypeKey]}%`,
                       backgroundColor: archetypeColor
                     }} 
                   />
                   <Slider
                     min="0"
                     max="100"
-                    value={percentage}
-                    onChange={(e) => handleDistributionChange(archetypeKey, parseInt(e.target.value, 10))}
+                    value={localValues[archetypeKey]}
+                    onChange={(e) => handleSliderChange(archetypeKey, parseInt(e.target.value, 10))}
+                    onMouseUp={() => handleSliderRelease(archetypeKey)}
+                    onTouchEnd={() => handleSliderRelease(archetypeKey)}
                   />
                 </SliderContainer>
               </ArchetypeSlider>
