@@ -1,0 +1,1 @@
+# Ignore environment files and local config\n*.env\n__pycache__/\n*.pyc
