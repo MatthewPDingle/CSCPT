@@ -87,3 +87,7 @@ async def root():
 # Include API routers
 app.include_router(game_router)
 app.include_router(game_v2_router)
+
+# Include WebSocket routers
+from app.api.game_ws import router as game_ws_router
+app.include_router(game_ws_router)

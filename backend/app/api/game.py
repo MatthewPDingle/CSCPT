@@ -4,15 +4,18 @@ Game API endpoints for the poker application.
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 import uuid
+import asyncio
 
-from app.core.poker_game import PokerGame, Player, PlayerAction, PlayerStatus
+from app.core.poker_game import PokerGame, Player, PlayerAction, PlayerStatus, BettingRound
 from app.models.game_models import (
     CardModel, 
     PlayerModel, 
     GameStateModel, 
     ActionRequest, 
-    ActionResponse
+    ActionResponse,
+    PotModel
 )
+from app.core.websocket import game_notifier
 
 router = APIRouter(prefix="/game", tags=["game"])
 
@@ -117,6 +120,12 @@ async def start_game(game_id: str) -> GameStateModel:
     # Start the hand
     game.start_hand()
     
+    # Notify WebSocket clients
+    asyncio.create_task(game_notifier.notify_game_update(game_id, game, _game_to_model))
+    
+    # Send action request to first player
+    asyncio.create_task(game_notifier.notify_action_request(game_id, game))
+    
     # Convert to API model
     return _game_to_model(game_id, game)
 
@@ -149,6 +158,12 @@ async def next_hand(game_id: str) -> GameStateModel:
     
     # Start new hand
     game.start_hand()
+    
+    # Notify WebSocket clients
+    asyncio.create_task(game_notifier.notify_game_update(game_id, game, _game_to_model))
+    
+    # Send action request to first player
+    asyncio.create_task(game_notifier.notify_action_request(game_id, game))
     
     # Convert to API model
     return _game_to_model(game_id, game)
@@ -225,15 +240,35 @@ async def player_action(
             game_state=_game_to_model(game_id, game)
         )
     
+    # Notify WebSocket clients about the action and updated state
+    asyncio.create_task(game_notifier.notify_player_action(
+        game_id,
+        player.player_id,
+        action.name,
+        amount
+    ))
+    
+    asyncio.create_task(game_notifier.notify_game_update(
+        game_id, 
+        game, 
+        _game_to_model
+    ))
+    
     # Check if we need to automatically advance the game (e.g., when all players have checked/called)
     # This happens when the betting round is complete but we're not at showdown yet
     if game.current_round == BettingRound.SHOWDOWN:
+        # Notify about hand results
+        asyncio.create_task(game_notifier.notify_hand_result(game_id, game))
+        
         # Hand is complete, get new game state
         return ActionResponse(
             success=True,
             message=f"Hand complete. Winners: {_format_winners(game)}",
             game_state=_game_to_model(game_id, game)
         )
+    else:
+        # Send action request to next player
+        asyncio.create_task(game_notifier.notify_action_request(game_id, game))
     
     # Return success
     return ActionResponse(

@@ -61,7 +61,7 @@ cscp/
 
 #### Backend Foundation
 - [x] Set up FastAPI project structure
-- [ ] Implement WebSocket support for real-time gameplay
+- [x] Implement WebSocket support for real-time gameplay
 - [x] Create in-memory data storage for prototype
 - [x] Create basic API endpoints for game management
 
