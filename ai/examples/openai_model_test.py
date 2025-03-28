@@ -55,10 +55,12 @@ async def test_model(model_name):
         return False
     
     try:
-        # Initialize the provider directly
+        # Initialize the provider directly with low reasoning level for reasoning models
+        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini"] else "medium"
         provider = OpenAIProvider(
             api_key=api_key,
             model=model_name,
+            reasoning_level=reasoning_level,
             organization_id=organization_id
         )
         
@@ -91,10 +93,12 @@ async def test_json_response(model_name):
         return False
     
     try:
-        # Initialize the provider directly
+        # Initialize the provider directly with low reasoning level for reasoning models
+        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini"] else "medium"
         provider = OpenAIProvider(
             api_key=api_key,
             model=model_name,
+            reasoning_level=reasoning_level,
             organization_id=organization_id
         )
         
@@ -139,10 +143,12 @@ async def test_extended_thinking(model_name):
         return False
     
     try:
-        # Initialize the provider directly
+        # Initialize the provider directly with low reasoning level for reasoning models
+        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini"] else "medium"
         provider = OpenAIProvider(
             api_key=api_key,
             model=model_name,
+            reasoning_level=reasoning_level,
             organization_id=organization_id
         )
         
