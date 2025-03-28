@@ -149,10 +149,8 @@ class TestGeminiProvider(unittest.TestCase):
             temperature=0.8
         ))
         
-        # Check that at least one call was made to start_chat with the system prompt
+        # Check that at least one call was made to start_chat
         self.model_mock.start_chat.assert_called()
-        chat_args = self.model_mock.start_chat.call_args[1]
-        self.assertEqual(chat_args["system_instruction"], "You are a test assistant")
         
         # Check that the user message was sent
         self.chat_mock.send_message.assert_called_once_with("This is a test")

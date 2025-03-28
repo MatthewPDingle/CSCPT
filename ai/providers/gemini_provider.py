@@ -133,12 +133,15 @@ class GeminiProvider(LLMProvider):
                 # Safely extract the text
                 if hasattr(response, 'text'):
                     content = response.text
-                elif hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                        parts = candidate.content.parts
-                        if parts and len(parts) > 0:
-                            content = parts[0].text
+                elif hasattr(response, 'candidates'):
+                    if response.candidates and len(response.candidates) > 0:
+                        candidate = response.candidates[0]
+                        if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                            parts = candidate.content.parts
+                            if parts and len(parts) > 0:
+                                content = parts[0].text
+                            else:
+                                content = str(response)
                         else:
                             content = str(response)
                     else:
@@ -204,18 +207,27 @@ class GeminiProvider(LLMProvider):
                 # Send the user prompt
                 response = chat.send_message(user_prompt)
                 
-                # Safely extract the text
-                if hasattr(response, 'text'):
-                    return response.text
-                elif hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                        parts = candidate.content.parts
-                        if parts and len(parts) > 0:
-                            return parts[0].text
-                
-                # Fallback to string representation
-                return str(response)
+                # Safely extract the text with comprehensive error handling
+                try:
+                    if hasattr(response, 'text'):
+                        return response.text
+                    elif hasattr(response, 'candidates'):
+                        if response.candidates and len(response.candidates) > 0:
+                            candidate = response.candidates[0]
+                            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                                parts = candidate.content.parts
+                                if parts and len(parts) > 0:
+                                    return parts[0].text
+                    
+                    # Fallback to string representation with safety checks
+                    response_str = str(response)
+                    if response_str.strip():
+                        return response_str
+                    else:
+                        return "No valid text content found in the response."
+                except Exception as extraction_error:
+                    logger.error(f"Error extracting text from Gemini response: {str(extraction_error)}")
+                    return f"Error processing Gemini response: {str(extraction_error)}"
                 
             except Exception as e:
                 logger.error(f"Error calling Gemini API: {str(e)}")
@@ -285,12 +297,15 @@ class GeminiProvider(LLMProvider):
                 # Safely extract the text
                 if hasattr(response, 'text'):
                     response_text = response.text
-                elif hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                        parts = candidate.content.parts
-                        if parts and len(parts) > 0:
-                            response_text = parts[0].text
+                elif hasattr(response, 'candidates'):
+                    if response.candidates and len(response.candidates) > 0:
+                        candidate = response.candidates[0]
+                        if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                            parts = candidate.content.parts
+                            if parts and len(parts) > 0:
+                                response_text = parts[0].text
+                            else:
+                                response_text = str(response)
                         else:
                             response_text = str(response)
                     else:
@@ -306,27 +321,37 @@ class GeminiProvider(LLMProvider):
                     try:
                         return json.loads(match.group(1))
                     except json.JSONDecodeError:
-                        # Try one more pattern that might capture JSON
-                        json_pattern = r'{[\s\S]*}'
-                        match = re.search(json_pattern, response_text)
-                        if match:
-                            return json.loads(match.group(0))
-                        else:
-                            logger.error(f"Could not extract valid JSON from response: {response_text}")
-                            raise ValueError("Could not extract valid JSON from response")
-                else:
-                    # If no JSON section was found, try to parse the whole response as JSON
-                    try:
-                        return json.loads(response_text)
-                    except json.JSONDecodeError:
-                        # Try to extract any JSON object in the text
-                        json_pattern = r'{[\s\S]*}'
-                        match = re.search(json_pattern, response_text)
-                        if match:
-                            return json.loads(match.group(0))
-                        else:
-                            logger.error(f"Could not extract valid JSON from response: {response_text}")
-                            raise ValueError("Could not extract valid JSON from response")
+                        logger.warning(f"Failed to parse JSON from code block, trying to find valid JSON object")
+                
+                # Try the most common patterns for JSON responses
+                patterns = [
+                    r'```json\s*([\s\S]*?)\s*```',  # Code block with json tag
+                    r'```\s*([\s\S]*?)\s*```',      # Any code block
+                    r'({[\s\S]*?})',                # Any JSON-like object with outer braces
+                    r'\[\s*{[\s\S]*?}\s*\]'         # Any JSON-like array
+                ]
+                
+                for pattern in patterns:
+                    match = re.search(pattern, response_text)
+                    if match:
+                        try:
+                            json_str = match.group(1) if pattern.startswith('```') else match.group(0)
+                            json_str = json_str.strip()
+                            # Fix common JSON formatting issues
+                            json_str = json_str.replace("'", '"')  # Replace single quotes with double quotes
+                            return json.loads(json_str)
+                        except (json.JSONDecodeError, IndexError):
+                            logger.debug(f"Failed to parse JSON with pattern {pattern}")
+                            continue
+                
+                # Last resort - try to clean and parse the entire response
+                try:
+                    # Clean response: remove markdown, try to convert to valid JSON
+                    cleaned_text = response_text.replace("'", '"').strip()
+                    return json.loads(cleaned_text)
+                except json.JSONDecodeError:
+                    logger.error(f"Could not extract valid JSON from response: {response_text[:100]}...")
+                    raise ValueError(f"Could not extract valid JSON from response: {response_text[:50]}...")
             else:
                 # Standard JSON request without extended thinking
                 # Start a chat session and send the prompt
@@ -336,12 +361,15 @@ class GeminiProvider(LLMProvider):
                 # Safely extract the text
                 if hasattr(response, 'text'):
                     response_text = response.text
-                elif hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                        parts = candidate.content.parts
-                        if parts and len(parts) > 0:
-                            response_text = parts[0].text
+                elif hasattr(response, 'candidates'):
+                    if response.candidates and len(response.candidates) > 0:
+                        candidate = response.candidates[0]
+                        if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                            parts = candidate.content.parts
+                            if parts and len(parts) > 0:
+                                response_text = parts[0].text
+                            else:
+                                response_text = str(response)
                         else:
                             response_text = str(response)
                     else:

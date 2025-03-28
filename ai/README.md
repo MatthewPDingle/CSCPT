@@ -77,13 +77,13 @@ response = await llm_service.complete(
     extended_thinking=True  # Enable extended thinking
 )
 
-# With OpenAI (o3-mini supports structured reasoning, other models use enhanced prompts)
+# With OpenAI (o3-mini supports structured reasoning, o1-pro has built-in reasoning)
 response = await llm_service.complete(
     system_prompt="You are a poker coach.",
     user_prompt="Analyze this complex hand...",
     temperature=0.7,
     provider="openai",
-    extended_thinking=True
+    extended_thinking=True  # Only affects o3-mini, o1-pro already uses advanced reasoning
 )
 ```
 
@@ -129,9 +129,9 @@ decision = await llm_service.complete_json(
 
 ## Available Providers
 
-- **Anthropic Claude** - `anthropic` - Supporting Claude 3.7 Sonnet with Extended Thinking
-- **OpenAI** - `openai` - Supporting GPT-4o (default), GPT-4o-mini, o1-pro, GPT-4.5-preview, and o3-mini
-- **Google Gemini** - `gemini` - Supporting Gemini 2.5 Pro, Gemini 2.0 Flash, and Gemini 2.0 Flash Thinking
+- **Anthropic Claude** - `anthropic` - Supporting Claude 3.7 Sonnet with native Extended Thinking
+- **OpenAI** - `openai` - Supporting GPT-4o (default), GPT-4o-mini, GPT-4.5-preview, o3-mini with structured JSON thinking, and o1-pro with advanced reasoning via Responses API
+- **Google Gemini** - `gemini` - Supporting Gemini 2.5 Pro, Gemini 2.0 Flash, and Gemini 2.0 Flash Thinking with prompt-engineered reasoning
 
 ## Running Examples
 
