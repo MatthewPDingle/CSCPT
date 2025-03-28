@@ -25,15 +25,14 @@ This document summarizes the implementation of three AI providers in our abstrac
 - **Features**:
   - Basic completion ✅
   - JSON completion ✅
-  - Extended thinking ✅ (varies by model)
-  - Advanced reasoning ✅ (o1-pro, o3-mini)
+  - Native reasoning ✅ (o1-pro, o3-mini only)
 - **Notes**:
   - All models now use the Responses API endpoint for consistency
   - Enhanced JSON extraction for models that return code blocks
   - o3-mini does not support temperature parameter
-  - o1-pro does not support temperature parameter or response_format
-  - o1-pro has built-in advanced reasoning capabilities
-  - Models without reasoning support use prompt enhancement for step-by-step thinking
+  - o1-pro does not support temperature parameter
+  - o1-pro and o3-mini are native reasoning models with dedicated reasoning API parameters
+  - Other models (gpt-4o, gpt-4o-mini, gpt-4.5-preview) use prompt enhancement for step-by-step thinking
 
 ### 3. Gemini Provider
 
@@ -42,15 +41,15 @@ This document summarizes the implementation of three AI providers in our abstrac
 - **Features**:
   - Basic completion ✅
   - JSON completion ✅ (for supported models)
-  - Structured reasoning ✅ (prompt-based, not native like Claude's extended thinking)
+  - Native reasoning ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking)
 - **Notes**:
   - Robust error handling for different API response structures
   - Enhanced extraction of responses with multi-layer fallback mechanisms
   - Comprehensive null checking to prevent "list index out of range" errors
   - Fallback JSON creation when API responses are incomplete or malformed
   - gemini-2.0-flash-thinking does not support JSON mode
-  - Some models (gemini-2.5-pro) may experience index errors with certain prompts
-  - Different from Claude's extended thinking - uses prompt engineering to encourage step-by-step reasoning
+  - gemini-2.5-pro and gemini-2.0-flash-thinking are native reasoning models
+  - gemini-2.0-flash uses prompt enhancement for step-by-step thinking
   - Adaptive content extraction pipeline with multiple fallback methods
 
 ## Common Interface
@@ -85,8 +84,8 @@ async def complete_json(
 |---------|-----------------|------------|---------------|
 | Basic text generation | ✅ | ✅ | ✅ |
 | JSON structured output | ✅ | ✅ | ✅ (most models) |
-| Native thinking/reasoning | ✅ (extended_thinking) | ✅ (o1-pro, o3-mini) | ❌ (prompt-based) |
-| Built-in reasoning models | ❌ | ✅ (o1-pro, o3-mini) | ❌ |
+| Native thinking/reasoning | ✅ (extended_thinking) | ✅ (o1-pro, o3-mini) | ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking) |
+| Built-in reasoning models | ❌ | ✅ (o1-pro, o3-mini) | ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking) |
 | Responses API | ❌ | ✅ (all models) | ❌ |
 | Temperature control | ✅ | ❌ (o1-pro, o3-mini), ✅ (others) | ✅ |
 
