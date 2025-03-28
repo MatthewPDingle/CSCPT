@@ -84,10 +84,9 @@ async def complete_json(
 |---------|-----------------|------------|---------------|
 | Basic text generation | ✅ | ✅ | ✅ |
 | JSON structured output | ✅ | ✅ | ✅ (most models) |
-| Native thinking/reasoning | ✅ (extended_thinking) | ✅ (o1-pro, o3-mini) | ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking) |
-| Built-in reasoning models | ❌ | ✅ (o1-pro, o3-mini) | ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking) |
-| Responses API | ❌ | ✅ (all models) | ❌ |
-| Temperature control | ✅ | ❌ (o1-pro, o3-mini), ✅ (others) | ✅ |
+| Reasoning Models | ✅ (Sonnet 3.7 with Extended Thinking) | ✅ (o1-pro, o3-mini) | ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking) |
+| API Endpoint | Messages API | Responses API | GenerativeLanguage API |
+| Temperature control | ✅ (not available with Extended Thinking) | ❌ (o1-pro, o3-mini), ✅ (others) | ✅ |
 
 ## Testing
 
