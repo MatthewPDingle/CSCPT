@@ -133,7 +133,7 @@ decision = await llm_service.complete_json(
 - **OpenAI** - `openai` - Supporting GPT-4o (default), GPT-4o-mini, GPT-4.5-preview, o3-mini with structured JSON thinking, and o1-pro with advanced reasoning via Responses API
 - **Google Gemini** - `gemini` - Supporting Gemini 2.5 Pro, Gemini 2.0 Flash, and Gemini 2.0 Flash Thinking with prompt-engineered reasoning
 
-## Running Examples
+## Running Examples and Tests
 
 To run the examples, first set your API keys:
 
@@ -150,3 +150,38 @@ python -m ai.examples.openai_example
 export GEMINI_API_KEY=your_gemini_api_key
 python -m ai.examples.gemini_example
 ```
+
+### Running Tests
+
+The project includes both unit tests and integration tests:
+
+#### Unit Tests
+
+Unit tests use mocked responses and don't require API keys:
+
+```bash
+# Run all unit tests
+python -m ai.tests.test_llm_service
+
+# Test specific providers
+python -m ai.tests.test_gemini_provider
+```
+
+#### Integration Tests
+
+Integration tests make real API calls to verify provider behavior and require valid API keys:
+
+```bash
+# Run all integration tests for all providers
+python -m ai.tests.run_integration_tests
+
+# Test specific providers
+python -m ai.examples.gemini_model_test
+python -m ai.examples.openai_model_test
+python -m ai.examples.anthropic_model_test
+
+# Test all providers with a simple example
+python -m ai.examples.all_providers_example
+```
+
+For detailed implementation notes and provider capabilities, see the [NOTE.md](NOTE.md) file.

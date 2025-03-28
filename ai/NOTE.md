@@ -25,13 +25,15 @@ This document summarizes the implementation of three AI providers in our abstrac
 - **Features**:
   - Basic completion ✅
   - JSON completion ✅
-  - Extended thinking ✅ (o3-mini only)
-  - Advanced reasoning ✅ (o1-pro)
+  - Extended thinking ✅ (varies by model)
+  - Advanced reasoning ✅ (o1-pro, o3-mini)
 - **Notes**:
+  - All models now use the Responses API endpoint for consistency
   - Enhanced JSON extraction for models that return code blocks
-  - o3-mini has specific parameter requirements (max_completion_tokens)
-  - o1-pro uses the Responses endpoint with advanced reasoning by default
-  - o1-pro does not support native JSON schema formatting but can output JSON-formatted text
+  - o3-mini does not support temperature parameter
+  - o1-pro does not support temperature parameter or response_format
+  - o1-pro has built-in advanced reasoning capabilities
+  - Models without reasoning support use prompt enhancement for step-by-step thinking
 
 ### 3. Gemini Provider
 
@@ -43,9 +45,13 @@ This document summarizes the implementation of three AI providers in our abstrac
   - Structured reasoning ✅ (prompt-based, not native like Claude's extended thinking)
 - **Notes**:
   - Robust error handling for different API response structures
-  - Enhanced extraction of responses from complex output formats
+  - Enhanced extraction of responses with multi-layer fallback mechanisms
+  - Comprehensive null checking to prevent "list index out of range" errors
+  - Fallback JSON creation when API responses are incomplete or malformed
   - gemini-2.0-flash-thinking does not support JSON mode
+  - Some models (gemini-2.5-pro) may experience index errors with certain prompts
   - Different from Claude's extended thinking - uses prompt engineering to encourage step-by-step reasoning
+  - Adaptive content extraction pipeline with multiple fallback methods
 
 ## Common Interface
 
@@ -79,8 +85,51 @@ async def complete_json(
 |---------|-----------------|------------|---------------|
 | Basic text generation | ✅ | ✅ | ✅ |
 | JSON structured output | ✅ | ✅ | ✅ (most models) |
-| Native thinking/reasoning | ✅ (extended_thinking) | ✅ (only o3-mini) | ❌ (prompt-based) |
-| Built-in reasoning models | ❌ | ✅ (o1-pro) | ❌ |
+| Native thinking/reasoning | ✅ (extended_thinking) | ✅ (o1-pro, o3-mini) | ❌ (prompt-based) |
+| Built-in reasoning models | ❌ | ✅ (o1-pro, o3-mini) | ❌ |
+| Responses API | ❌ | ✅ (all models) | ❌ |
+| Temperature control | ✅ | ❌ (o1-pro, o3-mini), ✅ (others) | ✅ |
+
+## Testing
+
+### Unit Tests
+
+Unit tests for each provider ensure that the core functionality works correctly with mocked API responses:
+
+```bash
+# Run all unit tests
+python -m ai.tests.test_llm_service
+
+# Test a specific provider
+python -m ai.tests.test_gemini_provider
+```
+
+### Integration Tests
+
+Integration tests verify that each provider works correctly with the actual API endpoints. These require valid API keys:
+
+```bash
+# Run all integration tests
+python -m ai.tests.run_integration_tests
+
+# Test a specific provider
+python -m ai.examples.gemini_model_test
+python -m ai.examples.openai_model_test
+python -m ai.examples.anthropic_model_test
+
+# Run a simple example across all providers
+python -m ai.examples.all_providers_example
+```
+
+### API Keys Configuration
+
+API keys are loaded from environment variables. You can set them in a `.env` file:
+
+```
+ANTHROPIC_API_KEY=sk-ant-api...
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+```
 
 ## Future Improvements
 
@@ -89,3 +138,4 @@ async def complete_json(
 3. Add cost optimization strategies
 4. Add player agent archetypes using this abstraction layer
 5. Implement more creative vs. analytical playing styles using different provider capabilities
+6. Add more robust testing for edge cases and error scenarios

@@ -154,7 +154,9 @@ async def test_extended_thinking(model_name):
             extended_thinking=False  # Explicitly set to False for Gemini
         )
         
-        logger.info(f"Model: {model_name} - Response: {response[:100]}...")
+        # Extract text from response dict before slicing
+        response_text = response['text'] if isinstance(response, dict) and 'text' in response else str(response)
+        logger.info(f"Model: {model_name} - Response: {response_text[:100]}...")
         return True
         
     except Exception as e:

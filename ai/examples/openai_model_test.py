@@ -33,11 +33,17 @@ load_dotenv()
 OPENAI_MODELS = [
     "gpt-4o",
     "gpt-4o-mini",
+    "o1-pro",  # Now supported using the Responses API
     "gpt-4.5-preview",
     "o3-mini"
-    # Temporarily removing o1-pro until we can implement the Responses endpoint properly
-    # "o1-pro"
 ]
+
+# Which model tests to run (set via command line argument)
+MODEL_TO_TEST = None
+if len(sys.argv) > 1 and sys.argv[1] in OPENAI_MODELS:
+    MODEL_TO_TEST = sys.argv[1]
+    logger.info(f"Only testing model: {MODEL_TO_TEST}")
+    OPENAI_MODELS = [MODEL_TO_TEST]
 
 async def test_model(model_name):
     """Test a specific OpenAI model with a real API call."""
@@ -60,12 +66,12 @@ async def test_model(model_name):
         system_prompt = "You are a helpful assistant that provides very brief responses."
         user_prompt = "What is the capital of France? Respond in one word."
         
-        # Make an API call
+        # Make an API call - note that o3-mini doesn't support temperature
         logger.info(f"Testing model: {model_name}")
         response = await provider.complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.7
+            temperature=0.7 if model_name != "o3-mini" else None
         )
         
         logger.info(f"Model: {model_name} - Response: {response}")
@@ -93,7 +99,7 @@ async def test_json_response(model_name):
         )
         
         # Use a simple prompt with JSON schema
-        system_prompt = "You are a helpful assistant that provides structured responses."
+        system_prompt = "You are a helpful assistant that provides structured responses. Please format your response as a JSON object with the fields 'city', 'country', and 'facts'."
         user_prompt = "What is the capital of France and what is it known for?"
         
         # Define a simple JSON schema
@@ -107,13 +113,13 @@ async def test_json_response(model_name):
             "required": ["city", "country", "facts"]
         }
         
-        # Make an API call
+        # Make an API call - note that o1-pro models need explicit JSON instructions
         logger.info(f"Testing JSON response with model: {model_name}")
         response = await provider.complete_json(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             json_schema=json_schema,
-            temperature=0.7
+            temperature=0.7 if model_name != "o3-mini" else None
         )
         
         logger.info(f"Model: {model_name} - JSON Response: {json.dumps(response, indent=2)}")
@@ -150,11 +156,13 @@ async def test_extended_thinking(model_name):
         response = await provider.complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.7,
+            temperature=0.7 if model_name != "o3-mini" else None,
             extended_thinking=True
         )
         
-        logger.info(f"Model: {model_name} - Extended thinking response (truncated): {response[:100]}...")
+        # Truncate the response if it's too long
+        response_preview = response[:100] + "..." if len(response) > 100 else response
+        logger.info(f"Model: {model_name} - Extended thinking response (truncated): {response_preview}")
         return True
         
     except Exception as e:
