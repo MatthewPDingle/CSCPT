@@ -17,11 +17,11 @@ class OpenAIProvider(LLMProvider):
     # Default model
     DEFAULT_MODEL = "gpt-4o"
     
-    # Available reasoning levels (mainly for o3-mini)
+    # Available reasoning levels (for reasoning_effort parameter)
     REASONING_LEVELS = {
-        "low": {"temperature": 0.7, "reasoning_steps": 1},
-        "medium": {"temperature": 0.8, "reasoning_steps": 3},
-        "high": {"temperature": 0.9, "reasoning_steps": 5}
+        "low": {"temperature": 0.7, "reasoning_effort": "low"},
+        "medium": {"temperature": 0.7, "reasoning_effort": "medium"},
+        "high": {"temperature": 0.7, "reasoning_effort": "high"}
     }
     
     # Model mapping with specific capabilities and requirements
@@ -46,16 +46,16 @@ class OpenAIProvider(LLMProvider):
             "id": "o1-pro", 
             "supports_reasoning": True,  # Has advanced reasoning by default
             "max_tokens_param": "max_output_tokens",
-            "supports_json_schema": False,  # Does not support native JSON schema
+            "supports_json_schema": True,  # Supports structured output with JSON schema
             "uses_responses_endpoint": True,
-            "supports_temperature": False,  # o1-pro doesn't support temperature parameter
+            "supports_temperature": False,  # o1-pro does not support temperature parameter
             "has_native_reasoning": True
         },
         "gpt-4.5-preview": {
             "id": "gpt-4.5-preview", 
             "supports_reasoning": False,
             "max_tokens_param": "max_output_tokens",
-            "supports_json_schema": False,
+            "supports_json_schema": True,
             "uses_responses_endpoint": True,
             "supports_temperature": True
         },
@@ -165,11 +165,11 @@ class OpenAIProvider(LLMProvider):
         input_messages = [
             {
                 "role": "system",
-                "content": [{"type": "input_text", "text": enhanced_system_prompt}]
+                "content": enhanced_system_prompt
             },
             {
                 "role": "user",
-                "content": [{"type": "input_text", "text": user_prompt}]
+                "content": user_prompt
             }
         ]
         
@@ -184,13 +184,13 @@ class OpenAIProvider(LLMProvider):
             model_info = self.MODEL_MAP.get(self.model, {})
             if model_info.get("has_native_reasoning", False):
                 # For models that support native reasoning
-                params["reasoning"] = {"effort": "high" if extended_thinking else self.reasoning_level}
+                params["reasoning"] = {"effort": "high" if extended_thinking else self.reasoning_config["reasoning_effort"]}
             
         # Code interpreter tools are optional and only if supported by the account
         # We'll skip for now since they might not be available
         
         # Add temperature if the model supports it
-        if supports_temperature:
+        if supports_temperature and temperature is not None:
             params["temperature"] = temperature
             
         # Add max_tokens parameter - only if it's supported
@@ -285,11 +285,11 @@ class OpenAIProvider(LLMProvider):
         input_messages = [
             {
                 "role": "system",
-                "content": [{"type": "input_text", "text": enhanced_system_prompt}]
+                "content": enhanced_system_prompt
             },
             {
                 "role": "user",
-                "content": [{"type": "input_text", "text": user_prompt}]
+                "content": user_prompt
             }
         ]
         
@@ -302,48 +302,75 @@ class OpenAIProvider(LLMProvider):
         # For models that support JSON schema (like o3-mini but not o1-pro)
         model_info = self.MODEL_MAP.get(self.model, {})
         
-        # Responses API doesn't seem to support response_format directly for o1-pro, gpt-4o, etc.
-        # Add explicit instructions to the system prompt instead
-        enhanced_system_text = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}\n\nUse valid JSON format with keys and values in your response."
-        if enhanced_system_text not in input_messages[0]["content"][0]["text"]:
-            input_messages[0]["content"][0]["text"] += "\n\n" + enhanced_system_text
+        # Use native JSON schema format instead of system prompt instructions
+        # for models that don't support the text parameter with json_schema format
+        if not supports_json_schema:
+            enhanced_system_text = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}\n\nUse valid JSON format with keys and values in your response."
+            if enhanced_system_text not in input_messages[0]["content"]:
+                input_messages[0]["content"] += "\n\n" + enhanced_system_text
             
-        # Add response format only for models we know support it (o3-mini)
-        if self.model == "o3-mini":
-            if supports_json_schema:
-                # If extended thinking is requested and model supports reasoning, create an extended schema
-                if extended_thinking and self.supports_reasoning:
-                    extended_schema = {
-                        "type": "object",
-                        "properties": {
-                            "thinking": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "A detailed step-by-step analysis"
-                            },
-                            "result": json_schema
+        # Add JSON schema formatting for models that support it
+        if supports_json_schema:
+            # If extended thinking is requested and model supports reasoning, create an extended schema
+            if extended_thinking and self.supports_reasoning:
+                # Make a deep copy of the schema to modify it
+                schema_copy = json.loads(json.dumps(json_schema))
+                
+                # Add additionalProperties: false if not already present
+                if "additionalProperties" not in schema_copy:
+                    schema_copy["additionalProperties"] = False
+                    
+                extended_schema = {
+                    "type": "object",
+                    "properties": {
+                        "thinking": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "A detailed step-by-step analysis"
                         },
-                        "required": ["thinking", "result"]
-                    }
-                    params["response_format"] = {
+                        "result": schema_copy
+                    },
+                    "required": ["thinking", "result"],
+                    "additionalProperties": False
+                }
+                
+                # Use the text parameter with json_schema format
+                params["text"] = {
+                    "format": {
                         "type": "json_schema",
-                        "schema": extended_schema
+                        "name": "response_with_reasoning",
+                        "schema": extended_schema,
+                        "strict": True
                     }
-                else:
-                    # Standard JSON schema
-                    params["response_format"] = {
-                        "type": "json_schema",
-                        "schema": json_schema
-                    }
+                }
             else:
-                # For models that don't support JSON schema but do support response_format
-                params["response_format"] = {"type": "json_object"}
+                # Standard JSON schema
+                # Make a deep copy of the schema to modify it
+                schema_copy = json.loads(json.dumps(json_schema))
+                
+                # Add additionalProperties: false if not already present
+                if "additionalProperties" not in schema_copy:
+                    schema_copy["additionalProperties"] = False
+                    
+                params["text"] = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "response_schema",
+                        "schema": schema_copy,
+                        "strict": True
+                    }
+                }
+        else:
+            # For models that don't support JSON schema, add instructions to the system prompt
+            json_schema_instructions = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}"
+            if json_schema_instructions not in input_messages[0]["content"]:
+                input_messages[0]["content"] += "\n\n" + json_schema_instructions
         
         # Add reasoning parameter based on model capabilities
         if self.supports_reasoning:
             if model_info.get("has_native_reasoning", False):
                 # For models that support native reasoning
-                params["reasoning"] = {"effort": "high" if extended_thinking else self.reasoning_level}
+                params["reasoning"] = {"effort": "high" if extended_thinking else self.reasoning_config["reasoning_effort"]}
         
         # Code interpreter tools are optional and only if supported by the account
         # We'll skip for now since they might not be available
