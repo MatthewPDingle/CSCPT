@@ -83,7 +83,7 @@ cscp/
 - [x] Add hand history tracking
 
 #### Full Player Archetype Implementation
-- [ ] Implement all player archetypes (TAG, LAG, etc.)
+- [x] Implement all player archetypes (TAG, LAG, etc.)
 - [x] Create individual archetype selection UI for cash games
 - [x] Implement percentage distribution UI for tournament archetypes
 - [ ] Design default archetype distributions for each tournament tier
