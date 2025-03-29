@@ -153,6 +153,23 @@ The AI module includes implementations of different poker player archetypes that
    - Plays a wider range of hands with frequent aggression and bluffing
    - Default temperature: 0.8 (more variable and creative play)
 
+### Agent Response Parsing
+
+The module includes a response parser to validate and normalize agent decisions:
+
+```python
+from ai.agents import AgentResponseParser
+
+# Parse a response from an agent
+action, amount, metadata = AgentResponseParser.parse_response(agent_response)
+
+# Apply game rules to ensure the action is valid
+action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state)
+
+# Check if a response is valid
+is_valid = AgentResponseParser.is_valid_response(agent_response)
+```
+
 ### Using Poker Agents
 
 ```python
@@ -223,6 +240,9 @@ python -m ai.examples.gemini_example
 
 # Run the poker agent example
 python -m ai.examples.agent_example
+
+# Run the response parser example
+python -m ai.examples.parser_example
 ```
 
 ### Running Tests
