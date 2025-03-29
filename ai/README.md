@@ -153,6 +153,51 @@ The AI module includes implementations of different poker player archetypes that
    - Plays a wider range of hands with frequent aggression and bluffing
    - Default temperature: 0.8 (more variable and creative play)
 
+3. **Tight-Passive (Rock/Nit)**
+   - Extremely risk-averse and conservative playing style
+   - Only plays premium hands and avoids confrontation
+   - Default temperature: 0.4 (highly predictable play)
+
+4. **Calling Station**
+   - Passive and call-oriented playing style
+   - Overly optimistic about hand strength, reluctant to fold
+   - Default intelligence: basic (limited opponent modeling)
+
+5. **Loose-Passive (Fish)**
+   - Recreational, entertainment-focused playing style
+   - Plays many hands pre-flop but passively
+   - Default intelligence: basic (limited opponent modeling)
+
+6. **Maniac**
+   - Ultra-aggressive with minimal hand requirements
+   - Raise and re-raise constantly with little regard for hand strength
+   - Default temperature: 0.9 (highly unpredictable play)
+
+7. **Beginner**
+   - Makes fundamental strategic mistakes
+   - Inconsistent decision making without coherent strategy
+   - Default extended_thinking: False (doesn't think deeply)
+
+8. **Adaptable**
+   - Shifts strategy based on table dynamics
+   - Identifies and exploits opponent weaknesses
+   - Custom implementation with strategy adjustment
+
+9. **GTO (Game Theory Optimal)**
+   - Mathematically balanced and theoretically unexploitable
+   - Uses mixed strategies and range-based thinking
+   - Focus on theoretically optimal play
+
+10. **Short Stack**
+    - Specialized in playing with smaller stacks
+    - Push/fold focused strategy with binary decisions
+    - Custom implementation with stack size awareness
+
+11. **Trappy (Slow-Player)**
+    - Deceptive and trap-setting playing style
+    - Focused on disguising hand strength to induce mistakes
+    - Advanced intelligence for identifying bluffing tendencies
+
 ### Agent Response Parsing
 
 The module includes a response parser to validate and normalize agent decisions:
@@ -243,6 +288,9 @@ python -m ai.examples.agent_example
 
 # Run the response parser example
 python -m ai.examples.parser_example
+
+# Compare all player archetypes
+python -m ai.examples.archetype_showcase
 ```
 
 ### Running Tests
