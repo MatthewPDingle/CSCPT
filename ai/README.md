@@ -7,6 +7,10 @@ This module provides the AI integration layer for the Chip Swinger Championship 
 - `ai/` - Main AI package
   - `providers/` - LLM provider implementations
   - `agents/` - Poker agent implementations
+    - `base_agent.py` - Abstract base class for all poker agents
+    - `tag_agent.py` - Tight-Aggressive player implementation
+    - `lag_agent.py` - Loose-Aggressive player implementation
+    - `archetype_implementation_plan.md` - Detailed design document
   - `prompts/` - Prompt templates for different agents and scenarios
   - `examples/` - Example scripts demonstrating usage
 
@@ -133,6 +137,73 @@ decision = await llm_service.complete_json(
 - **OpenAI** - `openai` - Supporting GPT-4o (default), GPT-4o-mini, GPT-4.5-preview, o3-mini with structured JSON thinking, and o1-pro with advanced reasoning via Responses API
 - **Google Gemini** - `gemini` - Supporting Gemini 2.5 Pro, Gemini 2.0 Flash, and Gemini 2.0 Flash Thinking with prompt-engineered reasoning
 
+## Poker Agents
+
+The AI module includes implementations of different poker player archetypes that can make decisions based on game state:
+
+### Implemented Player Archetypes
+
+1. **TAG (Tight-Aggressive)**
+   - Disciplined, selective, value-oriented playing style
+   - Focuses on premium hand selection and aggressive betting when in a hand
+   - Default temperature: 0.5 (more consistent decision making)
+
+2. **LAG (Loose-Aggressive)**
+   - Creative, dynamic, pressure-oriented playing style
+   - Plays a wider range of hands with frequent aggression and bluffing
+   - Default temperature: 0.8 (more variable and creative play)
+
+### Using Poker Agents
+
+```python
+from ai.llm_service import LLMService
+from ai.agents import TAGAgent, LAGAgent
+
+# Initialize the service
+llm_service = LLMService()
+
+# Create agent instances with different providers
+tag_agent = TAGAgent(llm_service, provider="anthropic")
+lag_agent = LAGAgent(llm_service, provider="openai")
+
+# Example game state
+game_state = {
+    "hand": ["As", "Kh"],  # Player's hole cards
+    "community_cards": ["Jd", "Tc", "2s"],  # Board cards
+    "position": "BTN",  # Button position
+    "pot": 120,  # Current pot size
+    "action_history": [  # Previous actions in the hand
+        {"player_id": "1", "action": "fold"},
+        {"player_id": "2", "action": "raise", "amount": 20},
+        {"player_id": "3", "action": "call", "amount": 20}
+    ],
+    "stack_sizes": {  # Current chip stacks
+        "0": 500,  # Current player (you)
+        "1": 320,
+        "2": 650,
+        "3": 480
+    }
+}
+
+# Game context
+context = {
+    "game_type": "tournament",  # or "cash"
+    "stage": "middle",  # early, middle, bubble, final_table
+    "blinds": [10, 20]  # Small blind, big blind
+}
+
+# Get decisions from the agents
+tag_decision = await tag_agent.make_decision(game_state, context)
+lag_decision = await lag_agent.make_decision(game_state, context)
+
+# Agent response format includes thinking, action, amount, and reasoning
+print(f"TAG decision: {tag_decision['action']} {tag_decision['amount']}")
+print(f"TAG reasoning: {tag_decision['reasoning']['hand_assessment']}")
+
+print(f"LAG decision: {lag_decision['action']} {lag_decision['amount']}")
+print(f"LAG reasoning: {lag_decision['reasoning']['hand_assessment']}")
+```
+
 ## Running Examples and Tests
 
 To run the examples, first set your API keys:
@@ -149,6 +220,9 @@ python -m ai.examples.openai_example
 # For Google Gemini
 export GEMINI_API_KEY=your_gemini_api_key
 python -m ai.examples.gemini_example
+
+# Run the poker agent example
+python -m ai.examples.agent_example
 ```
 
 ### Running Tests
