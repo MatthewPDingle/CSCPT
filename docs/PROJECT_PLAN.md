@@ -62,8 +62,8 @@ cscp/
   - [x] Anthropic Claude provider
   - [x] OpenAI GPT provider
   - [x] Google Gemini provider
-- [ ] Create simple player agent implementation (1-2 archetypes)
-- [ ] Design agent response parsing
+- [x] Create simple player agent implementation (1-2 archetypes)
+- [x] Design agent response parsing
 
 #### Backend Foundation
 - [x] Set up FastAPI project structure
