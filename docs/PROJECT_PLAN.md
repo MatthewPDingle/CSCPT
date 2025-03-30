@@ -86,10 +86,10 @@ cscp/
 - [x] Implement all player archetypes (TAG, LAG, etc.)
 - [x] Create individual archetype selection UI for cash games
 - [x] Implement percentage distribution UI for tournament archetypes
-- [ ] Design default archetype distributions for each tournament tier
-- [ ] Design dynamic player profiling system
-- [ ] Create opponent modeling functionality
-- [ ] Implement adaptive play based on table dynamics
+- [x] Design default archetype distributions for each tournament tier
+- [x] Design dynamic player profiling system
+- [x] Create opponent modeling functionality
+- [x] Implement adaptive play based on table dynamics
 
 #### Data Layer
 - [x] Create abstract data access layer

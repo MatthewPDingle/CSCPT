@@ -12,6 +12,13 @@ from app.models.domain_models import (
 )
 from app.repositories.in_memory import HandHistoryRepository, RepositoryFactory
 
+# Import memory integration if available
+try:
+    from ai.memory_integration import MemoryIntegration
+    MEMORY_SYSTEM_AVAILABLE = True
+except ImportError:
+    MEMORY_SYSTEM_AVAILABLE = False
+
 
 class HandHistoryRecorder:
     """Records hand history during gameplay."""
@@ -174,6 +181,32 @@ class HandHistoryRecorder:
                     if domain_action in [DomainPlayerAction.BET, DomainPlayerAction.RAISE, 
                                       DomainPlayerAction.ALL_IN]:
                         p.pfr = True
+        
+        # Update memory system with action info
+        if MEMORY_SYSTEM_AVAILABLE:
+            try:
+                # Only update for AI players
+                for p in self.current_hand.players:
+                    if p.player_id == player_id and not p.is_human:
+                        # Get additional game state info if needed
+                        game_state = {
+                            "pot": pot_after,
+                            "bet_facing": bet_facing,
+                            "round": betting_round.name
+                        }
+                        
+                        # Update memory with this action
+                        MemoryIntegration.update_from_action(
+                            player_id=player_id,
+                            action_type=action_type.name,
+                            amount=amount,
+                            betting_round=betting_round.name,
+                            game_state=game_state
+                        )
+                        break
+            except Exception as e:
+                # Don't let memory errors disrupt the game
+                print(f"Memory update error: {str(e)}")
     
     def record_community_cards(self, cards: List, round_name: str) -> None:
         """
@@ -305,6 +338,18 @@ class HandHistoryRecorder:
         
         # Return the hand history ID
         hand_id = self.current_hand.id
+        
+        # Process the completed hand in the memory system
+        if MEMORY_SYSTEM_AVAILABLE:
+            try:
+                # Convert the hand history to a dictionary for memory processing
+                hand_dict = self.current_hand.dict()
+                
+                # Process in memory system
+                MemoryIntegration.process_hand_history(hand_dict)
+            except Exception as e:
+                # Don't let memory errors disrupt the game
+                print(f"Error processing hand in memory system: {str(e)}")
         
         # Reset current hand
         self.current_hand = None

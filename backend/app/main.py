@@ -8,11 +8,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.game import router as game_router
 from app.api.game_v2 import router as game_v2_router
+from app.api.ai_connector import router as ai_router
 from app.repositories.persistence import RepositoryPersistence, PersistenceScheduler
 from app.repositories.in_memory import (
     GameRepository, UserRepository, HandRepository, ActionHistoryRepository,
     HandHistoryRepository
 )
+
+# Import memory integration
+try:
+    from ai.memory_integration import MemoryIntegration
+    MEMORY_SYSTEM_AVAILABLE = True
+except ImportError:
+    MEMORY_SYSTEM_AVAILABLE = False
+    print("AI memory system not available, continuing without player memory features")
 
 # Repository persistence setup
 data_dir = os.environ.get("DATA_DIR", "./data")
@@ -37,6 +46,16 @@ async def lifespan(app: FastAPI):
     """
     # Startup: Load repositories and start persistence scheduler
     print("Starting Chip Swinger Championship Poker Trainer API...")
+    
+    # Initialize memory system if available
+    if MEMORY_SYSTEM_AVAILABLE:
+        try:
+            # Enable memory by default, can be controlled through settings later
+            memory_enabled = os.environ.get("ENABLE_PLAYER_MEMORY", "true").lower() == "true"
+            MemoryIntegration.initialize(enable_memory=memory_enabled)
+            print(f"Player memory system initialized (enabled={memory_enabled})")
+        except Exception as e:
+            print(f"Error initializing memory system: {str(e)}")
     
     # Create data directory if it doesn't exist
     if not os.path.exists(data_dir):
@@ -87,6 +106,7 @@ async def root():
 # Include API routers
 app.include_router(game_router)
 app.include_router(game_v2_router)
+app.include_router(ai_router)
 
 # Include WebSocket routers
 from app.api.game_ws import router as game_ws_router
