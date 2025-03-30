@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, List
 from ..llm_service import LLMService
 from ..prompts import ADAPTABLE_SYSTEM_PROMPT
 from .base_agent import PokerAgent
+from .adaptation.integration import enhance_agent_with_adaptation
 
 class AdaptableAgent(PokerAgent):
     """
@@ -17,6 +18,11 @@ class AdaptableAgent(PokerAgent):
     passive to aggressive as the situation demands. They actively identify
     exploitable patterns in opponents and adjust accordingly, making them
     challenging to play against effectively.
+    
+    This implementation includes advanced adaptation capabilities:
+    - Game state tracking and dynamic adjustment
+    - Tournament stage awareness
+    - Exploitation detection and implementation
     """
     
     def __init__(
@@ -26,7 +32,8 @@ class AdaptableAgent(PokerAgent):
         intelligence_level: str = "expert",  # Highest intelligence required
         temperature: float = 0.6,  # Balanced temperament
         extended_thinking: bool = True,
-        use_persistent_memory: bool = True
+        use_persistent_memory: bool = True,
+        use_advanced_adaptation: bool = True  # Enable advanced adaptation
     ):
         """
         Initialize an Adaptable agent.
@@ -38,6 +45,7 @@ class AdaptableAgent(PokerAgent):
             temperature: Temperature for LLM sampling
             extended_thinking: Whether to use extended thinking mode
             use_persistent_memory: Whether to use persistent memory between sessions
+            use_advanced_adaptation: Whether to use advanced adaptation components
         """
         super().__init__(
             llm_service=llm_service,
@@ -53,6 +61,11 @@ class AdaptableAgent(PokerAgent):
         self.observed_exploits = []
         self.player_archetypes = {}  # Map player_id to detected archetype
         self.last_strategy_update = 0  # Track when we last updated the strategy
+        
+        # Enable advanced adaptation if requested
+        self.use_advanced_adaptation = use_advanced_adaptation
+        if use_advanced_adaptation:
+            enhance_agent_with_adaptation(self)
     
     def get_system_prompt(self) -> str:
         """
@@ -76,6 +89,14 @@ class AdaptableAgent(PokerAgent):
         Returns:
             Decision object with action, amount, and reasoning
         """
+        # If we're using advanced adaptation, the integration logic will handle everything
+        if self.use_advanced_adaptation and hasattr(self, "adaptation_manager"):
+            # The original make_decision is replaced by the enhanced version
+            # in enhance_agent_with_adaptation, which will already include
+            # advanced adaptation components
+            return await super().make_decision(game_state, context)
+        
+        # Legacy adaptation behavior if advanced adaptation is disabled
         # Update opponent profiles and adaptation strategy
         self._update_adaptation_strategy(game_state)
         

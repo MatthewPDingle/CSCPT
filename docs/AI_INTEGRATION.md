@@ -1285,16 +1285,63 @@ When asked about specific opponents, provide insights on how to exploit their te
 
 5. **Response Validation**: All LLM responses are validated for correctness before being applied to the game state.
 
+## Advanced Adaptation Components
+
+The Chip Swinger Championship Poker Trainer implements advanced adaptation components that enhance agent decision-making capabilities:
+
+### 1. Game State Tracking
+
+The `GameStateTracker` component monitors and analyzes game dynamics over time:
+- Maintains a sliding window of hand histories
+- Tracks table aggression, position effectiveness, and stack trends
+- Detects significant changes in game dynamics
+- Uses exponential weighting to prioritize recent information
+- Generates strategic recommendations based on observed patterns
+
+### 2. Tournament Stage Awareness
+
+The `TournamentStageAnalyzer` component provides tournament-specific strategic adaptations:
+- Identifies tournament stages (early, middle, bubble, final table, late)
+- Calculates ICM implications and bubble pressure factors
+- Determines M-Zone awareness (Harrington's M)
+- Provides stage-specific strategic recommendations
+- Generates player-specific advice based on stack size
+
+### 3. Memory-Enhanced Decision Making
+
+The poker agents utilize a persistent memory system across sessions:
+- Tracks opponent statistics with confidence levels
+- Builds opponent profiles that persist between games
+- Detects archetype tendencies in opponents
+- Identifies exploitable patterns
+- Provides statistical tracking with weighted confidence
+
+### 4. Exploit-Aware Behaviors
+
+The advanced agents can identify and capitalize on opponent weaknesses:
+- Detects patterns like excessive passivity or aggression
+- Identifies specific exploitable tendencies
+- Recommends counter-strategies based on observed behaviors
+- Adjusts strategy intensity based on confidence levels
+- Balances exploitation with balanced play
+
+### 5. Dynamic Strategy Adjustment
+
+The `AdaptableAgent` can change its strategy based on game conditions:
+- Shifts from tight to loose or passive to aggressive as needed
+- Adapts to changing table dynamics
+- Responds to tournament stage considerations
+- Utilizes a weighted approach to strategy selection
+- Maintains archetype identity while adapting
+
 ## Future Enhancements
 
 1. **Fine-tuned Models**: Custom fine-tuned models for each player archetype to improve decision quality and reduce cost.
 
 2. **Hybrid Approaches**: Combining rule-based systems with LLMs for faster and more consistent behavior in routine scenarios.
 
-3. **Advanced Agent Memory**: Implementing more sophisticated memory systems to track player behavior across multiple sessions.
+3. **Multi-agent Reasoning**: Enhancing agent reasoning about other agents' perceptions and strategies.
 
-4. **Multi-agent Reasoning**: Enhancing agent reasoning about other agents' perceptions and strategies.
+4. **Personalized Coaching**: Tailoring coaching to individual player weaknesses based on historical play data.
 
-5. **Personalized Coaching**: Tailoring coaching to individual player weaknesses based on historical play data.
-
-6. **Adaptive Difficulty**: Dynamically adjusting AI player skill levels based on the human player's performance and learning progress.
+5. **Adaptive Difficulty**: Dynamically adjusting AI player skill levels based on the human player's performance and learning progress.
