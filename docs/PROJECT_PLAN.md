@@ -120,7 +120,7 @@ cscp/
 #### Advanced Statistics and Analytics
 - [ ] Implement equity calculations
 - [ ] Add range analysis tools
-- [ ] Create advanced opponent profiling
+- [x] Create advanced opponent profiling
 - [ ] Design performance analytics dashboard
 
 #### Enhanced Coaching
@@ -130,10 +130,10 @@ cscp/
 - [ ] Design learning path progression
 
 #### Tournament Mode
-- [ ] Implement tournament stages
+- [x] Implement tournament stages
 - [ ] Add payout structures
 - [ ] Create blind level progression
-- [ ] Design tournament-specific strategies for AI
+- [x] Design tournament-specific strategies for AI
 
 #### UI/UX Refinement
 - [ ] Implement responsive design
