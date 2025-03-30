@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useRef } from 'react';
 
 // Player archetype types
-export type Archetype = 'TAG' | 'LAG' | 'TightPassive' | 'CallingStation' | 'Maniac' | 'Beginner' | 'Unpredictable';
+export type Archetype = 'TAG' | 'LAG' | 'TightPassive' | 'CallingStation' | 'LoosePassive' | 'Maniac' | 'Beginner' | 'Adaptable' | 'GTO' | 'ShortStack' | 'Trappy';
 
 // Game mode types
 export type GameMode = 'cash' | 'tournament';
@@ -28,9 +28,13 @@ export interface ArchetypeDistribution {
   LAG: number;
   TightPassive: number;
   CallingStation: number;
+  LoosePassive: number;
   Maniac: number;
   Beginner: number;
-  Unpredictable: number;
+  Adaptable: number;
+  GTO: number;
+  ShortStack: number;
+  Trappy: number;
 }
 
 // Main game configuration state
@@ -70,46 +74,65 @@ export interface GameConfig {
 // Default archetype distributions by tournament tier
 const defaultDistributions: Record<TournamentTier, ArchetypeDistribution> = {
   Local: {
-    TAG: 3,
-    LAG: 15,
-    TightPassive: 2,
-    CallingStation: 10,
-    Maniac: 15,
-    Beginner: 45,
-    Unpredictable: 10
+    TAG: 5,
+    LAG: 10,
+    TightPassive: 5,
+    CallingStation: 15,
+    LoosePassive: 15,
+    Maniac: 10,
+    Beginner: 25,
+    Adaptable: 3,
+    GTO: 2,
+    ShortStack: 5,
+    Trappy: 5
   },
   Regional: {
-    TAG: 10,
-    LAG: 20,
-    TightPassive: 15,
+    TAG: 15,
+    LAG: 15,
+    TightPassive: 10,
     CallingStation: 10,
-    Maniac: 15,
-    Beginner: 20,
-    Unpredictable: 10
+    LoosePassive: 8,
+    Maniac: 8,
+    Beginner: 12,
+    Adaptable: 6,
+    GTO: 5,
+    ShortStack: 6,
+    Trappy: 5
   },
   National: {
-    TAG: 25,
-    LAG: 25,
-    TightPassive: 20,
+    TAG: 20,
+    LAG: 18,
+    TightPassive: 8,
     CallingStation: 5,
-    Maniac: 10,
+    LoosePassive: 4,
+    Maniac: 5,
     Beginner: 5,
-    Unpredictable: 10
+    Adaptable: 12,
+    GTO: 12,
+    ShortStack: 6,
+    Trappy: 5
   },
   International: {
-    TAG: 40,
-    LAG: 30,
-    TightPassive: 15,
+    TAG: 23,
+    LAG: 18,
+    TightPassive: 3,
     CallingStation: 2,
-    Maniac: 3,
-    Beginner: 0,
-    Unpredictable: 10
+    LoosePassive: 2,
+    Maniac: 2,
+    Beginner: 3,
+    Adaptable: 16,
+    GTO: 20,
+    ShortStack: 6,
+    Trappy: 5
   }
 };
 
 // Generate default players for cash game
 const generateDefaultPlayers = (tableSize: number): PlayerConfig[] => {
-  const archetypes: Archetype[] = ['TAG', 'LAG', 'TightPassive', 'CallingStation', 'Maniac', 'Beginner', 'Unpredictable'];
+  const archetypes: Archetype[] = [
+    'TAG', 'LAG', 'TightPassive', 'CallingStation', 'LoosePassive', 
+    'Maniac', 'Beginner', 'Adaptable', 'GTO', 'ShortStack', 'Trappy'
+  ];
   
   return Array.from({ length: tableSize - 1 }, (_, index) => ({
     position: index + 1,
@@ -184,18 +207,34 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
       // Parse saved config
       const parsedConfig = JSON.parse(savedConfig);
       
-      // Migrate from Random to Unpredictable if needed
+      // Migrate from Random/Unpredictable to Adaptable if needed
       if (parsedConfig.tournament.archetypeDistribution.Random !== undefined) {
-        parsedConfig.tournament.archetypeDistribution.Unpredictable = 
+        parsedConfig.tournament.archetypeDistribution.Adaptable = 
           parsedConfig.tournament.archetypeDistribution.Random;
         delete parsedConfig.tournament.archetypeDistribution.Random;
       }
+      if (parsedConfig.tournament.archetypeDistribution.Unpredictable !== undefined) {
+        parsedConfig.tournament.archetypeDistribution.Adaptable = 
+          (parsedConfig.tournament.archetypeDistribution.Adaptable || 0) + 
+          parsedConfig.tournament.archetypeDistribution.Unpredictable;
+        delete parsedConfig.tournament.archetypeDistribution.Unpredictable;
+      }
       
-      // Migrate cash game players from Random to Unpredictable
+      // Add missing archetypes with zero values
+      const allArchetypes: Archetype[] = ['TAG', 'LAG', 'TightPassive', 'CallingStation', 
+        'LoosePassive', 'Maniac', 'Beginner', 'Adaptable', 'GTO', 'ShortStack', 'Trappy'];
+      
+      allArchetypes.forEach(archetype => {
+        if (parsedConfig.tournament.archetypeDistribution[archetype] === undefined) {
+          parsedConfig.tournament.archetypeDistribution[archetype] = 0;
+        }
+      });
+      
+      // Migrate cash game players from Random/Unpredictable to Adaptable
       if (parsedConfig.cashGame && parsedConfig.cashGame.players) {
         parsedConfig.cashGame.players.forEach((player: PlayerConfig) => {
-          if (player.archetype === 'Random' as any) {
-            player.archetype = 'Unpredictable';
+          if (player.archetype === 'Random' as any || player.archetype === 'Unpredictable' as any) {
+            player.archetype = 'Adaptable';
           }
         });
       }
@@ -283,7 +322,22 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
     
     setConfig(prevConfig => {
       try {
+        // Ensure all archetypes are present in the distribution
+        const allArchetypes: Archetype[] = [
+          'TAG', 'LAG', 'TightPassive', 'CallingStation', 'LoosePassive', 
+          'Maniac', 'Beginner', 'Adaptable', 'GTO', 'ShortStack', 'Trappy'
+        ];
+        
+        // Create a complete distribution with all archetypes
         const originalDistribution = { ...prevConfig.tournament.archetypeDistribution };
+        
+        // Add any missing archetypes with 0 value
+        allArchetypes.forEach(arch => {
+          if (originalDistribution[arch] === undefined) {
+            originalDistribution[arch] = 0;
+          }
+        });
+        
         const newPercentage = Math.round(percentage);
         const oldValue = originalDistribution[archetype];
         
@@ -295,43 +349,76 @@ export const SetupProvider: React.FC<SetupProviderProps> = ({ children }) => {
         const newDistribution = { ...originalDistribution };
         newDistribution[archetype] = newPercentage;
         
-        const otherArchetypes = Object.keys(originalDistribution).filter(
-          key => key !== archetype
-        ) as Archetype[];
+        // Make sure we consider ALL archetypes
+        const otherArchetypes = allArchetypes.filter(key => key !== archetype);
         
         const totalOther = otherArchetypes.reduce(
-          (sum, key) => sum + originalDistribution[key], 
+          (sum, key) => sum + (originalDistribution[key] || 0), 
           0
         );
         
         if (totalOther > 0) {
           otherArchetypes.forEach(key => {
-            const proportion = originalDistribution[key] / totalOther;
-            const adjustedValue = originalDistribution[key] - (proportion * delta);
+            // Use 0 as default if key doesn't exist
+            const currentValue = originalDistribution[key] || 0;
+            const proportion = currentValue / totalOther;
+            const adjustedValue = currentValue - (proportion * delta);
             newDistribution[key] = adjustedValue;
           });
         } else if (otherArchetypes.length > 0) {
           if (newPercentage < 100) {
-            newDistribution[otherArchetypes[0]] = 100 - newPercentage;
+            // Distribute remainder evenly among other archetypes
+            const remainder = 100 - newPercentage;
+            const perArchetype = remainder / otherArchetypes.length;
+            otherArchetypes.forEach(key => {
+              newDistribution[key] = perArchetype;
+            });
           }
         }
         
+        // Round all values to integers
         Object.keys(newDistribution).forEach(key => {
           newDistribution[key as Archetype] = Math.round(newDistribution[key as Archetype]);
         });
         
+        // Ensure total is exactly 100%
         const total = Object.values(newDistribution).reduce((sum, val) => sum + val, 0);
         if (total !== 100) {
           const difference = 100 - total;
+          
+          // First try to adjust archetypes with non-zero values
           const adjustableArchetypes = otherArchetypes.filter(key => newDistribution[key] > 0);
           
           if (adjustableArchetypes.length > 0) {
+            // Find the archetype with the largest value to adjust
             const maxArchetype = adjustableArchetypes.reduce((max, key) => 
               newDistribution[key] > newDistribution[max] ? key : max, 
               adjustableArchetypes[0]);
-            newDistribution[maxArchetype] += difference;
+            
+            // Make sure the adjustment doesn't make the value negative
+            if (newDistribution[maxArchetype] + difference >= 0) {
+              newDistribution[maxArchetype] += difference;
+            } else {
+              // Distribute the difference across all adjustable archetypes
+              const perArchetype = Math.ceil(Math.abs(difference) / adjustableArchetypes.length);
+              
+              // Try to distribute evenly
+              for (const key of adjustableArchetypes) {
+                if (newDistribution[key] >= perArchetype) {
+                  newDistribution[key] -= perArchetype;
+                  break;
+                }
+              }
+            }
           } else if (newDistribution[archetype] + difference <= 100 && newDistribution[archetype] + difference >= 0) {
+            // If no other archetypes have values, adjust the current one
             newDistribution[archetype] += difference;
+          } else {
+            // Last resort: set one of the other archetypes to abs(difference)
+            if (difference < 0) {
+              // We need to subtract from the total - give value to the first archetype
+              newDistribution[otherArchetypes[0]] = Math.abs(difference);
+            }
           }
         }
         

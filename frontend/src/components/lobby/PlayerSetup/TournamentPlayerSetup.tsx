@@ -11,8 +11,8 @@ const Container = styled.div`
 `;
 
 const Title = styled.h2`
-  font-size: 1.8rem;
-  margin-bottom: 2rem;
+  font-size: 1.6rem;
+  margin-bottom: 1.5rem;
   color: #f0f0f0;
   text-align: center;
 `;
@@ -22,18 +22,18 @@ const DistributionContainer = styled.div`
   max-width: 800px;
   background-color: rgba(0, 0, 0, 0.2);
   border-radius: 10px;
-  padding: 2rem;
+  padding: 1.5rem;
 `;
 
 const DistributionHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 `;
 
 const DistributionTitle = styled.h3`
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   margin: 0;
   color: #f0f0f0;
 `;
@@ -56,35 +56,48 @@ const ResetButton = styled.button`
 const ArchetypeSliders = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.5rem; /* Reduced from 0.8rem */
+  padding-right: 0.25rem;
+  margin-bottom: 0.25rem;
 `;
 
 const ArchetypeSlider = styled.div`
   display: flex;
   flex-direction: column;
+  padding: 0.3rem 0.4rem; /* Reduced vertical padding */
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.1rem; /* Minimal margin */
 `;
 
 const SliderHeader = styled.div`
   display: flex;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.2rem; /* Reduced from 0.5rem */
 `;
 
 const ArchetypeName = styled.span`
   font-weight: bold;
   color: #f0f0f0;
+  font-size: 0.9rem; /* Reduced size */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 65%; /* Limit width to prevent wrapping */
 `;
 
 const PercentageDisplay = styled.span`
   color: #3498db;
   font-weight: bold;
+  font-size: 0.9rem; /* Reduced size */
 `;
 
 const SliderContainer = styled.div`
   position: relative;
   width: 100%;
-  height: 24px;
-  margin: 0.5rem 0;
+  height: 18px; /* Further reduced from 20px */
+  margin: 0.1rem 0; /* Reduced from 0.2rem */
 `;
 
 const SliderTrack = styled.div`
@@ -92,9 +105,9 @@ const SliderTrack = styled.div`
   top: 50%;
   transform: translateY(-50%);
   width: 100%;
-  height: 8px;
+  height: 6px; /* Reduced from 8px */
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: 3px;
   z-index: 1;
 `;
 
@@ -103,9 +116,9 @@ const ProgressBar = styled.div`
   top: 50%;
   transform: translateY(-50%);
   left: 0;
-  height: 8px;
+  height: 6px; /* Reduced from 8px */
   background-color: #2ecc71;
-  border-radius: 4px;
+  border-radius: 3px;
   z-index: 2;
   transition: width 0.2s;
 `;
@@ -127,8 +140,8 @@ const Slider = styled.input.attrs({ type: 'range' })`
   &::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 16px; /* Reduced from 18px */
+    height: 16px; /* Reduced from 18px */
     background: #3498db;
     border-radius: 50%;
     cursor: pointer;
@@ -136,8 +149,8 @@ const Slider = styled.input.attrs({ type: 'range' })`
   }
   
   &::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: 16px; /* Reduced from 18px */
+    height: 16px; /* Reduced from 18px */
     background: #3498db;
     border-radius: 50%;
     cursor: pointer;
@@ -159,28 +172,35 @@ const Slider = styled.input.attrs({ type: 'range' })`
 `;
 
 const TotalDisplay = styled.div<{ color?: string }>`
-  margin-top: 1.5rem;
-  padding: 1rem;
+  margin-top: 1rem; /* Reduced from 1.5rem */
+  padding: 0.7rem; /* Reduced from 1rem */
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   text-align: center;
-  font-size: 1.1rem;
+  font-size: 1rem; /* Reduced from 1.1rem */
   font-weight: bold;
   color: ${props => props.color || '#f0f0f0'};
 `;
 
 const InfoText = styled.p`
-  font-size: 0.9rem;
+  font-size: 0.8rem; /* Reduced from 0.9rem */
   color: rgba(255, 255, 255, 0.7);
-  margin-top: 1rem;
+  margin-top: 0.7rem; /* Reduced from 1rem */
   text-align: center;
   font-style: italic;
 `;
 
 const ArchetypeDescription = styled.p`
-  font-size: 0.85rem;
+  font-size: 0.75rem; /* Reduced from 0.85rem */
   color: rgba(255, 255, 255, 0.7);
   margin: 0;
+  line-height: 1.2; /* Added to reduce vertical space */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 2.4em;
 `;
 
 // Archetype info
@@ -194,12 +214,16 @@ const archetypeInfo: Record<Archetype, { description: string, color: string }> =
     color: "#e74c3c" // Red
   },
   TightPassive: {
-    description: "Tight-Passive players play few hands and tend to call rather than raise, avoiding confrontation.",
+    description: "Tight-Passive players play very few, premium hands but rarely raise with them, preferring to call and minimize risk.",
     color: "#f39c12" // Orange
   },
   CallingStation: {
-    description: "Calling Stations call too frequently and rarely fold when they should, chasing draws regardless of odds.",
+    description: "Calling Stations call excessively with weak holdings and chase draws regardless of odds. They rarely fold once invested in a pot.",
     color: "#9b59b6" // Purple
+  },
+  LoosePassive: {
+    description: "Loose-Passive players play many starting hands but play them cautiously. Unlike Calling Stations, they can fold to pressure and rarely chase bad draws.",
+    color: "#16a085" // Greenish Blue
   },
   Maniac: {
     description: "Maniacs play a very wide range of hands and are extremely aggressive with constant raises and re-raises.",
@@ -209,9 +233,21 @@ const archetypeInfo: Record<Archetype, { description: string, color: string }> =
     description: "Beginners have basic knowledge of the game but make many fundamental errors in strategy and hand selection.",
     color: "#2ecc71" // Green
   },
-  Unpredictable: {
-    description: "A player who switches between the other non-Beginner archetypes, making them difficult to read and counter.",
-    color: "#7f8c8d" // Gray
+  Adaptable: {
+    description: "Adaptable players change their strategy based on table dynamics and opponent tendencies.",
+    color: "#8e44ad" // Purple
+  },
+  GTO: {
+    description: "GTO players utilize balanced, mathematically sound strategies that are theoretically unexploitable.",
+    color: "#1abc9c" // Turquoise
+  },
+  ShortStack: {
+    description: "Short Stack specialists excel with small stacks, using push/fold strategies and maximizing fold equity.",
+    color: "#d35400" // Burnt Orange
+  },
+  Trappy: {
+    description: "Trappy players (slow-players) frequently underrepresent their hand strength to induce bluffs and build larger pots.",
+    color: "#c0392b" // Dark Red
   }
 };
 
@@ -224,7 +260,23 @@ const TournamentPlayerSetup: React.FC = () => {
 
   // Sync local values with context when it changes
   useEffect(() => {
-    setLocalValues(archetypeDistribution);
+    // Ensure all archetypes have values
+    const allArchetypes: Archetype[] = [
+      'TAG', 'LAG', 'TightPassive', 'CallingStation', 'LoosePassive', 
+      'Maniac', 'Beginner', 'Adaptable', 'GTO', 'ShortStack', 'Trappy'
+    ];
+    
+    // Create a complete distribution with all archetypes
+    const completeDistribution = { ...archetypeDistribution };
+    
+    // Check if any archetypes are missing and add them with 0
+    allArchetypes.forEach(arch => {
+      if (completeDistribution[arch] === undefined) {
+        completeDistribution[arch] = 0;
+      }
+    });
+    
+    setLocalValues(completeDistribution);
   }, [archetypeDistribution]);
 
   // Calculate total percentage based on local values
@@ -258,18 +310,24 @@ const TournamentPlayerSetup: React.FC = () => {
             const archetypeColor = archetypeInfo[archetypeKey]?.color || "#7f8c8d";
             const archetypeDesc = archetypeInfo[archetypeKey]?.description || "Player archetype";
             
+            // Format display name to make some long names more compact
+            const displayName = archetypeKey === 'ShortStack' ? 'Short Stack' : 
+                               archetypeKey === 'CallingStation' ? 'Call Station' : 
+                               archetypeKey === 'TightPassive' ? 'Tight Passive' : 
+                               archetypeKey === 'LoosePassive' ? 'Loose Passive' : archetype;
+            
             return (
               <ArchetypeSlider key={archetype}>
                 <SliderHeader>
-                  <ArchetypeName style={{ color: archetypeColor }}>
-                    {archetype}
+                  <ArchetypeName style={{ color: archetypeColor }} title={archetypeDesc}>
+                    {displayName}
                   </ArchetypeName>
                   <PercentageDisplay>
                     {localValues[archetypeKey]}%
                   </PercentageDisplay>
                 </SliderHeader>
                 
-                <ArchetypeDescription>
+                <ArchetypeDescription title={archetypeDesc}>
                   {archetypeDesc}
                 </ArchetypeDescription>
                 

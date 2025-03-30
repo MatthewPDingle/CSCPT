@@ -44,7 +44,7 @@ We'll implement a configurable "intelligence" parameter that affects:
 
 **Default Setting**: Maximum intelligence (using full LLM capabilities) unless specified otherwise
 
-### 2. Initial Archetypes to Implement
+### 2. Implemented Archetypes (11 Total)
 
 **TAG (Tight-Aggressive)**
 - **Core Identity**: Disciplined, selective, value-oriented
@@ -55,6 +55,51 @@ We'll implement a configurable "intelligence" parameter that affects:
 - **Core Identity**: Creative, unpredictable, pressure-focused
 - **Decision Principles**: Leverages fold equity, balances ranges, creates tough decisions
 - **Key Behaviors**: Wide range pre-flop, frequent aggression, varied sizing
+
+**TightPassive**
+- **Core Identity**: Conservative, risk-averse, value-focused
+- **Decision Principles**: Prefers premium hands, avoids confrontation, minimizes variance
+- **Key Behaviors**: Selective hand choice, calling over raising, cautious post-flop play
+
+**CallingStation**
+- **Core Identity**: Passive, draw-chasing, pot-committed
+- **Decision Principles**: Focuses on absolute hand value rather than relative strength
+- **Key Behaviors**: Frequent calling, chase draws regardless of odds, rarely folds once invested
+
+**LoosePassive**
+- **Core Identity**: Curious, speculative, passive
+- **Decision Principles**: Plays many hands but cautiously
+- **Key Behaviors**: Wide pre-flop range, minimal aggression, can fold to pressure
+
+**Maniac**
+- **Core Identity**: Hyper-aggressive, unpredictable, action-oriented
+- **Decision Principles**: Maximum pressure, disregards conventional strategy
+- **Key Behaviors**: Constant aggression, very wide range, frequent bluffing
+
+**Beginner**
+- **Core Identity**: Inexperienced, fundamental errors, basic understanding
+- **Decision Principles**: Simplistic hand valuation, limited strategic depth
+- **Key Behaviors**: Plays too many hands, fails to consider position, overvalues weak holdings
+
+**Adaptable**
+- **Core Identity**: Observant, flexible, exploitative
+- **Decision Principles**: Adjusts strategy based on opponents and table dynamics
+- **Key Behaviors**: Changes gear as needed, identifies and exploits weaknesses
+
+**GTO (Game Theory Optimal)**
+- **Core Identity**: Balanced, mathematical, unexploitable
+- **Decision Principles**: Range-based thinking, balanced actions, mixed strategies
+- **Key Behaviors**: Proper bet sizing, balanced ranges, theoretically sound plays
+
+**ShortStack**
+- **Core Identity**: Stack-aware, simplified decision tree, push/fold expert
+- **Decision Principles**: Leverages fold equity, simplifies decisions with shallow stack
+- **Key Behaviors**: Aggressive pre-flop play, commitment decisions, ICM awareness
+
+**Trappy (Slow-Player)**
+- **Core Identity**: Deceptive, patient, value-maximizing
+- **Decision Principles**: Underrepresent hand strength to induce action
+- **Key Behaviors**: Check-raising, delayed aggression, inducing bluffs
 
 ## Technical Implementation
 
@@ -147,15 +192,21 @@ Player2: [VPIP:30%][PFR:22%][3Bet:12%][FoldTo3Bet:60%][CBet:75%]
 
 ## Implementation Roadmap
 
-### Phase 1: Basic Archetype Framework (Current Focus)
-- Implement TAG and LAG archetypes
-- Test different prompting strategies
-- Develop basic evaluation metrics
+### Phase 1: Basic Archetype Framework (Completed)
+- ✅ Implement initial TAG and LAG archetypes
+- ✅ Test different prompting strategies
+- ✅ Develop basic evaluation metrics
 
-### Phase 2: Enhanced Archetypes with Memory
+### Phase 2: Complete Archetype Implementation (Completed)
+- ✅ Implement all 11 archetype variations with specialized behaviors
+- ✅ Create comprehensive system prompts for each archetype
+- ✅ Update UI to support all archetypes
+- ✅ Implement tournament tier distributions
+
+### Phase 3: Enhanced Archetypes with Memory (Current Focus)
 - Add opponent modeling capabilities
 - Implement session-to-session memory
-- Add more nuanced archetypes (Nit, Calling Station, etc.)
+- Develop dynamic adjustment mechanisms
 
 ### Phase 3: Advanced Adaptation
 - Implement dynamic adjustment to changing conditions

@@ -147,6 +147,11 @@ const CashGamePlayerSetup: React.FC = () => {
       description: "Calls too frequently, rarely folds when they should.",
       color: "#9b59b6" // Purple
     },
+    LoosePassive: {
+      name: "Loose Passive",
+      description: "Plays many hands but rarely raises, preferring to call or check.",
+      color: "#16a085" // Greenish Blue
+    },
     Maniac: {
       name: "Maniac",
       description: "Plays most hands and is extremely aggressive with constant raises.",
@@ -157,16 +162,32 @@ const CashGamePlayerSetup: React.FC = () => {
       description: "Makes many fundamental errors in strategy and hand selection.",
       color: "#2ecc71" // Green
     },
-    Unpredictable: {
-      name: "Unpredictable",
-      description: "Randomly assigned one archetype for the entire session. Unpredictable until you play against them.",
-      color: "#7f8c8d" // Gray
+    Adaptable: {
+      name: "Adaptable",
+      description: "Changes strategy based on opponents and table dynamics.",
+      color: "#8e44ad" // Purple
+    },
+    GTO: {
+      name: "Game Theory Optimal",
+      description: "Uses balanced, mathematically sound strategies that are difficult to exploit.",
+      color: "#1abc9c" // Turquoise
+    },
+    ShortStack: {
+      name: "Short Stack Specialist",
+      description: "Expert at playing with small stacks, using push/fold strategies effectively.",
+      color: "#d35400" // Burnt Orange
+    },
+    Trappy: {
+      name: "Trappy",
+      description: "Slow-plays strong hands to trap opponents and maximize value.",
+      color: "#c0392b" // Dark Red
     }
   };
   
   // Available archetypes
   const archetypes: Archetype[] = [
-    'TAG', 'LAG', 'TightPassive', 'CallingStation', 'Maniac', 'Beginner', 'Unpredictable'
+    'TAG', 'LAG', 'TightPassive', 'CallingStation', 'LoosePassive', 'Maniac', 'Beginner', 
+    'Adaptable', 'GTO', 'ShortStack', 'Trappy'
   ];
   
   const handleNameChange = (player: PlayerConfig, name: string) => {
