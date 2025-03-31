@@ -5,54 +5,206 @@ This document outlines the AI integration design for the Chip Swinger Championsh
 
 ## Overview
 
-The AI integration in the Chip Swinger Championship Poker Trainer consists of two primary components:
+The AI integration in the Chip Swinger Championship Poker Trainer consists of three primary components:
 
-1. **AI Poker Agents**: LLM-powered agents that play as opponents with distinct playing styles
-2. **AI Poker Coach**: An LLM-powered coach that provides analysis, feedback, and strategic advice
+1. **LLM Provider Abstraction Layer**: A unified interface for interacting with multiple LLM providers (Anthropic Claude, OpenAI GPT, Google Gemini)
+2. **AI Poker Agents**: LLM-powered agents that play as opponents with distinct playing styles and adaptive capabilities
+3. **AI Poker Coach**: An LLM-powered coach that provides analysis, feedback, and strategic advice
 
-Both components rely on well-engineered prompt templates, context management, and response parsing to create realistic and educational poker experiences.
+All components rely on well-engineered prompt templates, context management, and response parsing to create realistic and educational poker experiences.
+
+## LLM Provider Abstraction Layer
+
+The LLM service provides a unified interface across multiple providers, allowing for seamless switching while maintaining consistent behavior.
+
+### Provider Implementation Status
+
+#### 1. Anthropic Provider
+- **Status**: Successfully implemented
+- **Supported Models**: claude-3-7-sonnet-20250219
+- **Features**:
+  - Basic completion ✅
+  - JSON completion ✅
+  - Extended thinking ✅
+- **Notes**:
+  - Extended thinking requires temperature=1.0 as per API requirements
+  - Thinking budget tokens configurable via environment variables
+
+#### 2. OpenAI Provider
+- **Status**: Successfully implemented
+- **Supported Models**: gpt-4o, gpt-4o-mini, gpt-4.5-preview, o3-mini, o1-pro
+- **Features**:
+  - Basic completion ✅
+  - JSON completion ✅
+  - Native reasoning ✅ (o1-pro, o3-mini only)
+- **Notes**:
+  - All models use the Responses API endpoint for consistency
+  - Enhanced JSON extraction for models that return code blocks
+  - o3-mini does not support temperature parameter
+  - o1-pro does not support temperature parameter
+  - o1-pro and o3-mini are native reasoning models with dedicated reasoning API parameters
+  - Other models use prompt enhancement for step-by-step thinking
+
+#### 3. Gemini Provider
+- **Status**: Successfully implemented
+- **Supported Models**: gemini-2.5-pro, gemini-2.0-flash, gemini-2.0-flash-thinking
+- **Features**:
+  - Basic completion ✅
+  - JSON completion ✅ (for supported models)
+  - Native reasoning ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking)
+- **Notes**:
+  - Robust error handling for different API response structures
+  - Enhanced extraction of responses with multi-layer fallback mechanisms
+  - Comprehensive null checking to prevent "list index out of range" errors
+  - Fallback JSON creation when API responses are incomplete or malformed
+  - gemini-2.0-flash-thinking does not support JSON mode
+  - gemini-2.5-pro and gemini-2.0-flash-thinking are native reasoning models
+  - gemini-2.0-flash uses prompt enhancement for step-by-step thinking
+
+### Common Interface
+
+The LLM service provides a unified interface for all providers:
+
+```python
+async def complete(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    provider: Optional[str] = None,
+    extended_thinking: bool = False
+) -> str
+```
+
+```python
+async def complete_json(
+    system_prompt: str,
+    user_prompt: str,
+    json_schema: Dict[str, Any],
+    temperature: Optional[float] = None,
+    provider: Optional[str] = None,
+    extended_thinking: bool = False
+) -> Dict[str, Any]
+```
+
+### Feature Comparison
+
+| Feature | Anthropic Claude | OpenAI GPT | Google Gemini |
+|---------|-----------------|------------|---------------|
+| Basic text generation | ✅ | ✅ | ✅ |
+| JSON structured output | ✅ | ✅ | ✅ (most models) |
+| Reasoning Models | ✅ (Sonnet 3.7 with Extended Thinking) | ✅ (o1-pro, o3-mini) | ✅ (gemini-2.5-pro, gemini-2.0-flash-thinking) |
+| API Endpoint | Messages API | Responses API | GenerativeLanguage API |
+| Temperature control | ✅ (not available with Extended Thinking) | ❌ (o1-pro, o3-mini), ✅ (others) | ✅ |
 
 ## AI Poker Agents
 
 ### Player Archetypes
 
-The system implements six distinct player archetypes, each with a specific playing style:
+The system implements 11 distinct player archetypes, each with a specific playing style. These archetypes are implemented using a "Guided Freedom" approach that provides clear characteristics and principles without rigid rules, leveraging LLMs' ability to embody personas and make contextual decisions.
 
-1. **Tight Aggressive (TAG)**: Plays few hands but plays them aggressively
-   - High hand selection standards
-   - Aggressive betting and raising when in a hand
-   - Strategic use of position
-   - Calculated bluffing
+#### Core Archetypes
 
-2. **Loose Aggressive (LAG)**: Plays many hands aggressively
-   - Wider range of starting hands
-   - Frequent betting and raising
-   - Puts pressure on opponents
-   - More frequent bluffing
+1. **TAG (Tight-Aggressive)**
+   - **Core Identity**: Disciplined, selective, value-oriented
+   - **Decision Principles**: Position-aware, strong hand requirements, clear post-flop plan
+   - **Key Behaviors**: Premium hand selection, straightforward betting, value extraction
+   - **Default Settings**: Temperature 0.5 (more consistent decision making)
 
-3. **Tight Passive (TP)**: Plays few hands conservatively
-   - Selective hand requirements
-   - Tends to call rather than raise
-   - Rarely bluffs
-   - Straightforward, predictable play
+2. **LAG (Loose-Aggressive)**
+   - **Core Identity**: Creative, unpredictable, pressure-focused
+   - **Decision Principles**: Leverages fold equity, balances ranges, creates tough decisions
+   - **Key Behaviors**: Wide range pre-flop, frequent aggression, varied sizing
+   - **Default Settings**: Temperature 0.8 (more variable and creative play)
 
-4. **Calling Station (CS)**: Calls frequently but rarely raises
-   - Plays many hands
-   - Reluctant to fold once invested
-   - Calls too often with marginal hands
-   - Rarely bluffs
+3. **TightPassive (Rock/Nit)**
+   - **Core Identity**: Conservative, risk-averse, value-focused
+   - **Decision Principles**: Prefers premium hands, avoids confrontation, minimizes variance
+   - **Key Behaviors**: Selective hand choice, calling over raising, cautious post-flop play
+   - **Default Settings**: Temperature 0.4 (highly predictable play)
 
-5. **Maniac**: Extremely aggressive, often irrational
-   - Very loose hand selection
-   - Constantly raising and re-raising
-   - Frequent bluffing
-   - Unpredictable play
+4. **CallingStation**
+   - **Core Identity**: Passive, draw-chasing, pot-committed
+   - **Decision Principles**: Focuses on absolute hand value rather than relative strength
+   - **Key Behaviors**: Frequent calling, chase draws regardless of odds, rarely folds once invested
+   - **Default Settings**: Basic intelligence (limited opponent modeling)
 
-6. **Beginner (Noob)**: Makes basic strategic errors
-   - Inconsistent hand selection
-   - Doesn't consider position
-   - Overvalues weak hands
-   - Makes fundamental mistakes in betting
+5. **LoosePassive (Fish)**
+   - **Core Identity**: Curious, speculative, passive
+   - **Decision Principles**: Plays many hands but cautiously
+   - **Key Behaviors**: Wide pre-flop range, minimal aggression, can fold to pressure
+   - **Default Settings**: Basic intelligence (limited opponent modeling)
+
+6. **Maniac**
+   - **Core Identity**: Hyper-aggressive, unpredictable, action-oriented
+   - **Decision Principles**: Maximum pressure, disregards conventional strategy
+   - **Key Behaviors**: Constant aggression, very wide range, frequent bluffing
+   - **Default Settings**: Temperature 0.9 (highly unpredictable play)
+
+7. **Beginner**
+   - **Core Identity**: Inexperienced, fundamental errors, basic understanding
+   - **Decision Principles**: Simplistic hand valuation, limited strategic depth
+   - **Key Behaviors**: Plays too many hands, fails to consider position, overvalues weak holdings
+   - **Default Settings**: Extended thinking disabled (doesn't think deeply)
+
+8. **Adaptable**
+   - **Core Identity**: Observant, flexible, exploitative
+   - **Decision Principles**: Adjusts strategy based on opponents and table dynamics
+   - **Key Behaviors**: Changes gear as needed, identifies and exploits weaknesses
+   - **Default Settings**: Custom implementation with strategy adjustment, memory-enhanced
+
+9. **GTO (Game Theory Optimal)**
+   - **Core Identity**: Balanced, mathematical, unexploitable
+   - **Decision Principles**: Range-based thinking, balanced actions, mixed strategies
+   - **Key Behaviors**: Proper bet sizing, balanced ranges, theoretically sound plays
+   - **Default Settings**: Expert intelligence, extended thinking enabled
+
+10. **ShortStack**
+    - **Core Identity**: Stack-aware, simplified decision tree, push/fold expert
+    - **Decision Principles**: Leverages fold equity, simplifies decisions with shallow stack
+    - **Key Behaviors**: Aggressive pre-flop play, commitment decisions, ICM awareness
+    - **Default Settings**: Custom implementation with stack size awareness
+
+11. **Trappy (Slow-Player)**
+    - **Core Identity**: Deceptive, patient, value-maximizing
+    - **Decision Principles**: Underrepresent hand strength to induce action
+    - **Key Behaviors**: Check-raising, delayed aggression, inducing bluffs
+    - **Default Settings**: Advanced intelligence for identifying bluffing tendencies
+
+### Implementation Approach
+
+The implementation of these archetypes follows a "Guided Freedom" approach with three primary prompt engineering strategies:
+
+1. **Pure Description Method**
+   - Rich qualitative descriptions of the archetype's poker philosophy
+   - No explicit hand ranges or mathematical formulas
+   - Example: "TAG players are patient, disciplined, and value-driven..."
+
+2. **Principles + Examples Method**
+   - Core principles paired with example scenarios/responses
+   - Models learn by example rather than explicit rules
+   - Example: "When facing a 3-bet with marginal holdings, TAG players typically..."
+
+3. **Guided Parameters Method**
+   - Flexible guidelines with soft boundaries
+   - Focus on decision-making process rather than rigid formulas
+   - Example: "As a LAG, you typically play 30-45% of hands, but adapt based on table dynamics..."
+
+### Intelligence and Skill Parameters
+
+Each agent can be configured with different "intelligence" levels that affect:
+
+- **Opponent Modeling Capacity**
+  - **Basic**: Remembers limited information about 1-2 recent opponents
+  - **Intermediate**: Tracks statistical patterns across multiple opponents
+  - **Advanced**: Builds sophisticated player profiles with nuanced tendencies
+  - **Expert**: Identifies exploitable patterns and adapts strategy accordingly
+
+- **Memory Capacity**
+  - Scales with intelligence level - higher intelligence allows tracking more hands/players
+  - Ability to distinguish signal from noise in opponent behavior
+
+By default, agents use the maximum intelligence level unless specified otherwise.
 
 ### Agent Implementation
 
@@ -1285,11 +1437,42 @@ When asked about specific opponents, provide insights on how to exploit their te
 
 5. **Response Validation**: All LLM responses are validated for correctness before being applied to the game state.
 
-## Advanced Adaptation Components
+## Enhanced Memory and Adaptation Systems
 
-The Chip Swinger Championship Poker Trainer implements advanced adaptation components that enhance agent decision-making capabilities:
+The Chip Swinger Championship Poker Trainer implements sophisticated memory and adaptation components that enhance agent decision-making capabilities.
 
-### 1. Game State Tracking
+### Memory System
+
+The Enhanced Archetype Memory System allows agents to build and maintain opponent profiles across sessions. Key components include:
+
+#### OpponentProfile
+- Detailed representation of opponent behaviors and tendencies
+- Statistical tracking (VPIP, PFR, etc.)
+- Action tendencies in specific situations
+- Hand range assessment
+- Qualitative notes and observations
+- Archetype detection
+- Exploitability analysis
+
+#### MemoryService
+- Persistent memory service that manages opponent profiles
+- Stores and retrieves player data across sessions
+- Tracks statistical trends over time
+- Identifies exploitation opportunities
+- Provides formatted opponent data for LLM prompts
+
+#### MemoryConnector
+- Integration layer connecting memory system to game backend
+- Processes hand histories
+- Updates profiles from observed actions
+- Simplifies integration with minimal dependencies
+- Provides backend-friendly data format
+
+### Advanced Adaptation Components
+
+The adaptation system allows agents to adjust their strategies based on game conditions:
+
+#### 1. Game State Tracking
 
 The `GameStateTracker` component monitors and analyzes game dynamics over time:
 - Maintains a sliding window of hand histories
@@ -1298,7 +1481,7 @@ The `GameStateTracker` component monitors and analyzes game dynamics over time:
 - Uses exponential weighting to prioritize recent information
 - Generates strategic recommendations based on observed patterns
 
-### 2. Tournament Stage Awareness
+#### 2. Tournament Stage Awareness
 
 The `TournamentStageAnalyzer` component provides tournament-specific strategic adaptations:
 - Identifies tournament stages (early, middle, bubble, final table, late)
@@ -1307,16 +1490,56 @@ The `TournamentStageAnalyzer` component provides tournament-specific strategic a
 - Provides stage-specific strategic recommendations
 - Generates player-specific advice based on stack size
 
-### 3. Memory-Enhanced Decision Making
+Tournament stages and their strategic implications:
 
-The poker agents utilize a persistent memory system across sessions:
-- Tracks opponent statistics with confidence levels
-- Builds opponent profiles that persist between games
-- Detects archetype tendencies in opponents
-- Identifies exploitable patterns
-- Provides statistical tracking with weighted confidence
+**Early Stage**
+- Deep stacks and lower blind pressure
+- Focus on chip accumulation without excessive risk
+- Standard ranges with some speculative play
 
-### 4. Exploit-Aware Behaviors
+**Middle Stage**
+- Moderate stack depths and increasing blind pressure
+- Increased aggression with position leverage
+- Tighter ranges, more steal attempts
+
+**Bubble Stage**
+- High ICM pressure near the money
+- ICM-aware cautious play with selective aggression
+- Tighter calling ranges, maintained aggression with strong hands
+
+**Final Table**
+- Significant payout implications
+- Dynamic play with payout ladder awareness
+- Adjust strategy based on payout structure and stack sizes
+
+**Late Stage**
+- In-the-money play with ladder-up considerations
+- Target medium stacks afraid to bust
+- Looser aggression, tighter calling
+
+M-Zone awareness (Harrington's concept):
+
+**Red Zone (M < 5)**
+- Critical push/fold territory
+- Look for any push opportunity with decent equity
+- Greatly expanded shoving range
+
+**Orange Zone (5 <= M < 10)**
+- High pressure zone
+- Selective aggression with strong holdings
+- Avoid calling all-ins without premium hands
+
+**Yellow Zone (10 <= M < 20)**
+- Caution zone
+- Prioritize maintaining stack above 10 BBs
+- Controlled aggression
+
+**Green Zone (M >= 20)**
+- Comfortable stack
+- Standard play with ICM awareness
+- Full strategic flexibility
+
+#### 3. Exploit-Aware Behaviors
 
 The advanced agents can identify and capitalize on opponent weaknesses:
 - Detects patterns like excessive passivity or aggression
@@ -1325,7 +1548,7 @@ The advanced agents can identify and capitalize on opponent weaknesses:
 - Adjusts strategy intensity based on confidence levels
 - Balances exploitation with balanced play
 
-### 5. Dynamic Strategy Adjustment
+#### 4. Dynamic Strategy Adjustment
 
 The `AdaptableAgent` can change its strategy based on game conditions:
 - Shifts from tight to loose or passive to aggressive as needed
@@ -1333,6 +1556,23 @@ The `AdaptableAgent` can change its strategy based on game conditions:
 - Responds to tournament stage considerations
 - Utilizes a weighted approach to strategy selection
 - Maintains archetype identity while adapting
+
+#### Integration
+
+The `AdaptationManager` class provides a unified interface for using all adaptation components together. It can be integrated with any poker agent using the `enhance_agent_with_adaptation` function, which adds adaptation capabilities to the agent's decision-making process:
+
+```python
+from ai.agents.adaptation.integration import enhance_agent_with_adaptation
+
+# Create a poker agent
+agent = AdaptableAgent(llm_service)
+
+# Enhance the agent with advanced adaptation
+enhance_agent_with_adaptation(agent)
+
+# The agent will now have access to all adaptation components
+# and will include adaptation information in its decisions
+```
 
 ## Future Enhancements
 

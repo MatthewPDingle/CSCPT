@@ -36,10 +36,18 @@ See [Getting Started](docs/GETTING_STARTED.md) for detailed setup instructions.
 
 ## Documentation
 
+### General Documentation
 - [Project Specification](docs/SPEC.md)
 - [Project Implementation Plan](docs/PROJECT_PLAN.md)
-- [Architecture Documentation](docs/ARCHITECTURE.md)
+- [Architecture Overview](docs/ARCHITECTURE.md)
 - [Getting Started Guide](docs/GETTING_STARTED.md)
+- [Contributing Guidelines](docs/CONTRIBUTING.md)
+
+### Technical Documentation
+- [API Design](docs/API_DESIGN.md)
+- [Poker Engine](docs/POKER_ENGINE.md)
+- [AI Integration](docs/AI_INTEGRATION.md)
+- [Player Archetype Design](docs/ARCHETYPES.md)
 
 ## Contributions
 
