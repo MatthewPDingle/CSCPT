@@ -8,6 +8,7 @@ import copy
 from datetime import datetime
 
 from app.core.poker_game import PokerGame, PlayerStatus
+from app.core.utils import game_to_model
 
 
 class ConnectionManager:
@@ -175,14 +176,14 @@ class GameStateNotifier:
     def __init__(self, connection_mgr: ConnectionManager):
         self.connection_manager = connection_mgr
         
-    async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func):
+    async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func=None):
         """
         Notify all clients about a game state update.
         
         Args:
             game_id: The ID of the game
             game: The PokerGame instance
-            game_to_model_func: Function to convert game to model
+            game_to_model_func: Function to convert game to model (optional, uses imported by default)
         """
         # Get all connections for this game
         connections = self.connection_manager.get_connections_for_game(game_id)
@@ -192,8 +193,11 @@ class GameStateNotifier:
         # Get player connections
         player_connections = self.connection_manager.get_player_connections(game_id)
         
+        # Use the function provided or the default imported function
+        model_func = game_to_model_func or game_to_model
+        
         # Convert game state
-        game_state = game_to_model_func(game_id, game)
+        game_state = model_func(game_id, game)
         
         # For players, send personalized game state (with their cards visible)
         for player_id, player_sockets in player_connections.items():

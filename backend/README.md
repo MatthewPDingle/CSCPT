@@ -71,6 +71,32 @@ pytest tests/test_cards.py::test_deck_creation
     - `cards.py` - Card representation and deck management
     - `hand_evaluator.py` - Poker hand evaluation
     - `poker_game.py` - Game flow and betting logic
+    - `utils.py` - Shared utility functions
   - `api/` - API endpoints
-  - `models/` - Pydantic models for API
+    - `game.py` - Game management endpoints
+    - `game_ws.py` - WebSocket endpoints for real-time game interaction
+    - `history_api.py` - Endpoints for accessing game history and statistics
+  - `models/` - Data models
+    - `domain_models.py` - Core domain entities
+    - `game_models.py` - API-specific models
+  - `services/` - Business logic
+    - `game_service.py` - Centralized game management service (singleton)
+    - `hand_history_service.py` - Historical data recording service
+  - `repositories/` - Data access layer
 - `tests/` - Test suite
+  - `api/` - API-specific tests
+  - `models/` - Model tests
+  - `repositories/` - Repository tests
+  - `services/` - Service tests
+
+## Architecture
+
+The backend follows a service-oriented architecture pattern:
+
+1. **API Layer** (`app/api/`) - Handles HTTP/WebSocket requests and responses
+2. **Service Layer** (`app/services/`) - Contains business logic and coordinates operations
+3. **Repository Layer** (`app/repositories/`) - Handles data persistence
+4. **Domain Model Layer** (`app/models/`) - Defines core entities and data structures
+5. **Core Engine** (`app/core/`) - Implements poker game mechanics and rules
+
+All API endpoints interact with the game state through the `GameService` singleton, which provides a consistent interface for game operations and ensures proper state management.

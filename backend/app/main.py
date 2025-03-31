@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.game import router as game_router
-from app.api.game_v2 import router as game_v2_router
+from app.api.history_api import router as history_router
 from app.api.ai_connector import router as ai_router
 from app.repositories.persistence import RepositoryPersistence, PersistenceScheduler
 from app.repositories.in_memory import (
@@ -105,7 +105,7 @@ async def root():
 
 # Include API routers
 app.include_router(game_router)
-app.include_router(game_v2_router)
+app.include_router(history_router)
 app.include_router(ai_router)
 
 # Include WebSocket routers

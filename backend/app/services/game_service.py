@@ -27,6 +27,37 @@ class GameService:
     Service for managing poker games.
     Implements game logic and coordinates data access.
     """
+    _instance = None
+    
+    @classmethod
+    def get_instance(cls):
+        """Get the singleton instance of the GameService."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
+    @classmethod
+    def _reset_instance_for_testing(cls):
+        """
+        Reset the singleton instance.
+        
+        NOTE: This method should ONLY be used in test code, never in production.
+        It's designed to allow tests to start with a clean service state.
+        """
+        cls._instance = None
+        
+    @classmethod
+    def _set_instance_for_testing(cls, mock_instance):
+        """
+        Set the singleton instance to a provided mock.
+        
+        NOTE: This method should ONLY be used in test code, never in production.
+        It allows tests to inject mock implementations for isolated testing.
+        
+        Args:
+            mock_instance: The mock instance to use as the singleton
+        """
+        cls._instance = mock_instance
     
     def __init__(self):
         """Initialize the game service with repositories."""

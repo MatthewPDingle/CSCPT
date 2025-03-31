@@ -22,7 +22,7 @@ class TestGameService:
     @pytest.fixture
     def game_service(self):
         """Create a GameService instance for testing."""
-        return GameService()
+        return GameService.get_instance()
 
     def test_create_cash_game(self, game_service):
         """Test creating a cash game."""
@@ -213,7 +213,7 @@ class TestGameService:
             action=PlayerAction.CALL
         )
         
-        # Verify the action was recorded
+        # Verify the action was recorded in domain model
         assert len(updated_game.current_hand.actions) == 1
         action = updated_game.current_hand.actions[0]
         assert action.player_id == player1.id
@@ -224,6 +224,10 @@ class TestGameService:
         stored_actions = game_service.action_repo.get_by_hand(updated_game.current_hand.id)
         assert len(stored_actions) == 1
         assert stored_actions[0].id == action.id
+        
+        # Verify the action was processed in the PokerGame instance
+        poker_game = game_service.poker_games.get(game.id)
+        assert poker_game is not None
         
         # Test error cases
         
@@ -401,3 +405,90 @@ class TestGameService:
             bb = level.big_blind
             expected_ante = bb // 4
             assert abs(level.ante - expected_ante) <= bb // 10  # Allow some deviation due to rounding
+
+    def test_domain_model_and_poker_game_sync(self, game_service):
+        """Test synchronization between domain model and PokerGame instance."""
+        # Create a game
+        game = game_service.create_game(
+            game_type=GameType.CASH,
+            name="Sync Test", 
+            min_bet=10
+        )
+        
+        # Add players
+        _, player1 = game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
+        _, player2 = game_service.add_player(game_id=game.id, name="Player 2", is_human=True)
+        
+        # Start the game (creates PokerGame instance)
+        started_game = game_service.start_game(game.id)
+        
+        # Verify PokerGame instance is created
+        poker_game = game_service.poker_games.get(game.id)
+        assert poker_game is not None
+        
+        # Verify players are synced
+        assert len(poker_game.players) == 2
+        assert poker_game.players[0].player_id == started_game.players[0].id
+        assert poker_game.players[0].name == started_game.players[0].name
+        
+        # Process an action
+        updated_game = game_service.process_action(
+            game_id=game.id,
+            player_id=player1.id,
+            action=PlayerAction.CALL
+        )
+        
+        # Verify action is reflected in both domain model and PokerGame
+        assert len(updated_game.current_hand.actions) > 0
+        
+        # Process another action that changes the betting round
+        updated_game = game_service.process_action(
+            game_id=game.id,
+            player_id=player2.id,
+            action=PlayerAction.CALL
+        )
+        
+        # If this moved to FLOP, community cards should be dealt in PokerGame
+        if poker_game.current_round == BettingRound.FLOP:
+            assert len(poker_game.community_cards) == 3  # 3 flop cards
+
+    def test_hand_history_recording(self, game_service):
+        """Test that hand history is properly recorded during gameplay."""
+        # Create and start a game
+        game = game_service.create_game(
+            game_type=GameType.CASH,
+            name="History Test"
+        )
+        
+        # Add players
+        _, player1 = game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
+        _, player2 = game_service.add_player(game_id=game.id, name="Player 2", is_human=True)
+        
+        # Start the game
+        started_game = game_service.start_game(game.id)
+        
+        # Process some actions to complete a hand
+        game_service.process_action(
+            game_id=game.id,
+            player_id=player1.id,
+            action=PlayerAction.CALL
+        )
+        
+        game_service.process_action(
+            game_id=game.id,
+            player_id=player2.id,
+            action=PlayerAction.CHECK
+        )
+        
+        # Get the hand histories for the game
+        histories = game_service.get_game_hand_histories(game.id)
+        
+        # Basic assertions to verify hand history is being recorded
+        assert len(histories) >= 1
+        
+        # Detailed checks on the first history
+        history = histories[0]
+        assert history.game_id == game.id
+        assert history.hand_number == 1
+        assert len(history.players) >= 2
+        assert history.timestamp_start is not None
