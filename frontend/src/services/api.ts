@@ -18,6 +18,20 @@ export const getWebSocketUrl = (path: string) => {
   return `${wsBaseUrl}${path}`;
 };
 
+// Types for cash game API
+export interface CashGameOptions {
+  name?: string;
+  minBuyIn?: number;
+  maxBuyIn?: number;
+  smallBlind?: number;
+  bigBlind?: number;
+  ante?: number;
+  tableSize?: number;
+  bettingStructure?: 'no_limit' | 'pot_limit' | 'fixed_limit';
+  rakePercentage?: number;
+  rakeCap?: number;
+}
+
 // Define API methods
 export const gameApi = {
   // Create a new game
@@ -27,6 +41,17 @@ export const gameApi = {
       return response.data;
     } catch (error) {
       console.error('Error creating game:', error);
+      throw error;
+    }
+  },
+  
+  // Create a cash game with custom options
+  createCashGame: async (options: CashGameOptions) => {
+    try {
+      const response = await api.post('/cash-games/', options);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating cash game:', error);
       throw error;
     }
   },
@@ -93,6 +118,63 @@ export const gameApi = {
   // Get WebSocket URL for a game
   getGameWebSocketUrl: (gameId: string, playerId?: string) => {
     return getWebSocketUrl(`/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`);
+  },
+
+  // Cash game player management methods
+  cashGame: {
+    // Add a player to a cash game
+    addPlayer: async (gameId: string, playerName: string, buyIn: number, options?: {
+      isHuman?: boolean,
+      archetype?: string,
+      position?: number
+    }) => {
+      try {
+        const response = await api.post(`/cash-games/${gameId}/players`, {
+          name: playerName,
+          buy_in: buyIn,
+          is_human: options?.isHuman ?? false,
+          archetype: options?.archetype,
+          position: options?.position
+        });
+        return response.data;
+      } catch (error) {
+        console.error('Error adding player to cash game:', error);
+        throw error;
+      }
+    },
+
+    // Cash out a player
+    cashOutPlayer: async (gameId: string, playerId: string) => {
+      try {
+        const response = await api.post(`/cash-games/${gameId}/players/${playerId}/cashout`);
+        return response.data;
+      } catch (error) {
+        console.error('Error cashing out player:', error);
+        throw error;
+      }
+    },
+
+    // Rebuy for a player
+    rebuyPlayer: async (gameId: string, playerId: string, amount: number) => {
+      try {
+        const response = await api.post(`/cash-games/${gameId}/players/${playerId}/rebuy`, { amount });
+        return response.data;
+      } catch (error) {
+        console.error('Error performing rebuy:', error);
+        throw error;
+      }
+    },
+
+    // Top up player to maximum buy-in
+    topUpPlayer: async (gameId: string, playerId: string) => {
+      try {
+        const response = await api.post(`/cash-games/${gameId}/players/${playerId}/topup`);
+        return response.data;
+      } catch (error) {
+        console.error('Error topping up player:', error);
+        throw error;
+      }
+    }
   }
 };
 

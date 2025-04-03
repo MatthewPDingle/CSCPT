@@ -922,12 +922,55 @@ The poker engine will be thoroughly tested using:
 4. **Regression Tests**: Ensure bug fixes don't reintroduce previously fixed issues
 5. **Performance Tests**: Measure and optimize engine performance for various game sizes
 
+## Cash Game Features
+
+The poker engine now supports cash game mechanics with the following features:
+
+1. **Betting Structures**:
+   - No-Limit: Players can bet any amount up to their stack
+   - Pot-Limit: Maximum bet is the current pot size
+   - Fixed-Limit: Bet sizes are fixed at predetermined amounts
+
+2. **Rake Implementation**:
+   - Configurable rake percentage (default 5%)
+   - Configurable rake cap in big blinds (default 5BB)
+   - Minimum pot size for rake collection (10BB)
+
+3. **Player Management**:
+   - Dynamic player joining and leaving (mid-game)
+   - Configurable minimum and maximum buy-ins
+   - Support for rebuys and top-ups
+   - Cash-out functionality
+
+4. **Cash Game Specific Logic**:
+   ```python
+   class PokerGame:
+       # ...existing code...
+       
+       def add_player_mid_game(self, player_id, name, chips, position=None):
+           """Add a player mid-game (they'll wait for the next hand)."""
+           # Implementation details
+           
+       def remove_player(self, player_id):
+           """Remove a player (cash out)."""
+           # Implementation details
+           
+       def calculate_rake(self, pot_amount):
+           """Calculate rake for a pot."""
+           # Implementation details
+           
+       def validate_bet_for_betting_structure(self, action, amount, player):
+           """Validate a bet based on the current betting structure."""
+           # Implementation details
+   ```
+
 ## Future Enhancements
 
 Potential future enhancements to the poker engine include:
 
-1. **Tournament Support**: Adding support for tournaments with blind increases and player eliminations
-2. **Alternative Poker Variants**: Support for other poker variants beyond Texas Hold'em
-3. **Advanced Statistics**: Real-time calculation of advanced poker statistics like EV and equity
-4. **Hand History Replayer**: Tools for replaying and analyzing hand histories
-5. **Performance Optimizations**: Further optimizations for handling high-volume games
+1. **Additional Game Variants**: Support for Omaha, 7-Card Stud, and other poker variants
+2. **Advanced Tournament Features**: Rebuy periods, satellite qualifiers, and bounty tournaments
+3. **Mixed Games**: Support for mixed game formats like H.O.R.S.E. and 8-Game
+4. **Advanced Statistics**: Real-time calculation of advanced poker statistics like EV and equity
+5. **Hand History Replayer**: Tools for replaying and analyzing hand histories
+6. **Performance Optimizations**: Further optimizations for handling high-volume games

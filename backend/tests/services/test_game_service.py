@@ -131,12 +131,15 @@ class TestGameService:
         # Start the game to test adding a player to an active game
         game_service.start_game(game.id)
         
-        # Test adding player to an active game
-        with pytest.raises(ValueError):
-            game_service.add_player(
-                game_id=game.id,
-                name="Late Player"
-            )
+        # For cash games, we now allow adding players mid-game
+        # So this should NOT raise an error
+        _, late_player = game_service.add_player(
+            game_id=game.id,
+            name="Late Player"
+        )
+        
+        # Verify the player was added correctly
+        assert late_player.status == PlayerStatus.WAITING  # New players wait for next hand
 
     def test_start_game(self, game_service):
         """Test starting a game."""

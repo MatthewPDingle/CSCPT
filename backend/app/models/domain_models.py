@@ -33,6 +33,13 @@ class GameType(str, Enum):
     TOURNAMENT = "tournament"
 
 
+class BettingStructure(str, Enum):
+    """Betting structure for cash games."""
+    NO_LIMIT = "no_limit"
+    POT_LIMIT = "pot_limit"
+    FIXED_LIMIT = "fixed_limit"
+
+
 class PlayerAction(str, Enum):
     """Possible player actions in poker."""
     FOLD = "fold"
@@ -178,13 +185,20 @@ class TournamentInfo(BaseModel):
 
 class CashGameInfo(BaseModel):
     """Information specific to cash games."""
-    buy_in: int
-    min_bet: int
-    max_bet: Optional[int] = None  # None for no-limit
-    ante: int = 0
-    straddled: bool = False
-    straddle_amount: int = 0
-    table_size: int
+    buy_in: int  # Default buy-in amount
+    min_buy_in: int  # Minimum buy-in (typically 40-100 big blinds)
+    max_buy_in: int  # Maximum buy-in (typically 100-250 big blinds)
+    min_bet: int  # Small blind size
+    small_blind: int = 0  # Small blind size (same as min_bet, kept for clarity)
+    big_blind: int = 0  # Big blind size
+    betting_structure: BettingStructure = BettingStructure.NO_LIMIT
+    max_bet: Optional[int] = None  # None for no-limit, set for limit games
+    ante: int = 0  # Ante amount if used
+    straddled: bool = False  # Whether a straddle is in play
+    straddle_amount: int = 0  # Amount of the straddle if enabled
+    table_size: int  # Maximum number of players at the table
+    rake_percentage: float = 0.05  # Typical 5% rake
+    rake_cap: int = 5  # Maximum rake amount in big blinds
 
 
 class HandMetrics(BaseModel):

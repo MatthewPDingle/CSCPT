@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import PokerTable from '../components/poker/PokerTable';
 import ActionControls from '../components/poker/ActionControls';
+import CashGameControls from '../components/poker/CashGameControls';
+import { useLocation } from 'react-router-dom';
 
 const GameContainer = styled.div`
   width: 100%;
@@ -73,6 +75,8 @@ const SizeButton = styled.button<{ active: boolean }>`
 
 // Mock game state for initial development
 const initialGameState = {
+  id: 'game123',
+  type: 'cash', // 'cash' or 'tournament'
   players: [
     // Human player (position following alphabetical order)
     { id: 'player', name: 'You', chips: 1000, position: 9, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
@@ -91,12 +95,26 @@ const initialGameState = {
   pot: 0,
   currentBet: 0,
   playerTurn: 'ai2', // Bob is current player
-  round: 'preflop'
+  round: 'preflop',
+  settings: {
+    maxBuyIn: 2000,
+    minBuyIn: 400,
+    bettingStructure: 'no_limit',
+    bigBlind: 10,
+    smallBlind: 5,
+    ante: 0
+  }
 };
 
 const GamePage: React.FC = () => {
+  const location = useLocation();
   const [gameState, setGameState] = useState(initialGameState);
   const [tableSize, setTableSize] = useState(9);
+  
+  // Extract game type from location state or query parameters if available
+  const [gameType, setGameType] = useState<'cash' | 'tournament'>(
+    (location.state as any)?.gameType || 'cash'
+  );
   
   // Mock function to handle player actions
   const handleAction = (action: string, amount?: number) => {
@@ -133,6 +151,12 @@ const GamePage: React.FC = () => {
     setTableSize(count);
   };
 
+  // Function to update player data after cash game operations
+  const handlePlayerUpdate = () => {
+    // In a real implementation, this would fetch the latest game state
+    console.log('Updating player data after cash game operation');
+  };
+
   return (
     <GameContainer>
       <GameHeader>
@@ -167,6 +191,17 @@ const GamePage: React.FC = () => {
         playerChips={gameState.players.find(p => p.id === 'player')?.chips || 0}
         isPlayerTurn={gameState.playerTurn === 'player'}
       />
+
+      {/* Only show cash game controls for cash games */}
+      {gameState.type === 'cash' && (
+        <CashGameControls
+          gameId={gameState.id}
+          playerId="player"
+          chips={gameState.players.find(p => p.id === 'player')?.chips || 0}
+          maxBuyIn={gameState.settings.maxBuyIn}
+          onPlayerUpdate={handlePlayerUpdate}
+        />
+      )}
     </GameContainer>
   );
 };

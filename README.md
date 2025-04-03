@@ -46,8 +46,10 @@ See [Getting Started](docs/GETTING_STARTED.md) for detailed setup instructions.
 ### Technical Documentation
 - [API Design](docs/API_DESIGN.md)
 - [Poker Engine](docs/POKER_ENGINE.md)
+- [Cash Game Implementation](docs/CASH_GAMES.md)
 - [AI Integration](docs/AI_INTEGRATION.md)
 - [Player Archetype Design](docs/ARCHETYPES.md)
+- [Memory System](docs/MEMORY_SYSTEM.md)
 
 ## Contributions
 

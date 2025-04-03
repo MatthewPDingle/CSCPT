@@ -8,7 +8,8 @@ from datetime import datetime
 from app.models.domain_models import (
     Game, Player, Hand, ActionHistory, User,
     GameType, GameStatus, PlayerStatus, PlayerAction, BettingRound,
-    TournamentInfo, CashGameInfo, ArchetypeEnum, TournamentStage, TournamentTier
+    TournamentInfo, CashGameInfo, ArchetypeEnum, TournamentStage, TournamentTier,
+    BettingStructure
 )
 
 
@@ -228,17 +229,101 @@ class TestDomainModels:
         # Test with minimal fields
         cash_game_info = CashGameInfo(
             buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
             min_bet=10,
             table_size=6
         )
         
         assert cash_game_info.buy_in == 1000
+        assert cash_game_info.min_buy_in == 400
+        assert cash_game_info.max_buy_in == 2000
         assert cash_game_info.min_bet == 10
         assert cash_game_info.max_bet is None
         assert cash_game_info.ante == 0
         assert cash_game_info.straddled is False
         assert cash_game_info.straddle_amount == 0
         assert cash_game_info.table_size == 6
+        assert cash_game_info.betting_structure == BettingStructure.NO_LIMIT
+        assert cash_game_info.rake_percentage == 0.05
+        assert cash_game_info.rake_cap == 5
+        
+    def test_cash_game_info_with_betting_structures(self):
+        """Test CashGameInfo with different betting structures."""
+        # Test No Limit
+        no_limit_game = CashGameInfo(
+            buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
+            min_bet=10,
+            table_size=6,
+            betting_structure=BettingStructure.NO_LIMIT
+        )
+        assert no_limit_game.betting_structure == BettingStructure.NO_LIMIT
+        assert no_limit_game.max_bet is None  # No max bet in No Limit
+        
+        # Test Pot Limit
+        pot_limit_game = CashGameInfo(
+            buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
+            min_bet=10,
+            table_size=6,
+            betting_structure=BettingStructure.POT_LIMIT
+        )
+        assert pot_limit_game.betting_structure == BettingStructure.POT_LIMIT
+        
+        # Test Fixed Limit
+        fixed_limit_game = CashGameInfo(
+            buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
+            min_bet=10,
+            max_bet=20,  # Fixed limit has a max bet
+            table_size=6,
+            betting_structure=BettingStructure.FIXED_LIMIT
+        )
+        assert fixed_limit_game.betting_structure == BettingStructure.FIXED_LIMIT
+        assert fixed_limit_game.max_bet == 20
+        
+    def test_cash_game_rake_settings(self):
+        """Test rake settings in CashGameInfo."""
+        # Test default rake
+        default_rake_game = CashGameInfo(
+            buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
+            min_bet=10,
+            table_size=6
+        )
+        assert default_rake_game.rake_percentage == 0.05
+        assert default_rake_game.rake_cap == 5
+        
+        # Test custom rake
+        custom_rake_game = CashGameInfo(
+            buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
+            min_bet=10,
+            table_size=6,
+            rake_percentage=0.03,
+            rake_cap=3
+        )
+        assert custom_rake_game.rake_percentage == 0.03
+        assert custom_rake_game.rake_cap == 3
+        
+        # Test no rake
+        no_rake_game = CashGameInfo(
+            buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
+            min_bet=10,
+            table_size=6,
+            rake_percentage=0,
+            rake_cap=0
+        )
+        assert no_rake_game.rake_percentage == 0
+        assert no_rake_game.rake_cap == 0
 
     def test_game_model(self):
         """Test Game model creation and defaults."""
@@ -288,6 +373,8 @@ class TestDomainModels:
         # Test with cash game info
         cash_game_info = CashGameInfo(
             buy_in=1000,
+            min_buy_in=400,
+            max_buy_in=2000,
             min_bet=10,
             table_size=6
         )

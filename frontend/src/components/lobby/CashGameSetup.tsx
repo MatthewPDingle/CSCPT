@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
-import { useSetup } from '../../contexts/SetupContext';
+import { useSetup, BettingStructure } from '../../contexts/SetupContext';
 
 // Props definition
 interface CashGameSetupProps {
@@ -121,6 +121,58 @@ const InfoText = styled.p`
   font-style: italic;
 `;
 
+const StructureContainer = styled.div`
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+`;
+
+const StructureOption = styled.div<{ selected?: boolean }>`
+  flex: 1;
+  padding: 1rem;
+  background-color: ${props => props.selected ? 'rgba(52, 152, 219, 0.3)' : 'rgba(0, 0, 0, 0.3)'};
+  border: 1px solid ${props => props.selected ? '#3498db' : 'rgba(255, 255, 255, 0.2)'};
+  border-radius: 5px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: rgba(52, 152, 219, 0.2);
+  }
+`;
+
+const StructureTitle = styled.div`
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #f0f0f0;
+`;
+
+const StructureDescription = styled.div`
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+`;
+
+const BuyInContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const BuyInRange = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const RakeContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+`;
+
 const NextButton = styled.button`
   padding: 0.8rem 2rem;
   margin-top: 2rem;
@@ -140,12 +192,55 @@ const NextButton = styled.button`
 
 const CashGameSetup: React.FC<CashGameSetupProps> = ({ onNext }) => {
   const { config, setCashGameOption } = useSetup();
-  const { buyIn, smallBlind, bigBlind, ante, tableSize } = config.cashGame;
+  const { 
+    buyIn, smallBlind, bigBlind, ante, tableSize, 
+    bettingStructure, minBuyIn, maxBuyIn, rakePercentage, rakeCap 
+  } = config.cashGame;
+  
+  // Structure options descriptions
+  const bettingStructureInfo = {
+    'no_limit': {
+      title: 'No Limit',
+      description: 'Players can bet any amount up to their stack at any time.'
+    },
+    'pot_limit': {
+      title: 'Pot Limit',
+      description: 'Maximum bet is limited to the current pot size.'
+    },
+    'fixed_limit': {
+      title: 'Fixed Limit',
+      description: 'Bet sizes and raises are fixed based on blind levels.'
+    }
+  };
   
   const handleBuyInChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);
     if (!isNaN(value) && value > 0) {
       setCashGameOption('buyIn', value);
+    }
+  };
+  
+  const handleMinBuyInChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10);
+    if (!isNaN(value) && value > 0) {
+      setCashGameOption('minBuyIn', value);
+      
+      // If current buy-in is less than new minimum, update it
+      if (buyIn < value) {
+        setCashGameOption('buyIn', value);
+      }
+    }
+  };
+  
+  const handleMaxBuyInChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10);
+    if (!isNaN(value) && value > 0) {
+      setCashGameOption('maxBuyIn', value);
+      
+      // If current buy-in is more than new maximum, update it
+      if (buyIn > value) {
+        setCashGameOption('buyIn', value);
+      }
     }
   };
   
@@ -156,6 +251,11 @@ const CashGameSetup: React.FC<CashGameSetupProps> = ({ onNext }) => {
       
       // Automatically set big blind to double small blind
       setCashGameOption('bigBlind', value * 2);
+      
+      // Update recommended buy-ins
+      const newBigBlind = value * 2;
+      setCashGameOption('minBuyIn', newBigBlind * 40);
+      setCashGameOption('maxBuyIn', newBigBlind * 200);
     }
   };
   
@@ -163,6 +263,10 @@ const CashGameSetup: React.FC<CashGameSetupProps> = ({ onNext }) => {
     const value = parseInt(e.target.value, 10);
     if (!isNaN(value) && value > 0) {
       setCashGameOption('bigBlind', value);
+      
+      // Update recommended buy-ins
+      setCashGameOption('minBuyIn', value * 40);
+      setCashGameOption('maxBuyIn', value * 200);
     }
   };
   
@@ -178,12 +282,29 @@ const CashGameSetup: React.FC<CashGameSetupProps> = ({ onNext }) => {
     setCashGameOption('tableSize', value);
   };
   
+  const handleBettingStructureChange = (structure: BettingStructure) => {
+    setCashGameOption('bettingStructure', structure);
+  };
+  
+  const handleRakePercentageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= 0 && value <= 0.1) {
+      setCashGameOption('rakePercentage', value);
+    }
+  };
+  
+  const handleRakeCapChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10);
+    if (!isNaN(value) && value >= 0) {
+      setCashGameOption('rakeCap', value);
+    }
+  };
+  
   // Calculate effective stack in big blinds
   const effectiveBigBlinds = bigBlind > 0 ? Math.round(buyIn / bigBlind) : 0;
   
-  // Recommend buy-in based on big blind
-  const recommendedMinBuyIn = bigBlind * 40;
-  const recommendedMaxBuyIn = bigBlind * 200;
+  // Format rake percentage for display (0.05 -> 5%)
+  const formattedRakePercentage = Math.round(rakePercentage * 100);
   
   return (
     <Container>
@@ -191,27 +312,19 @@ const CashGameSetup: React.FC<CashGameSetupProps> = ({ onNext }) => {
       
       <FormContainer>
         <FormGroup>
-          <Label htmlFor="buyIn">Buy-in Amount</Label>
-          <InputRow>
-            <CurrencySymbol>$</CurrencySymbol>
-            <Input 
-              id="buyIn"
-              type="number" 
-              min="100"
-              step="100"
-              value={buyIn} 
-              onChange={handleBuyInChange}
-            />
-          </InputRow>
-          <InfoText>
-            Effective stack: {effectiveBigBlinds} big blinds
-            {effectiveBigBlinds < 40 && " (Very shallow stack)"}
-            {effectiveBigBlinds >= 40 && effectiveBigBlinds < 100 && " (Standard stack)"}
-            {effectiveBigBlinds >= 100 && " (Deep stack)"}
-          </InfoText>
-          <InfoText>
-            Recommended buy-in range: ${recommendedMinBuyIn} - ${recommendedMaxBuyIn}
-          </InfoText>
+          <Label>Betting Structure</Label>
+          <StructureContainer>
+            {Object.entries(bettingStructureInfo).map(([key, info]) => (
+              <StructureOption 
+                key={key}
+                selected={bettingStructure === key}
+                onClick={() => handleBettingStructureChange(key as BettingStructure)}
+              >
+                <StructureTitle>{info.title}</StructureTitle>
+                <StructureDescription>{info.description}</StructureDescription>
+              </StructureOption>
+            ))}
+          </StructureContainer>
         </FormGroup>
         
         <FormGroup>
@@ -260,6 +373,99 @@ const CashGameSetup: React.FC<CashGameSetupProps> = ({ onNext }) => {
           <InfoText>
             Optional ante paid by all players before each hand. Set to 0 for no ante.
           </InfoText>
+        </FormGroup>
+        
+        <FormGroup>
+          <Label>Buy-in Settings</Label>
+          <BuyInContainer>
+            <Label htmlFor="buyIn">Default Buy-in Amount</Label>
+            <InputRow>
+              <CurrencySymbol>$</CurrencySymbol>
+              <Input 
+                id="buyIn"
+                type="number" 
+                min={minBuyIn}
+                max={maxBuyIn}
+                step="100"
+                value={buyIn} 
+                onChange={handleBuyInChange}
+              />
+            </InputRow>
+            <InfoText>
+              Effective stack: {effectiveBigBlinds} big blinds
+              {effectiveBigBlinds < 40 && " (Very shallow stack)"}
+              {effectiveBigBlinds >= 40 && effectiveBigBlinds < 100 && " (Standard stack)"}
+              {effectiveBigBlinds >= 100 && " (Deep stack)"}
+            </InfoText>
+            
+            <BuyInRange>
+              <BlindInput>
+                <Label htmlFor="minBuyIn">Minimum Buy-in</Label>
+                <InputRow>
+                  <CurrencySymbol>$</CurrencySymbol>
+                  <Input 
+                    id="minBuyIn"
+                    type="number" 
+                    min={bigBlind * 20}
+                    step="100"
+                    value={minBuyIn} 
+                    onChange={handleMinBuyInChange}
+                  />
+                </InputRow>
+                <InfoText>
+                  {bigBlind > 0 ? Math.round(minBuyIn / bigBlind) : 0} big blinds
+                </InfoText>
+              </BlindInput>
+              
+              <BlindInput>
+                <Label htmlFor="maxBuyIn">Maximum Buy-in</Label>
+                <InputRow>
+                  <CurrencySymbol>$</CurrencySymbol>
+                  <Input 
+                    id="maxBuyIn"
+                    type="number" 
+                    min={minBuyIn}
+                    step="100"
+                    value={maxBuyIn} 
+                    onChange={handleMaxBuyInChange}
+                  />
+                </InputRow>
+                <InfoText>
+                  {bigBlind > 0 ? Math.round(maxBuyIn / bigBlind) : 0} big blinds
+                </InfoText>
+              </BlindInput>
+            </BuyInRange>
+          </BuyInContainer>
+        </FormGroup>
+        
+        <FormGroup>
+          <Label>Rake Settings</Label>
+          <RakeContainer>
+            <Label htmlFor="rakePercentage">Rake Percentage: {formattedRakePercentage}%</Label>
+            <Slider
+              id="rakePercentage"
+              type="range"
+              min="0"
+              max="0.1"
+              step="0.01"
+              value={rakePercentage}
+              onChange={handleRakePercentageChange}
+            />
+            
+            <Label htmlFor="rakeCap">Rake Cap (in big blinds)</Label>
+            <InputRow>
+              <Input 
+                id="rakeCap"
+                type="number" 
+                min="0"
+                value={rakeCap} 
+                onChange={handleRakeCapChange}
+              />
+            </InputRow>
+            <InfoText>
+              Maximum rake amount: ${rakeCap * bigBlind}
+            </InfoText>
+          </RakeContainer>
         </FormGroup>
         
         <FormGroup>

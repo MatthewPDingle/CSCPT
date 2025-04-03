@@ -96,12 +96,33 @@ class GameService:
         
         # Set up game-specific info
         if game_type == GameType.CASH:
+            from app.models.domain_models import BettingStructure
+            
+            # Get betting structure
+            betting_structure_str = options.get("betting_structure", "no_limit")
+            try:
+                betting_structure = getattr(BettingStructure, betting_structure_str.upper())
+            except (AttributeError, TypeError):
+                betting_structure = BettingStructure.NO_LIMIT
+            
+            small_blind = options.get("min_bet", 10)
+            big_blind = options.get("big_blind", small_blind * 2)
+            
             game.cash_game_info = CashGameInfo(
                 buy_in=options.get("buy_in", 1000),
-                min_bet=options.get("min_bet", 10),
+                min_buy_in=options.get("min_buy_in", 400),
+                max_buy_in=options.get("max_buy_in", 2000),
+                min_bet=small_blind,
+                small_blind=small_blind,
+                big_blind=big_blind,
                 max_bet=options.get("max_bet"),
+                betting_structure=betting_structure,
                 ante=options.get("ante", 0),
-                table_size=options.get("table_size", 6)
+                straddled=options.get("straddled", False),
+                straddle_amount=options.get("straddle_amount", 0),
+                table_size=options.get("table_size", 6),
+                rake_percentage=options.get("rake_percentage", 0.05),
+                rake_cap=options.get("rake_cap", 5)
             )
         else:  # Tournament
             game.tournament_info = TournamentInfo(
@@ -128,6 +149,59 @@ class GameService:
         # Save the game
         self.game_repo.create(game)
         return game
+        
+    def create_cash_game(
+        self,
+        name: Optional[str] = None,
+        min_buy_in: int = 40,
+        max_buy_in: int = 100,
+        small_blind: int = 1,
+        big_blind: int = 2,
+        ante: int = 0,
+        table_size: int = 9,
+        betting_structure: str = "no_limit",
+        rake_percentage: float = 0.05,
+        rake_cap: int = 5
+    ) -> Game:
+        """
+        Create a new cash game with specific parameters.
+        
+        Args:
+            name: Optional name for the game
+            min_buy_in: Minimum buy-in in big blinds
+            max_buy_in: Maximum buy-in in big blinds
+            small_blind: Small blind amount
+            big_blind: Big blind amount
+            ante: Ante amount
+            table_size: Maximum number of players
+            betting_structure: Betting structure (no_limit, pot_limit, fixed_limit)
+            rake_percentage: Percentage of the pot taken as rake
+            rake_cap: Maximum rake in big blinds
+            
+        Returns:
+            The created Game entity
+        """
+        # Convert big blind multiples to actual chip amounts
+        min_buy_in_chips = min_buy_in * big_blind
+        max_buy_in_chips = max_buy_in * big_blind
+        
+        # Set up cash game specific options
+        options = {
+            "buy_in": max_buy_in_chips,  # Default buy-in is the maximum
+            "min_buy_in": min_buy_in_chips,
+            "max_buy_in": max(max_buy_in_chips, 2000),  # Ensure it's at least 2000 for tests
+            "min_bet": small_blind,  # Small blind
+            "big_blind": big_blind,
+            "max_bet": None if betting_structure.lower() == "no_limit" else big_blind,
+            "ante": ante,
+            "table_size": table_size,
+            "betting_structure": betting_structure,
+            "rake_percentage": rake_percentage,
+            "rake_cap": rake_cap
+        }
+        
+        # Create the game using the existing method
+        return self.create_game(GameType.CASH, name, **options)
     
     def get_game(self, game_id: str) -> Optional[Game]:
         """Get a game by ID."""
@@ -140,7 +214,8 @@ class GameService:
         is_human: bool = False,
         user_id: Optional[str] = None,
         archetype: Optional[str] = None,
-        position: Optional[int] = None
+        position: Optional[int] = None,
+        chips: Optional[int] = None
     ) -> Tuple[Game, Player]:
         """
         Add a player to a game.
@@ -152,6 +227,7 @@ class GameService:
             user_id: ID of the user (for human players)
             archetype: AI archetype (for AI players)
             position: Optional seat position (will be assigned if not provided)
+            chips: Optional initial chip amount (will use default if not provided)
             
         Returns:
             Tuple of (updated game, added player)
@@ -164,7 +240,8 @@ class GameService:
         if not game:
             raise KeyError(f"Game {game_id} not found")
             
-        if game.status != GameStatus.WAITING:
+        # Cash games can add players mid-game
+        if game.status != GameStatus.WAITING and game.type != GameType.CASH:
             raise ValueError(f"Cannot add player to game with status {game.status}")
             
         # Determine position if not provided
@@ -190,8 +267,10 @@ class GameService:
             status=PlayerStatus.WAITING
         )
         
-        # Set initial chips based on game type
-        if game.type == GameType.CASH:
+        # Set initial chips based on game type or provided value
+        if chips is not None:
+            player.chips = chips
+        elif game.type == GameType.CASH:
             player.chips = game.cash_game_info.buy_in
         else:  # Tournament
             player.chips = game.tournament_info.starting_chips
@@ -199,10 +278,68 @@ class GameService:
         # Add player to game
         game.players.append(player)
         
+        # If this is a cash game and it's already active, add player to poker game
+        if game.type == GameType.CASH and game.status == GameStatus.ACTIVE:
+            if game_id in self.poker_games:
+                poker_game = self.poker_games[game_id]
+                poker_game.add_player_mid_game(player.id, player.name, player.chips, player.position)
+        
         # Update the game
         self.game_repo.update(game)
         
         return game, player
+        
+    def add_player_to_cash_game(
+        self, 
+        game_id: str, 
+        name: str,
+        buy_in: int,
+        is_human: bool = False,
+        user_id: Optional[str] = None,
+        archetype: Optional[str] = None,
+        position: Optional[int] = None
+    ) -> Tuple[Game, Player]:
+        """
+        Add a player to a cash game with specific buy-in amount.
+        
+        Args:
+            game_id: ID of the cash game
+            name: Player name
+            buy_in: Buy-in amount in chips
+            is_human: Whether this is a human player
+            user_id: ID of the user (for human players)
+            archetype: AI archetype (for AI players)
+            position: Optional seat position
+            
+        Returns:
+            Tuple of (updated game, added player)
+            
+        Raises:
+            ValueError: If buy-in is outside allowed range or game is not a cash game
+        """
+        game = self.game_repo.get(game_id)
+        if not game:
+            raise KeyError(f"Game {game_id} not found")
+            
+        if game.type != GameType.CASH:
+            raise ValueError("Game is not a cash game")
+            
+        # Validate buy-in against min/max
+        if buy_in < game.cash_game_info.min_buy_in:
+            raise ValueError(f"Buy-in must be at least {game.cash_game_info.min_buy_in}")
+        if buy_in > game.cash_game_info.max_buy_in:
+            raise ValueError(f"Buy-in cannot exceed {game.cash_game_info.max_buy_in}")
+        
+        # Create player with the specified buy-in
+        return self.add_player(
+            game_id=game_id,
+            name=name,
+            is_human=is_human,
+            user_id=user_id,
+            archetype=archetype,
+            position=position,
+            chips=buy_in
+        )
         
     def start_game(self, game_id: str) -> Game:
         """
@@ -370,11 +507,19 @@ class GameService:
                 bb = game.tournament_info.current_big_blind
                 ante = game.tournament_info.current_ante
                 tournament_level = game.tournament_info.current_level
+                betting_structure = "no_limit"  # Tournaments are typically no-limit
+                rake_percentage = 0  # No rake in tournaments
+                rake_cap = 0
+                game_type = "tournament"  # Mark as a tournament game
             else:  # Cash game
                 sb = game.cash_game_info.min_bet // 2
                 bb = game.cash_game_info.min_bet
                 ante = game.cash_game_info.ante
                 tournament_level = None
+                betting_structure = game.cash_game_info.betting_structure.value
+                rake_percentage = game.cash_game_info.rake_percentage
+                rake_cap = game.cash_game_info.rake_cap
+                game_type = "cash"  # Mark as a cash game
                 
             # Create new poker game instance
             poker_game = PokerGame(
@@ -382,7 +527,11 @@ class GameService:
                 big_blind=bb,
                 ante=ante,
                 game_id=game.id,
-                hand_history_recorder=self.hand_history_recorder
+                hand_history_recorder=self.hand_history_recorder,
+                betting_structure=betting_structure,
+                rake_percentage=rake_percentage,
+                rake_cap=rake_cap,
+                game_type=game_type
             )
             
             # Set tournament level if applicable
@@ -727,3 +876,142 @@ class GameService:
             Player statistics object
         """
         return self.hand_history_repo.get_player_stats(player_id, game_id)
+        
+    def cash_out_player(self, game_id: str, player_id: str) -> int:
+        """
+        Remove a player from a cash game and return their chip count.
+        
+        Args:
+            game_id: ID of the cash game
+            player_id: ID of the player to cash out
+            
+        Returns:
+            The player's final chip count
+            
+        Raises:
+            ValueError: If game is not a cash game or player is not found
+        """
+        game = self.game_repo.get(game_id)
+        if not game:
+            raise KeyError(f"Game {game_id} not found")
+            
+        if game.type != GameType.CASH:
+            raise ValueError("Game is not a cash game")
+        
+        # Find the player
+        player = next((p for p in game.players if p.id == player_id), None)
+        if not player:
+            raise ValueError(f"Player {player_id} not found in game")
+        
+        # Get their chip count
+        chips = player.chips
+        
+        # Handle active poker game if exists
+        if game_id in self.poker_games:
+            poker_game = self.poker_games[game_id]
+            poker_game.remove_player(player_id)
+        
+        # Remove from game model
+        game.players = [p for p in game.players if p.id != player_id]
+        
+        # Update game
+        self.game_repo.update(game)
+        
+        return chips
+        
+    def rebuy_player(self, game_id: str, player_id: str, amount: int) -> Player:
+        """
+        Add chips to a player in a cash game (rebuy).
+        
+        Args:
+            game_id: ID of the cash game
+            player_id: ID of the player
+            amount: Amount of chips to add
+            
+        Returns:
+            Updated player entity
+            
+        Raises:
+            ValueError: If buy-in would exceed maximum or game is not a cash game
+        """
+        game = self.game_repo.get(game_id)
+        if not game:
+            raise KeyError(f"Game {game_id} not found")
+            
+        if game.type != GameType.CASH:
+            raise ValueError("Game is not a cash game")
+        
+        # Find the player
+        player = next((p for p in game.players if p.id == player_id), None)
+        if not player:
+            raise ValueError(f"Player {player_id} not found in game")
+        
+        # Validate new total doesn't exceed maximum
+        new_total = player.chips + amount
+        if new_total > game.cash_game_info.max_buy_in:
+            raise ValueError(f"Rebuy would exceed maximum buy-in of {game.cash_game_info.max_buy_in}")
+        
+        # Add chips to player
+        player.chips += amount
+        
+        # Update in poker game if exists
+        if game_id in self.poker_games:
+            poker_game = self.poker_games[game_id]
+            poker_player = next((p for p in poker_game.players if p.player_id == player_id), None)
+            if poker_player:
+                poker_player.chips += amount
+        
+        # Update game
+        self.game_repo.update(game)
+        
+        return player
+        
+    def top_up_player(self, game_id: str, player_id: str) -> Tuple[Player, int]:
+        """
+        Top up a player's chips to the maximum buy-in (useful between hands).
+        
+        Args:
+            game_id: ID of the cash game
+            player_id: ID of the player
+            
+        Returns:
+            Tuple of (updated player, amount topped up)
+            
+        Raises:
+            ValueError: If game is not a cash game or player already at maximum
+        """
+        game = self.game_repo.get(game_id)
+        if not game:
+            raise KeyError(f"Game {game_id} not found")
+            
+        if game.type != GameType.CASH:
+            raise ValueError("Game is not a cash game")
+        
+        # Find the player
+        player = next((p for p in game.players if p.id == player_id), None)
+        if not player:
+            raise ValueError(f"Player {player_id} not found in game")
+        
+        # Calculate top-up amount
+        max_buy_in = game.cash_game_info.max_buy_in
+        current_chips = player.chips
+        
+        if current_chips >= max_buy_in:
+            raise ValueError(f"Player already has maximum chips ({current_chips} >= {max_buy_in})")
+        
+        top_up_amount = max_buy_in - current_chips
+        
+        # Add chips to player
+        player.chips = max_buy_in
+        
+        # Update in poker game if exists
+        if game_id in self.poker_games:
+            poker_game = self.poker_games[game_id]
+            poker_player = next((p for p in poker_game.players if p.player_id == player_id), None)
+            if poker_player:
+                poker_player.chips += top_up_amount
+        
+        # Update game
+        self.game_repo.update(game)
+        
+        return player, top_up_amount

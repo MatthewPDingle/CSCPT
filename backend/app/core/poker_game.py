@@ -140,7 +140,8 @@ class PokerGame:
     """Manages a Texas Hold'em poker game."""
     
     def __init__(self, small_blind: int, big_blind: int, ante: int = 0, game_id: str = None, 
-                hand_history_recorder=None):
+                hand_history_recorder=None, betting_structure: str = "no_limit",
+                rake_percentage: float = 0.05, rake_cap: int = 5, game_type: str = None):
         """
         Initialize a poker game.
         
@@ -150,6 +151,10 @@ class PokerGame:
             ante: Ante amount (0 for no ante)
             game_id: Optional ID of the game this poker game belongs to
             hand_history_recorder: Optional hand history recorder service
+            betting_structure: Betting structure (no_limit, pot_limit, fixed_limit)
+            rake_percentage: Percentage of pot taken as rake (default 5%)
+            rake_cap: Maximum rake in big blinds (default 5)
+            game_type: Type of game ("cash" or "tournament")
         """
         self.small_blind = small_blind
         self.big_blind = big_blind
@@ -166,6 +171,13 @@ class PokerGame:
         self.last_aggressor_idx = 0  # Track who was last to bet/raise
         self.hand_winners: Dict[str, List[Player]] = {}  # Map pot ID to winners
         self.to_act: Set[str] = set()  # Track players who still need to act in current round
+        
+        # Game type specific settings
+        from app.models.domain_models import BettingStructure
+        self.betting_structure = getattr(BettingStructure, betting_structure.upper(), BettingStructure.NO_LIMIT)
+        self.rake_percentage = rake_percentage
+        self.rake_cap = rake_cap
+        self.game_type = game_type  # "cash" or "tournament"
         
         # Hand history tracking
         self.game_id = game_id  # ID of the parent game
@@ -577,6 +589,10 @@ class PokerGame:
             if amount < min_bet:
                 return False
                 
+            # Validate against betting structure
+            if not self.validate_bet_for_betting_structure(action, amount, player):
+                return False
+                
             # Place the bet
             actual_bet = player.bet(amount)
             self.pots[0].add(actual_bet, player.player_id)
@@ -600,6 +616,10 @@ class PokerGame:
             
             # Verify amount is at least the minimum raise
             if amount < min_total:
+                return False
+                
+            # Validate against betting structure
+            if not self.validate_bet_for_betting_structure(action, amount, player):
                 return False
                 
             # IMPORTANT DEBUG - for test_preflop_betting_round
@@ -894,6 +914,16 @@ class PokerGame:
         # Make sure side pots are properly created
         self._create_side_pots()
         
+        # Calculate and collect rake for cash games only
+        for i, pot in enumerate(self.pots):
+            if (self.game_type == "cash" and 
+                hasattr(self, 'rake_percentage') and 
+                hasattr(self, 'rake_cap') and 
+                self.rake_percentage > 0):
+                adjusted_pot, rake = self.collect_rake(pot.amount)
+                pot.amount = adjusted_pot
+                # In a real implementation, we'd track the rake for accounting
+                
         # Evaluate all hands
         hand_results = self.evaluate_hands()
         
@@ -1208,3 +1238,161 @@ class PokerGame:
         
         print(f"Blinds updated to {small_blind}/{big_blind}" + 
               (f", ante {ante}" if ante is not None and ante > 0 else ""))
+              
+    def add_player_mid_game(self, player_id: str, name: str, chips: int, position: int = None) -> Player:
+        """
+        Add a player to an ongoing cash game.
+        
+        Args:
+            player_id: Player's unique identifier
+            name: Player's display name
+            chips: Starting chip count
+            position: Optional seat position (assigned automatically if None)
+            
+        Returns:
+            The newly created Player object
+        """
+        # If position not specified, find the first available position
+        if position is None:
+            taken_positions = {p.position for p in self.players}
+            for pos in range(len(self.players) + 1):  # Maximum possible new position
+                if pos not in taken_positions:
+                    position = pos
+                    break
+        
+        # Create new player
+        player = Player(player_id, name, chips, position)
+        
+        # In a cash game, new players wait until the next hand
+        player.status = PlayerStatus.OUT
+        
+        # Add player to the game
+        self.players.append(player)
+        
+        print(f"Player {name} added to game with {chips} chips at position {position}")
+        
+        return player
+        
+    def remove_player(self, player_id: str) -> int:
+        """
+        Remove a player from the game (cash out).
+        
+        Args:
+            player_id: ID of the player to remove
+            
+        Returns:
+            The amount of chips the player had when cashing out
+        """
+        player = next((p for p in self.players if p.player_id == player_id), None)
+        if not player:
+            return 0
+            
+        # Get remaining chips
+        remaining_chips = player.chips
+        
+        # Remove player
+        self.players = [p for p in self.players if p.player_id != player_id]
+        
+        print(f"Player {player.name} removed from game with {remaining_chips} chips")
+        
+        return remaining_chips
+        
+    def calculate_rake(self, pot_amount: int) -> int:
+        """
+        Calculate rake based on pot size and configured rake rules.
+        
+        Args:
+            pot_amount: The total pot amount to calculate rake on
+            
+        Returns:
+            The calculated rake amount
+        """
+        # No rake on tiny pots (e.g., less than 10 BB)
+        if pot_amount < self.big_blind * 10:
+            return 0
+        
+        # Calculate rake
+        rake = int(pot_amount * self.rake_percentage)
+        
+        # Cap the rake
+        max_rake = self.big_blind * self.rake_cap
+        rake = min(rake, max_rake)
+        
+        return rake
+        
+    def collect_rake(self, pot_amount: int) -> Tuple[int, int]:
+        """
+        Calculate and remove rake from a pot.
+        
+        Args:
+            pot_amount: The pot amount to rake
+            
+        Returns:
+            Tuple of (adjusted pot amount, rake amount)
+        """
+        rake = self.calculate_rake(pot_amount)
+        adjusted_pot = pot_amount - rake
+        
+        print(f"Rake collected: {rake} chips from {pot_amount} chip pot")
+        
+        return adjusted_pot, rake
+        
+    def validate_bet_for_betting_structure(self, action: PlayerAction, amount: int, player: Player) -> bool:
+        """
+        Validate a bet or raise based on the betting structure.
+        
+        Args:
+            action: The action being taken
+            amount: The bet/raise amount
+            player: The player taking the action
+            
+        Returns:
+            True if the bet is valid, False otherwise
+        """
+        from app.models.domain_models import BettingStructure
+        
+        # Current bet that needs to be called/raised
+        current_bet = self.current_bet
+        
+        # No-Limit: Any bet size allowed as long as it's >= min_raise
+        if self.betting_structure == BettingStructure.NO_LIMIT:
+            if action == PlayerAction.BET and amount < self.big_blind:
+                return False  # Minimum bet is one big blind
+            if action == PlayerAction.RAISE and amount < current_bet + self.min_raise:
+                return False  # Minimum raise is the size of the previous bet/raise
+            return True
+        
+        # Pot-Limit: Maximum bet/raise is the size of the pot
+        elif self.betting_structure == BettingStructure.POT_LIMIT:
+            if action == PlayerAction.BET:
+                max_bet = self.pot  # Current pot 
+                if amount > max_bet:
+                    return False
+                if amount < self.big_blind:
+                    return False
+            elif action == PlayerAction.RAISE:
+                call_amount = current_bet - player.current_bet
+                # In pot-limit, maximum raise is the current bet plus the size of the pot
+                max_raise = call_amount + (self.pot + current_bet)
+                if amount > max_raise:
+                    return False
+                if amount < current_bet + self.min_raise:
+                    return False
+            return True
+        
+        # Fixed-Limit: Fixed bet sizes
+        elif self.betting_structure == BettingStructure.FIXED_LIMIT:
+            if self.current_round in [BettingRound.PREFLOP, BettingRound.FLOP]:
+                valid_bet = self.big_blind
+            else:
+                valid_bet = self.big_blind * 2
+                
+            if action == PlayerAction.BET and amount != valid_bet:
+                return False
+            if action == PlayerAction.RAISE and amount != current_bet + valid_bet:
+                return False
+            # In fixed limit, typically only a certain number of raises are allowed per round
+            # This would be implemented here if needed
+            return True
+        
+        return True  # Default to valid if no specific structure

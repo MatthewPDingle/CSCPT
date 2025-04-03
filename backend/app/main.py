@@ -108,6 +108,10 @@ app.include_router(game_router)
 app.include_router(history_router)
 app.include_router(ai_router)
 
+# Include Cash Game API router
+from app.api.cash_game import router as cash_game_router
+app.include_router(cash_game_router)
+
 # Include WebSocket routers
 from app.api.game_ws import router as game_ws_router
 app.include_router(game_ws_router)

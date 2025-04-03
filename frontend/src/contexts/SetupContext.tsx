@@ -37,6 +37,9 @@ export interface ArchetypeDistribution {
   Trappy: number;
 }
 
+// Betting structure type
+export type BettingStructure = 'no_limit' | 'pot_limit' | 'fixed_limit';
+
 // Main game configuration state
 export interface GameConfig {
   gameMode: GameMode;
@@ -44,10 +47,15 @@ export interface GameConfig {
   // Cash game specific settings
   cashGame: {
     buyIn: number;
+    minBuyIn: number;
+    maxBuyIn: number;
     smallBlind: number;
     bigBlind: number;
     ante: number;
     tableSize: number;
+    bettingStructure: BettingStructure;
+    rakePercentage: number;
+    rakeCap: number;
     players: PlayerConfig[];
   };
   
@@ -146,10 +154,15 @@ const defaultConfig: GameConfig = {
   gameMode: 'cash',
   cashGame: {
     buyIn: 1000,
+    minBuyIn: 400,   // 40 BBs
+    maxBuyIn: 2000,  // 200 BBs
     smallBlind: 5,
     bigBlind: 10,
     ante: 0,
     tableSize: 6,
+    bettingStructure: 'no_limit',
+    rakePercentage: 0.05,
+    rakeCap: 5,
     players: generateDefaultPlayers(6)
   },
   tournament: {

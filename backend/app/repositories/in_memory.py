@@ -389,6 +389,17 @@ class RepositoryFactory:
             cls._instance = cls()
         return cls._instance
     
+    @classmethod
+    def _reset_instance_for_testing(cls):
+        """
+        Reset the singleton instance and all repositories.
+        
+        NOTE: This method should ONLY be used in test code, never in production.
+        It's designed to allow tests to start with clean repositories.
+        """
+        cls._instance = None
+        cls._repositories = {}
+    
     def get_repository(self, repo_type) -> Repository:
         """
         Get a repository instance of the specified type.
