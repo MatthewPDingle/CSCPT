@@ -36,6 +36,8 @@ interface GameState {
   current_bet: number;
   small_blind: number;
   big_blind: number;
+  max_buy_in?: number;
+  min_buy_in?: number;
 }
 
 interface PlayerAction {

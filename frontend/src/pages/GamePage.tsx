@@ -136,14 +136,20 @@ const GamePage: React.FC = () => {
       const isCurrent = gameState.current_player_idx !== undefined && 
         gameState.players[gameState.current_player_idx]?.player_id === player.player_id;
       
+      // Transform card objects to strings for the Card component
+      const transformedCards = player.cards 
+        ? player.cards.map(card => card ? `${card.rank}${card.suit}` : null)
+        : [null, null];
+        
       return {
         id: player.player_id,
         name: player.name,
         chips: player.chips,
         position: player.position,
-        cards: player.cards || [null, null],
+        cards: transformedCards,
         isActive: player.status === 'ACTIVE',
         isCurrent,
+        isDealer: false, // The dealer seat is added separately in PokerTable
         isButton,
         isSB: player.position === (gameState.button_position + 1) % gameState.players.length,
         isBB: player.position === (gameState.button_position + 2) % gameState.players.length,
@@ -192,7 +198,9 @@ const GamePage: React.FC = () => {
       
       <PokerTable 
         players={transformPlayersForTable()}
-        communityCards={gameState?.community_cards || []}
+        communityCards={(gameState?.community_cards || []).map(card => 
+          card ? `${card.rank}${card.suit}` : null
+        )}
         pot={gameState?.total_pot || 0}
       />
       
@@ -210,7 +218,7 @@ const GamePage: React.FC = () => {
           gameId={gameId}
           playerId={playerId}
           chips={chips}
-          maxBuyIn={gameState.max_buy_in || 2000}
+          maxBuyIn={gameState.max_buy_in ?? 2000}
           onPlayerUpdate={handlePlayerUpdate}
         />
       )}
