@@ -110,17 +110,17 @@ cscp/
   - [x] Broadcast AI actions to connected clients
 
 #### Frontend-Backend Integration
-- [ ] Connect real-time game state to UI 
+- [x] Connect real-time game state to UI 
   - [x] Create WebSocket hooks
-  - [ ] Replace mock game data with WebSocket data
-  - [ ] Add loading/connecting states  
-- [ ] Implement action controls with WebSocket
-  - [ ] Connect action buttons to send commands
-  - [ ] Handle action validation and feedback
-- [ ] Complete game initialization flow
-  - [ ] Implement lobby to game transition
-  - [ ] Connect setup options to game creation API
-  - [ ] Add game ID passing to WebSocket connection
+  - [x] Replace mock game data with WebSocket data
+  - [x] Add loading/connecting states  
+- [x] Implement action controls with WebSocket
+  - [x] Connect action buttons to send commands
+  - [x] Handle action validation and feedback
+- [x] Complete game initialization flow
+  - [x] Implement lobby to game transition
+  - [x] Connect setup options to game creation API
+  - [x] Add game ID passing to WebSocket connection
 
 #### Game Testing & Refinement
 - [ ] Test basic gameplay loop with AI opponents
@@ -240,22 +240,25 @@ cscp/
 
 ## Next Immediate Steps for Play Testing
 
-To enable play testing against AI opponents, focus on these critical tasks:
+With the successful completion of the Frontend-Backend Integration, the next critical tasks are:
 
-1. **Backend: AI Turn Triggering**
-   - Modify the game service to recognize when it's an AI player's turn
-   - Call the AI connector to get decisions for AI players
-   - Process AI actions to advance the game state
-   - Implement a full game loop that handles both human and AI players
+1. **Game Testing & Refinement**
+   - Test the complete gameplay loop with AI opponents
+   - Fix any hand progression issues
+   - Verify that tournament and cash game modes work correctly
+   - Test with different player counts
+   - Add comprehensive error handling and logging
 
-2. **Frontend: Connect Real-time State**
-   - Update GamePage.tsx to use WebSocket data instead of mock state
-   - Connect action controls to send player decisions to backend
-   - Add responsive feedback for game state changes
+2. **Statistics System Implementation**
+   - Design and implement the statistics tracking framework
+   - Add real-time statistics calculation during gameplay
+   - Create visualization components for the statistics
+   - Implement historical statistics tracking
 
-3. **Lobby to Game Flow**
-   - Implement the start game functionality from lobby settings
-   - Connect lobby player setup to backend player creation
-   - Create proper navigation from lobby to game with correct game ID
+3. **Coaching System Development**
+   - Design and implement the coaching prompt framework
+   - Add post-hand analysis functionality
+   - Create an interactive coaching dialogue system
+   - Implement pre-action advice functionality
 
-These tasks come from the "Phase 3: Integration & Playability" section above and represent the minimum needed to achieve a playable game against AI opponents.
+These tasks represent the remaining items in Phase 3 and the beginning of Phase 4, which will enhance the user experience and provide valuable feedback and learning opportunities for players.

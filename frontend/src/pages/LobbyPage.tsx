@@ -6,6 +6,7 @@ import GameModePanel from '../components/lobby/GameModePanel';
 import CashGameSetup from '../components/lobby/CashGameSetup';
 import TournamentSetup from '../components/lobby/TournamentSetup';
 import PlayerSetup from '../components/lobby/PlayerSetup';
+import { gameApi, GameSetupInput, PlayerSetupInput } from '../services/api';
 
 // Styled components
 const LobbyContainer = styled.div`
@@ -113,13 +114,85 @@ const LobbyContent: React.FC = () => {
   const navigate = useNavigate();
   const { config } = useSetup();
   const [activeTab, setActiveTab] = useState<TabIndex>(TabIndex.GAME_MODE);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   
-  const handleStartGame = () => {
-    // Save the final configuration before starting the game
-    localStorage.setItem('currentGameSetup', JSON.stringify(config));
+  const handleStartGame = async () => {
+    setIsLoading(true);
+    setError(null);
     
-    // Navigate to the game page
-    navigate('/game');
+    try {
+      // Save the final configuration before starting the game
+      localStorage.setItem('currentGameSetup', JSON.stringify(config));
+      
+      // Prepare player setup for API
+      const players: PlayerSetupInput[] = [];
+      
+      if (config.gameMode === 'cash') {
+        // Add human player (assume position 0 is the human)
+        players.push({
+          name: 'You',
+          is_human: true,
+          buy_in: config.cashGame.buyIn,
+          position: 0
+        });
+        
+        // Add AI players from config
+        config.cashGame.players.forEach(player => {
+          players.push({
+            name: player.name,
+            is_human: false,
+            archetype: player.archetype,
+            position: player.position,
+            buy_in: config.cashGame.buyIn
+          });
+        });
+      } else {
+        // Tournament setup would go here
+        // For now let's add a placeholder human player
+        players.push({
+          name: 'You',
+          is_human: true,
+          buy_in: config.tournament.startingChips,
+          position: 0
+        });
+      }
+      
+      // Prepare game setup for API
+      const gameSetup: GameSetupInput = {
+        game_mode: config.gameMode,
+        small_blind: config.gameMode === 'cash' ? config.cashGame.smallBlind : config.tournament.startingSmallBlind,
+        big_blind: config.gameMode === 'cash' ? config.cashGame.bigBlind : config.tournament.startingBigBlind,
+        ante: config.gameMode === 'cash' ? config.cashGame.ante : 0,
+        min_buy_in: config.gameMode === 'cash' ? config.cashGame.minBuyIn : undefined,
+        max_buy_in: config.gameMode === 'cash' ? config.cashGame.maxBuyIn : undefined,
+        table_size: config.gameMode === 'cash' ? config.cashGame.tableSize : undefined,
+        betting_structure: config.gameMode === 'cash' ? config.cashGame.bettingStructure : undefined,
+        rake_percentage: config.gameMode === 'cash' ? config.cashGame.rakePercentage : undefined,
+        rake_cap: config.gameMode === 'cash' ? config.cashGame.rakeCap : undefined,
+        tier: config.gameMode === 'tournament' ? config.tournament.tier : undefined,
+        stage: config.gameMode === 'tournament' ? config.tournament.stage : undefined,
+        buy_in_amount: config.gameMode === 'tournament' ? config.tournament.buyInAmount : undefined,
+        starting_chips: config.gameMode === 'tournament' ? config.tournament.startingChips : undefined,
+        players
+      };
+      
+      // Call API to setup game
+      const result = await gameApi.setupGame(gameSetup);
+      
+      // Navigate to the game page with the game ID and player ID
+      navigate('/game', { 
+        state: { 
+          gameId: result.game_id,
+          playerId: result.human_player_id,
+          gameMode: config.gameMode
+        }
+      });
+    } catch (err) {
+      console.error('Error setting up game:', err);
+      setError('Failed to set up game. Please try again.');
+      setIsLoading(false);
+    }
   };
   
   const renderTabContent = () => {
@@ -173,9 +246,14 @@ const LobbyContent: React.FC = () => {
       </ContentContainer>
       
       <ButtonContainer>
-        <StartGameButton onClick={handleStartGame}>
-          Start Game
+        <StartGameButton 
+          onClick={handleStartGame} 
+          disabled={isLoading}
+          style={{ opacity: isLoading ? 0.7 : 1 }}
+        >
+          {isLoading ? 'Setting up game...' : 'Start Game'}
         </StartGameButton>
+        {error && <div style={{ color: 'red', marginTop: '1rem' }}>{error}</div>}
       </ButtonContainer>
     </LobbyContainer>
   );

@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 
+interface ActionRequest {
+  handId: string;
+  player_id: string;
+  options: string[];
+  callAmount: number;
+  minRaise: number;
+  maxRaise: number;
+  timeLimit: number;
+  timestamp: string;
+}
+
 interface ActionControlsProps {
   onAction: (action: string, amount?: number) => void;
   currentBet: number;
   playerChips: number;
   isPlayerTurn: boolean;
+  actionRequest: ActionRequest | null;
 }
 
 const ControlsContainer = styled.div<{ isActive: boolean }>`
@@ -94,31 +106,36 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   onAction,
   currentBet,
   playerChips,
-  isPlayerTurn
+  isPlayerTurn,
+  actionRequest
 }) => {
-  const [betAmount, setBetAmount] = useState(currentBet * 2 || playerChips * 0.1);
-  const minBet = currentBet * 2;
+  // Use action request data if available, otherwise use defaults
+  const callAmount = actionRequest?.callAmount ?? Math.min(currentBet, playerChips);
+  const minRaiseAmount = actionRequest?.minRaise ?? currentBet * 2;
+  const maxRaiseAmount = actionRequest?.maxRaise ?? playerChips;
+  
+  // Initialize bet amount based on action request data or defaults
+  const [betAmount, setBetAmount] = useState(minRaiseAmount || playerChips * 0.1);
   
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setBetAmount(parseInt(e.target.value));
   };
   
-  // Determine available actions based on game state
-  const canCheck = currentBet === 0;
-  const callAmount = Math.min(currentBet, playerChips);
-  const canCall = currentBet > 0 && playerChips > 0;
+  // Determine available actions based on action request or game state
+  const availableOptions = actionRequest?.options ?? [];
   
-  const minRaise = currentBet * 2;
-  const canRaise = playerChips > minRaise && currentBet > 0;
-  
-  const canBet = playerChips > 0 && currentBet === 0;
+  const canCheck = availableOptions.includes('CHECK') || currentBet === 0;
+  const canCall = availableOptions.includes('CALL') || (currentBet > 0 && playerChips > 0);
+  const canRaise = availableOptions.includes('RAISE') || (playerChips > minRaiseAmount && currentBet > 0);
+  const canBet = availableOptions.includes('BET') || (playerChips > 0 && currentBet === 0);
+  const canFold = availableOptions.includes('FOLD') || !canCheck;
   
   return (
     <ControlsContainer isActive={isPlayerTurn}>
       <ActionButton 
         action="fold"
-        onClick={() => onAction('fold')}
-        disabled={canCheck} // Can't fold if you can check
+        onClick={() => onAction('FOLD')}
+        disabled={!canFold || !isPlayerTurn}
       >
         Fold
       </ActionButton>
@@ -126,15 +143,16 @@ const ActionControls: React.FC<ActionControlsProps> = ({
       {canCheck ? (
         <ActionButton 
           action="check" 
-          onClick={() => onAction('check')}
+          onClick={() => onAction('CHECK')}
+          disabled={!isPlayerTurn}
         >
           Check
         </ActionButton>
       ) : (
         <ActionButton 
           action="call" 
-          onClick={() => onAction('call')}
-          disabled={!canCall}
+          onClick={() => onAction('CALL')}
+          disabled={!canCall || !isPlayerTurn}
         >
           Call ${callAmount}
         </ActionButton>
@@ -144,7 +162,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
         <BetControls>
           <BetSlider 
             type="range" 
-            min={playerChips * 0.05}
+            min={Number((playerChips * 0.05).toFixed(0))}
             max={playerChips}
             value={betAmount}
             onChange={handleSliderChange}
@@ -152,7 +170,8 @@ const ActionControls: React.FC<ActionControlsProps> = ({
           <BetAmount>${betAmount}</BetAmount>
           <ActionButton 
             action="bet" 
-            onClick={() => onAction('bet', betAmount)}
+            onClick={() => onAction('BET', betAmount)}
+            disabled={!isPlayerTurn}
           >
             Bet
           </ActionButton>
@@ -161,28 +180,31 @@ const ActionControls: React.FC<ActionControlsProps> = ({
         <BetControls>
           <BetSlider 
             type="range" 
-            min={minRaise}
-            max={playerChips}
+            min={minRaiseAmount}
+            max={maxRaiseAmount}
             value={betAmount}
             onChange={handleSliderChange}
           />
           <BetAmount>${betAmount}</BetAmount>
           <ActionButton 
             action="raise" 
-            onClick={() => onAction('raise', betAmount)}
+            onClick={() => onAction('RAISE', betAmount)}
+            disabled={!isPlayerTurn}
           >
             Raise
           </ActionButton>
         </BetControls>
       ) : null}
       
-      <ActionButton 
-        action="allIn"
-        onClick={() => onAction('allIn', playerChips)}
-        disabled={playerChips === 0}
-      >
-        All In (${playerChips})
-      </ActionButton>
+      {availableOptions.includes('ALL_IN') && (
+        <ActionButton 
+          action="allIn"
+          onClick={() => onAction('ALL_IN', playerChips)}
+          disabled={playerChips === 0 || !isPlayerTurn}
+        >
+          All In (${playerChips})
+        </ActionButton>
+      )}
     </ControlsContainer>
   );
 };

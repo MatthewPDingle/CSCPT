@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.game import router as game_router
 from app.api.history_api import router as history_router
 from app.api.ai_connector import router as ai_router
+from app.api.setup import router as setup_router
 from app.repositories.persistence import RepositoryPersistence, PersistenceScheduler
 from app.repositories.in_memory import (
     GameRepository, UserRepository, HandRepository, ActionHistoryRepository,
@@ -107,6 +108,7 @@ async def root():
 app.include_router(game_router)
 app.include_router(history_router)
 app.include_router(ai_router)
+app.include_router(setup_router)
 
 # Include Cash Game API router
 from app.api.cash_game import router as cash_game_router

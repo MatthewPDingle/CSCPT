@@ -67,8 +67,8 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
     # Calculate total pot amount
     total_pot = sum(pot.amount for pot in game.pots)
 
-    # Create the game state model
-    return GameStateModel(
+    # Create the game state model with base fields
+    game_state = GameStateModel(
         game_id=game_id,
         players=players,
         community_cards=community_cards,
@@ -81,6 +81,18 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
         small_blind=game.small_blind,
         big_blind=game.big_blind,
     )
+    
+    # Add cash game specific fields if available
+    from app.services.game_service import GameService
+    service = GameService.get_instance()
+    domain_game = service.get_game(game_id)
+    
+    if domain_game and domain_game.type.name == 'CASH':
+        # Cash game - add min/max buy-in
+        game_state.min_buy_in = getattr(domain_game, 'min_buy_in', None)
+        game_state.max_buy_in = getattr(domain_game, 'max_buy_in', None)
+    
+    return game_state
 
 
 def format_winners(game: PokerGame) -> str:

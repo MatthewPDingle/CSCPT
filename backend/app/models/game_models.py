@@ -81,6 +81,9 @@ class GameStateModel(BaseModel):
     current_bet: int
     small_blind: int
     big_blind: int
+    # Optional fields for cash games
+    max_buy_in: Optional[int] = None
+    min_buy_in: Optional[int] = None
     
     class Config:
         schema_extra = {

@@ -3,7 +3,8 @@ import styled from 'styled-components';
 import PokerTable from '../components/poker/PokerTable';
 import ActionControls from '../components/poker/ActionControls';
 import CashGameControls from '../components/poker/CashGameControls';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useGameWebSocket } from '../hooks/useGameWebSocket';
 
 const GameContainer = styled.div`
   width: 100%;
@@ -36,171 +37,208 @@ const ChipCount = styled.div`
   font-size: 1.2rem;
 `;
 
-const TableControls = styled.div`
+const StatusOverlay = styled.div`
   position: absolute;
-  top: 70px;
-  right: 20px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   background-color: rgba(0, 0, 0, 0.7);
-  padding: 1rem;
-  border-radius: 4px;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
   color: white;
+  z-index: 100;
 `;
 
-const ControlLabel = styled.div`
-  font-size: 0.9rem;
-  margin-bottom: 0.3rem;
+const StatusText = styled.h2`
+  margin: 1rem;
+  font-size: 2rem;
 `;
 
-const ButtonGroup = styled.div`
-  display: flex;
-  gap: 0.3rem;
+const LoadingSpinner = styled.div`
+  width: 50px;
+  height: 50px;
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #3498db;
+  border-radius: 50%;
+  animation: spin 2s linear infinite;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 `;
 
-const SizeButton = styled.button<{ active: boolean }>`
-  background-color: ${props => props.active ? '#2ecc71' : '#34495e'};
+const BackButton = styled.button`
+  padding: 0.8rem 1.5rem;
+  background-color: #3498db;
   color: white;
   border: none;
-  border-radius: 3px;
-  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-weight: bold;
+  margin-top: 2rem;
   
   &:hover {
-    background-color: ${props => props.active ? '#27ae60' : '#2c3e50'};
+    background-color: #2980b9;
   }
 `;
 
-// Mock game state for initial development
-const initialGameState = {
-  id: 'game123',
-  type: 'cash', // 'cash' or 'tournament'
-  players: [
-    // Human player (position following alphabetical order)
-    { id: 'player', name: 'You', chips: 1000, position: 9, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
-    
-    // AI players in alphabetical order (used for clockwise seating from dealer)
-    { id: 'ai1', name: 'Alice', chips: 900, position: 1, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: true, isSB: false, isBB: false },
-    { id: 'ai2', name: 'Bob', chips: 1200, position: 2, cards: [null, null], isActive: true, isCurrent: true, isDealer: false, isButton: false, isSB: true, isBB: false },
-    { id: 'ai3', name: 'Charlie', chips: 1500, position: 3, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: true },
-    { id: 'ai4', name: 'Dave', chips: 800, position: 4, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
-    { id: 'ai5', name: 'Eve', chips: 1100, position: 5, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
-    { id: 'ai6', name: 'Frank', chips: 950, position: 6, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
-    { id: 'ai7', name: 'Grace', chips: 1050, position: 7, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false },
-    { id: 'ai8', name: 'Hank', chips: 1300, position: 8, cards: [null, null], isActive: true, isCurrent: false, isDealer: false, isButton: false, isSB: false, isBB: false }
-  ],
-  communityCards: [null, null, null, null, null],
-  pot: 0,
-  currentBet: 0,
-  playerTurn: 'ai2', // Bob is current player
-  round: 'preflop',
-  settings: {
-    maxBuyIn: 2000,
-    minBuyIn: 400,
-    bettingStructure: 'no_limit',
-    bigBlind: 10,
-    smallBlind: 5,
-    ante: 0
-  }
-};
+interface LocationState {
+  gameId: string;
+  playerId: string;
+  gameMode: 'cash' | 'tournament';
+}
 
 const GamePage: React.FC = () => {
   const location = useLocation();
-  const [gameState, setGameState] = useState(initialGameState);
-  const [tableSize, setTableSize] = useState(9);
+  const navigate = useNavigate();
+  const { gameId, playerId, gameMode } = (location.state as LocationState) || {};
   
-  // Extract game type from location state or query parameters if available
-  const [gameType, setGameType] = useState<'cash' | 'tournament'>(
-    (location.state as any)?.gameType || 'cash'
-  );
+  // Redirect back to lobby if no game info is provided
+  useEffect(() => {
+    if (!gameId || !playerId) {
+      navigate('/lobby');
+    }
+  }, [gameId, playerId, navigate]);
   
-  // Mock function to handle player actions
-  const handleAction = (action: string, amount?: number) => {
-    console.log(`Action taken: ${action}`, amount ? `Amount: ${amount}` : '');
-    // In a real implementation, this would send the action to the backend
-    // and update the game state based on the response
+  // Connect to game using WebSocket
+  const {
+    status,
+    gameState,
+    actionRequest,
+    handResult,
+    sendAction,
+    isPlayerTurn,
+    errors
+  } = useGameWebSocket(gameId, playerId);
+  
+  // Function to determine if we're showing loading screen
+  const isLoading = status !== 'open' || !gameState;
+  
+  // Function to get the human player's data
+  const getHumanPlayer = () => {
+    if (!gameState) return null;
+    return gameState.players.find(p => p.player_id === playerId);
   };
   
-  // Function to change table size (2-9 players)
-  const setTablePlayerCount = (count: number) => {
-    if (count < 2 || count > 9) return;
+  // Function to transform backend player models to frontend format
+  const transformPlayersForTable = () => {
+    if (!gameState) return [];
     
-    // Always keep the human player and include players alphabetically
-    
-    // Get the human player (always stays in the same position)
-    const humanPlayer = initialGameState.players[0];
-    
-    // Get AI players in alphabetical order
-    const aiPlayers = initialGameState.players.slice(1, 9);
-    
-    // Select the first (count-1) AI players
-    const selectedAiPlayers = aiPlayers.slice(0, count - 1);
-    
-    // Keep original positions (since we use player IDs for positioning now)
-    const selectedPlayers = [
-      humanPlayer,
-      ...selectedAiPlayers
-    ];
-    
-    setGameState(prevState => ({
-      ...prevState,
-      players: selectedPlayers
-    }));
-    setTableSize(count);
+    return gameState.players.map(player => {
+      // Check if this player is at the button position
+      const isButton = gameState.button_position === player.position;
+      
+      // Check if this player is the current player (whose turn it is)
+      const isCurrent = gameState.current_player_idx !== undefined && 
+        gameState.players[gameState.current_player_idx]?.player_id === player.player_id;
+      
+      return {
+        id: player.player_id,
+        name: player.name,
+        chips: player.chips,
+        position: player.position,
+        cards: player.cards || [null, null],
+        isActive: player.status === 'ACTIVE',
+        isCurrent,
+        isButton,
+        isSB: player.position === (gameState.button_position + 1) % gameState.players.length,
+        isBB: player.position === (gameState.button_position + 2) % gameState.players.length,
+        currentBet: player.current_bet || 0
+      };
+    });
   };
-
+  
+  // Function to handle going back to lobby
+  const handleBackToLobby = () => {
+    navigate('/lobby');
+  };
+  
   // Function to update player data after cash game operations
   const handlePlayerUpdate = () => {
-    // In a real implementation, this would fetch the latest game state
-    console.log('Updating player data after cash game operation');
+    // In a real implementation, WebSocket updates would handle this
+    console.log('Player data will be updated via WebSocket');
   };
-
+  
+  // Render loading screen if needed
+  if (isLoading) {
+    return (
+      <GameContainer>
+        <StatusOverlay>
+          <LoadingSpinner />
+          <StatusText>
+            {status === 'connecting' ? 'Connecting to game...' : 'Loading game state...'}
+          </StatusText>
+          <BackButton onClick={handleBackToLobby}>Back to Lobby</BackButton>
+        </StatusOverlay>
+      </GameContainer>
+    );
+  }
+  
+  // Get human player
+  const humanPlayer = getHumanPlayer();
+  const chips = humanPlayer?.chips || 0;
+  const currentBet = gameState?.current_bet || 0;
+  
   return (
     <GameContainer>
       <GameHeader>
         <GameTitle>Texas Hold'em Poker</GameTitle>
-        <ChipCount>Your Chips: {gameState.players.find(p => p.id === 'player')?.chips}</ChipCount>
+        <ChipCount>Your Chips: {chips}</ChipCount>
       </GameHeader>
       
-      <TableControls>
-        <ControlLabel>Players at Table</ControlLabel>
-        <ButtonGroup>
-          {[2, 3, 4, 5, 6, 7, 8, 9].map(count => (
-            <SizeButton 
-              key={count} 
-              active={tableSize === count}
-              onClick={() => setTablePlayerCount(count)}
-            >
-              {count}
-            </SizeButton>
-          ))}
-        </ButtonGroup>
-      </TableControls>
-      
       <PokerTable 
-        players={gameState.players}
-        communityCards={gameState.communityCards}
-        pot={gameState.pot}
+        players={transformPlayersForTable()}
+        communityCards={gameState?.community_cards || []}
+        pot={gameState?.total_pot || 0}
       />
       
       <ActionControls 
-        onAction={handleAction}
-        currentBet={gameState.currentBet}
-        playerChips={gameState.players.find(p => p.id === 'player')?.chips || 0}
-        isPlayerTurn={gameState.playerTurn === 'player'}
+        onAction={(action, amount) => sendAction(action, amount)}
+        currentBet={currentBet}
+        playerChips={chips}
+        isPlayerTurn={isPlayerTurn()}
+        actionRequest={actionRequest}
       />
 
       {/* Only show cash game controls for cash games */}
-      {gameState.type === 'cash' && (
+      {gameMode === 'cash' && gameState && (
         <CashGameControls
-          gameId={gameState.id}
-          playerId="player"
-          chips={gameState.players.find(p => p.id === 'player')?.chips || 0}
-          maxBuyIn={gameState.settings.maxBuyIn}
+          gameId={gameId}
+          playerId={playerId}
+          chips={chips}
+          maxBuyIn={gameState.max_buy_in || 2000}
           onPlayerUpdate={handlePlayerUpdate}
         />
+      )}
+      
+      {/* Show hand result overlay if available */}
+      {handResult && (
+        <StatusOverlay>
+          <StatusText>Hand Complete</StatusText>
+          <div>
+            {handResult.winners.map((winner, index) => (
+              <div key={index}>
+                {winner.name} wins ${winner.amount} with {winner.hand_rank}
+              </div>
+            ))}
+          </div>
+          <BackButton onClick={() => navigate(0)}>Play Next Hand</BackButton>
+        </StatusOverlay>
+      )}
+      
+      {/* Show error overlay if any errors */}
+      {errors.length > 0 && (
+        <StatusOverlay>
+          <StatusText>Error</StatusText>
+          <div style={{ color: 'red', marginBottom: '1rem' }}>
+            {errors[errors.length - 1].message}
+          </div>
+          <BackButton onClick={() => navigate(0)}>Refresh Game</BackButton>
+        </StatusOverlay>
       )}
     </GameContainer>
   );

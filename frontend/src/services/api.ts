@@ -32,8 +32,45 @@ export interface CashGameOptions {
   rakeCap?: number;
 }
 
+// Types for game setup API
+export interface PlayerSetupInput {
+  name: string;
+  is_human: boolean;
+  archetype?: string;
+  position?: number;
+  buy_in: number;
+}
+
+export interface GameSetupInput {
+  game_mode: 'cash' | 'tournament';
+  small_blind?: number;
+  big_blind?: number;
+  ante?: number;
+  min_buy_in?: number;
+  max_buy_in?: number;
+  table_size?: number;
+  betting_structure?: string;
+  rake_percentage?: number;
+  rake_cap?: number;
+  tier?: string;
+  stage?: string;
+  buy_in_amount?: number;
+  starting_chips?: number;
+  players: PlayerSetupInput[];
+}
+
 // Define API methods
 export const gameApi = {
+  // Setup a complete game from the lobby
+  setupGame: async (gameSetup: GameSetupInput) => {
+    try {
+      const response = await api.post('/setup/game', gameSetup);
+      return response.data;
+    } catch (error) {
+      console.error('Error setting up game:', error);
+      throw error;
+    }
+  },
   // Create a new game
   createGame: async (smallBlind: number = 10, bigBlind: number = 20) => {
     try {
