@@ -104,6 +104,12 @@ class ConnectionManager:
             message: The message to send
         """
         import logging
+        import traceback
+        import json
+        
+        if websocket is None:
+            logging.warning("Cannot send message: WebSocket is None")
+            return
         
         # Skip if websocket is not in our maps (likely already closed)
         if websocket not in self.socket_player_map:
@@ -116,9 +122,10 @@ class ConnectionManager:
         
         # Check if websocket is in any active connection before sending
         is_active = False
-        for game_connections in self.active_connections.values():
+        for game_id, game_connections in self.active_connections.items():
             if websocket in game_connections:
                 is_active = True
+                logging.debug(f"Found active connection for player {player_id} in game {game_id}")
                 break
                 
         if not is_active:
@@ -128,20 +135,46 @@ class ConnectionManager:
         
         # Serialize message
         try:
+            # Try serializing with more debug info
+            logging.debug(f"Serializing message: {message}")
+            if not isinstance(message, dict):
+                logging.warning(f"Message is not a dict, it's a {type(message)}")
+                message = {"type": "error", "data": {"message": "Internal error: Invalid message format"}}
+                
             json_message = json.dumps(message)
+            message_preview = json_message[:100] + ('...' if len(json_message) > 100 else '')
+            logging.debug(f"Serialized message: {message_preview}")
         except Exception as e:
             logging.error(f"Error serializing message: {str(e)}")
+            logging.error(traceback.format_exc())
+            logging.error(f"Problematic message: {str(message)[:200]}")
             return
         
         # Send the message
         try:
+            # Check state before sending to avoid cryptic errors
+            if hasattr(websocket, "client_state") and websocket.client_state.name == "DISCONNECTED":
+                logging.warning(f"WebSocket for player {player_id} is in DISCONNECTED state, cannot send")
+                self.disconnect(websocket)
+                return
+                
             await websocket.send_text(json_message)
+            logging.debug(f"Successfully sent message of type {msg_type} to {player_id}")
         except RuntimeError as e:
-            logging.error(f"Error sending personal message: {str(e)}")
+            # Common runtime errors from FastAPI WebSockets
+            if "disconnected" in str(e) or "closed" in str(e):
+                logging.warning(f"WebSocket for player {player_id} is already disconnected: {str(e)}")
+            else:
+                logging.error(f"Runtime error sending message to {player_id}: {str(e)}")
+                logging.error(traceback.format_exc())
             # Connection is closed, clean up
             self.disconnect(websocket)
+        except ConnectionResetError as e:
+            logging.warning(f"Connection reset sending to {player_id}: {str(e)}")
+            self.disconnect(websocket)
         except Exception as e:
-            logging.error(f"Unexpected error sending personal message: {str(e)}")
+            logging.error(f"Unexpected error sending message to {player_id}: {str(e)}")
+            logging.error(traceback.format_exc())
             self.disconnect(websocket)
     
     async def send_to_player(self, game_id: str, player_id: str, message: dict):
@@ -242,8 +275,20 @@ class GameStateNotifier:
             game_to_model_func: Function to convert game to model (optional, uses imported by default)
         """
         import logging
-        logging.warning(f"Notifying game update for game {game_id}")
+        import traceback
+        import json
         
+        logging.warning(f"Notifying game update for game {game_id}")
+
+        # Validate input parameters
+        if not game_id:
+            logging.error("Game ID is required for notify_game_update")
+            return
+            
+        if not game:
+            logging.error(f"No game instance provided for game {game_id}")
+            return
+            
         # Get all connections for this game
         connections = self.connection_manager.get_connections_for_game(game_id)
         if not connections:
@@ -260,28 +305,44 @@ class GameStateNotifier:
         # Convert game state
         try:
             game_state = model_func(game_id, game)
-            logging.warning(f"Generated game state for game {game_id}")
+            logging.warning(f"Generated game state for game {game_id} with {len(game_state.players)} players")
+            
+            # Log a summary of the game state for debugging
+            player_summary = ", ".join([f"{p.name}({p.status})" for p in game_state.players])
+            logging.warning(f"Game state contains players: {player_summary}")
+            
+            # Validate that the game state can be properly serialized to catch errors early
+            try:
+                state_dict = game_state.dict()
+                # Try to serialize to JSON to catch any serialization issues before sending
+                json.dumps(state_dict)
+            except Exception as json_error:
+                logging.error(f"Error serializing game state to JSON: {str(json_error)}")
+                logging.error(traceback.format_exc())
+                return
+                
         except Exception as e:
-            import traceback
             logging.error(f"Error generating game state: {str(e)}")
             logging.error(traceback.format_exc())
             return
         
-        import logging
         # Track processed connections to avoid double-sending
         processed_sockets = set()
         
         # For players, send personalized game state (with their cards visible)
         for player_id, player_sockets in player_connections.items():
-            filtered_state = copy.deepcopy(game_state)
-            
-            # Filter cards - only show this player's cards
-            for player_model in filtered_state.players:
-                if player_model.player_id != player_id:
-                    player_model.cards = None
-            
-            # Send personalized game state to each of the player's connections
+            # Skip if no sockets for this player
+            if not player_sockets:
+                continue
+                
             try:
+                filtered_state = copy.deepcopy(game_state)
+                
+                # Filter cards - only show this player's cards
+                for player_model in filtered_state.players:
+                    if player_model.player_id != player_id:
+                        player_model.cards = None
+                
                 # Convert to a dict with error handling
                 state_dict = filtered_state.dict()
                 
@@ -305,44 +366,58 @@ class GameStateNotifier:
                             connections.remove(socket)
                     except Exception as e:
                         logging.error(f"Error sending to player {player_id}: {str(e)}")
+                        logging.error(traceback.format_exc())
             except Exception as e:
-                import traceback
-                logging.error(f"Error preparing game state message: {str(e)}")
+                logging.error(f"Error preparing game state message for player {player_id}: {str(e)}")
                 logging.error(traceback.format_exc())
+                # Continue with other players despite error
         
         # For observers (connections without player_id), send game state with all cards hidden
         # Exclude any connections we've already sent to
         observer_connections = [conn for conn in connections if conn not in processed_sockets]
         
         if observer_connections:
-            observer_state = copy.deepcopy(game_state)
-            
-            # Hide all player cards for observers
-            for player_model in observer_state.players:
-                player_model.cards = None
-            
-            # Send observer game state
             try:
-                state_dict = observer_state.dict()
+                observer_state = copy.deepcopy(game_state)
                 
-                message = {
-                    "type": "game_state",
-                    "data": state_dict
-                }
+                # Hide all player cards for observers
+                for player_model in observer_state.players:
+                    player_model.cards = None
                 
-                logging.warning(f"Sending observer game state to {len(observer_connections)} connections")
-                
-                for socket in observer_connections:
-                    if socket in processed_sockets:
-                        continue
+                # Send observer game state
+                try:
+                    state_dict = observer_state.dict()
+                    
+                    # Verify serialization before sending
                     try:
-                        await self.connection_manager.send_personal_message(socket, message)
-                        processed_sockets.add(socket)
-                    except Exception as e:
-                        logging.error(f"Error sending to observer: {str(e)}")
+                        json.dumps(state_dict)
+                    except Exception as json_error:
+                        logging.error(f"Error serializing observer game state to JSON: {str(json_error)}")
+                        logging.error(traceback.format_exc())
+                        return
+                    
+                    message = {
+                        "type": "game_state",
+                        "data": state_dict
+                    }
+                    
+                    logging.warning(f"Sending observer game state to {len(observer_connections)} connections")
+                    
+                    for socket in observer_connections:
+                        if socket in processed_sockets:
+                            continue
+                        try:
+                            await self.connection_manager.send_personal_message(socket, message)
+                            processed_sockets.add(socket)
+                        except Exception as e:
+                            logging.error(f"Error sending to observer: {str(e)}")
+                            logging.error(traceback.format_exc())
+                            # Continue with other observers
+                except Exception as e:
+                    logging.error(f"Error preparing observer game state dict: {str(e)}")
+                    logging.error(traceback.format_exc())
             except Exception as e:
-                import traceback
-                logging.error(f"Error preparing observer game state message: {str(e)}")
+                logging.error(f"Error preparing observer game state: {str(e)}")
                 logging.error(traceback.format_exc())
     
     async def notify_player_action(self, game_id: str, player_id: str, action: str, amount: Optional[int] = None):

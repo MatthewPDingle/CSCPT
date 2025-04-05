@@ -101,10 +101,33 @@ const GamePage: React.FC = () => {
   useEffect(() => {
     if (!gameId || !playerId) {
       navigate('/lobby');
+    } else {
+      // Clear any old game state in localStorage if it's not for the current game
+      try {
+        // Get all keys in localStorage
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('gameState_') && !key.includes(gameId)) {
+            console.log(`Clearing old game state: ${key}`);
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (e) {
+        console.error('Error clearing localStorage:', e);
+      }
     }
   }, [gameId, playerId, navigate]);
   
-  // Connect to game using WebSocket
+  // Create websocket URL only once to avoid recreating the connection
+  const wsUrl = React.useMemo(() => {
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsBaseUrl = API_URL.replace(/^https?:\/\//, `${wsProtocol}://`);
+    return `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
+  }, [gameId, playerId]);
+  console.log('Using WebSocket URL:', wsUrl);
+  
+  // Connect to game using WebSocket with a stable reference
   const {
     status,
     gameState,
@@ -114,7 +137,7 @@ const GamePage: React.FC = () => {
     isPlayerTurn,
     errors,
     reconnect
-  } = useGameWebSocket(gameId, playerId);
+  } = useGameWebSocket(wsUrl);
   
   // Store game state in local state when received
   const [localGameState, setLocalGameState] = React.useState<typeof gameState | null>(null);
@@ -134,9 +157,30 @@ const GamePage: React.FC = () => {
     }
   }, [gameState, gameId]);
   
-  // Update connection status for display
+  // Handle connection status and errors
   React.useEffect(() => {
     setConnectionStatus(status);
+    
+    // If we see "403 Forbidden" errors, the game might not exist anymore
+    const hasGameNotFoundError = errors.some(err => 
+      err.code === 'game_not_found' || 
+      err.message?.includes('Game not found') ||
+      err.message?.includes('not found')
+    );
+    
+    if (hasGameNotFoundError) {
+      console.error('Game not found on server. Redirecting to lobby...');
+      // Clear any saved state for this game to prevent reconnection loops
+      try {
+        localStorage.removeItem(`gameState_${gameId}`);
+      } catch (e) {
+        console.error('Failed to clear localStorage:', e);
+      }
+      // Redirect back to lobby after a short delay
+      setTimeout(() => navigate('/lobby'), 1000);
+      return;
+    }
+    
     // If disconnected, try reconnecting after a delay
     if (status === 'closed' || status === 'error') {
       const timeoutId = setTimeout(() => {
@@ -145,7 +189,7 @@ const GamePage: React.FC = () => {
       }, 2000);
       return () => clearTimeout(timeoutId);
     }
-  }, [status, reconnect]);
+  }, [status, reconnect, errors, gameId, navigate]);
   
   // Debug logs to help identify the issue
   console.log('WebSocket status:', status);
@@ -161,41 +205,148 @@ const GamePage: React.FC = () => {
   // Function to get the human player's data
   const getHumanPlayer = () => {
     if (!effectiveGameState) return null;
-    return effectiveGameState.players.find(p => p.player_id === playerId);
+    
+    try {
+      // Add validation for players array
+      if (!Array.isArray(effectiveGameState.players)) {
+        console.error('Players is not an array in game state');
+        return null;
+      }
+      
+      const player = effectiveGameState.players.find(p => p && p.player_id === playerId);
+      
+      // If we can't find the player, log an error and return default values
+      if (!player) {
+        console.warn(`Could not find human player with ID ${playerId}`);
+        console.log('Available players:', effectiveGameState.players.map(p => p?.player_id || 'undefined'));
+        
+        // Return a default player object as fallback
+        return {
+          player_id: playerId,
+          name: "You",
+          chips: 1000,
+          position: 0,
+          status: "ACTIVE",
+          current_bet: 0,
+          total_bet: 0,
+          cards: null
+        };
+      }
+      
+      return player;
+    } catch (error) {
+      console.error('Error finding human player:', error);
+      return null;
+    }
   };
   
   // Function to transform backend player models to frontend format
   const transformPlayersForTable = () => {
     if (!effectiveGameState) return [];
     
-    return effectiveGameState.players.map(player => {
-      // Check if this player is at the button position
-      const isButton = effectiveGameState.button_position === player.position;
+    try {
+      console.log('Transforming players, count:', effectiveGameState.players?.length || 0);
       
-      // Check if this player is the current player (whose turn it is)
-      const isCurrent = effectiveGameState.current_player_idx !== undefined && 
-        effectiveGameState.players[effectiveGameState.current_player_idx]?.player_id === player.player_id;
+      // Validate players array
+      if (!Array.isArray(effectiveGameState.players)) {
+        console.error('Players is not an array in game state');
+        return []; // Return empty array instead of failing
+      }
       
-      // Transform card objects to strings for the Card component
-      const transformedCards = player.cards 
-        ? player.cards.map(card => card ? `${card.rank}${card.suit}` : null)
-        : [null, null];
-        
-      return {
-        id: player.player_id,
-        name: player.name,
-        chips: player.chips,
-        position: player.position,
-        cards: transformedCards,
-        isActive: player.status === 'ACTIVE',
-        isCurrent,
-        isDealer: false, // The dealer seat is added separately in PokerTable
-        isButton,
-        isSB: player.position === (effectiveGameState.button_position + 1) % effectiveGameState.players.length,
-        isBB: player.position === (effectiveGameState.button_position + 2) % effectiveGameState.players.length,
-        currentBet: player.current_bet || 0
-      };
-    });
+      return effectiveGameState.players.map((player, index) => {
+        try {
+          // Ensure player has required fields or use defaults
+          if (!player) {
+            console.warn(`Player at index ${index} is undefined, using default player`);
+            // Return default player object to prevent rendering failures
+            return {
+              id: `missing_${index}`,
+              name: `Player ${index}`,
+              chips: 1000,
+              position: index,
+              cards: [null, null],
+              isActive: false,
+              isCurrent: false,
+              isDealer: false,
+              isButton: false,
+              isSB: false,
+              isBB: false,
+              currentBet: 0
+            };
+          }
+          
+          // Check if this player is at the button position
+          const isButton = effectiveGameState.button_position === player.position;
+          
+          // Check if this player is the current player (whose turn it is)
+          const isCurrent = effectiveGameState.current_player_idx !== undefined && 
+            effectiveGameState.players[effectiveGameState.current_player_idx]?.player_id === player.player_id;
+          
+          // Transform card objects to strings for the Card component
+          // Handle potential null/undefined values safely
+          const transformedCards = player.cards 
+            ? player.cards.map(card => card ? `${card.rank}${card.suit}` : null)
+            : [null, null];
+            
+          // Ensure we have exactly 2 cards for the UI
+          if (!transformedCards || transformedCards.length !== 2) {
+            if (transformedCards?.length === 0) {
+              transformedCards.push(null, null);
+            } else if (transformedCards?.length === 1) {
+              transformedCards.push(null);
+            }
+          }
+          
+          // Get player position safely
+          const position = typeof player.position === 'number' ? player.position : index;
+          
+          // Calculate button and blinds positions safely
+          const playerCount = effectiveGameState.players.length;
+          const buttonPos = effectiveGameState.button_position || 0;
+          const sbPos = (buttonPos + 1) % playerCount;
+          const bbPos = (buttonPos + 2) % playerCount;
+            
+          return {
+            id: player.player_id || `player_${index}`,
+            name: player.name || `Player ${index}`,
+            chips: typeof player.chips === 'number' ? player.chips : 1000,
+            position,
+            cards: transformedCards || [null, null],
+            isActive: player.status === 'ACTIVE',
+            isCurrent,
+            isDealer: false, // The dealer seat is added separately in PokerTable
+            isButton,
+            isSB: position === sbPos,
+            isBB: position === bbPos,
+            currentBet: typeof player.current_bet === 'number' ? player.current_bet : 0
+          };
+        } catch (playerError) {
+          console.error(`Error transforming player at index ${index}:`, playerError);
+          // Return default player to avoid breaking UI
+          return {
+            id: `error_${index}`,
+            name: `Player ${index}`,
+            chips: 1000,
+            position: index,
+            cards: [null, null],
+            isActive: false,
+            isCurrent: false,
+            isDealer: false,
+            isButton: false,
+            isSB: false,
+            isBB: false,
+            currentBet: 0
+          };
+        }
+      });
+    } catch (e) {
+      // Catch any errors in the entire transformation process
+      console.error('Failed to transform players:', e);
+      console.error('Game state that caused error:', effectiveGameState);
+      
+      // Return empty array as fallback
+      return [];
+    }
   };
   
   // Function to handle going back to lobby

@@ -26,26 +26,18 @@ describe('useGameWebSocket', () => {
     });
   });
   
-  it('should construct correct WebSocket URL', () => {
-    renderHook(() => useGameWebSocket('game123', 'player456'));
+  it('should use the provided WebSocket URL', () => {
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    renderHook(() => useGameWebSocket(testUrl));
     
     // Check that useWebSocket was called with correct URL
     const wsUrl = (useWebSocket as jest.Mock).mock.calls[0][0];
-    expect(wsUrl).toContain('/ws/game/game123');
-    expect(wsUrl).toContain('player_id=player456');
-  });
-  
-  it('should allow observer mode (no player ID)', () => {
-    renderHook(() => useGameWebSocket('game123'));
-    
-    // Check that useWebSocket was called with URL without player_id
-    const wsUrl = (useWebSocket as jest.Mock).mock.calls[0][0];
-    expect(wsUrl).toContain('/ws/game/game123');
-    expect(wsUrl).not.toContain('player_id=');
+    expect(wsUrl).toBe(testUrl);
   });
   
   it('should parse game state messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock receiving a game state message
     const gameStateMessage = {
@@ -81,7 +73,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should parse player action messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock receiving a player action message
     const actionMessage = {
@@ -110,7 +103,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should parse action request messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock receiving an action request message
     const requestMessage = {
@@ -144,7 +138,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should parse hand result messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock receiving a hand result message
     const resultMessage = {
@@ -181,7 +176,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should parse chat messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock receiving a chat message
     const chatMessage = {
@@ -210,7 +206,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should parse error messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock receiving an error message
     const errorMessage = {
@@ -239,7 +236,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should send player actions', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Mock game state
     act(() => {
@@ -299,7 +297,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should send chat messages', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Send a chat message
     act(() => {
@@ -331,7 +330,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should check if it is the player\'s turn', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // No action request, should not be player's turn
     expect(result.current.isPlayerTurn()).toBe(false);
@@ -390,7 +390,8 @@ describe('useGameWebSocket', () => {
   });
   
   it('should clear action request when action is taken', () => {
-    const { result } = renderHook(() => useGameWebSocket('game123', 'player456'));
+    const testUrl = 'ws://localhost:8000/ws/game/game123?player_id=player456';
+    const { result } = renderHook(() => useGameWebSocket(testUrl));
     
     // Set an action request
     act(() => {

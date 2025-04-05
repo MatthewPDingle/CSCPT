@@ -89,61 +89,109 @@ const PlayerPositions = styled.div`
 `;
 
 // Define fixed positions for proper 10-seat oval poker table
-// With dealer at top middle and players in alphabetical order clockwise
+// With dealer at top middle and players in position order clockwise
 const getPlayerPosition = (playerId: string) => {
-  // Define the 10 fixed positions around the oval table
-  // These positions represent:
-  // - 3 seats across the top straight section (top-left, top-middle [dealer], top-right)
-  // - 2 seats at right curved section (right-top, right-bottom)
-  // - 3 seats across the bottom straight section (bottom-right, bottom-middle, bottom-left)
-  // - 2 seats at left curved section (left-bottom, left-top)
+  // Define the 10 fixed positions around the oval table in clockwise order
+  const seatPositions = [
+    { x: '28%', y: '12%' },    // Position 0: Top left
+    { x: '72%', y: '12%' },    // Position 1: Top right
+    { x: '92%', y: '30%' },    // Position 2: Right top
+    { x: '92%', y: '70%' },    // Position 3: Right bottom
+    { x: '72%', y: '88%' },    // Position 4: Bottom right
+    { x: '50%', y: '88%' },    // Position 5: Bottom middle
+    { x: '28%', y: '88%' },    // Position 6: Bottom left
+    { x: '8%',  y: '70%' },    // Position 7: Left bottom
+    { x: '8%',  y: '30%' }     // Position 8: Left top
+  ];
   
-  const seatPositions = {
-    // Dealer position
-    "dealer": { x: '50%', y: '5%' },    // Top middle (dealer) - moved even higher
-    
-    // Player positions in clockwise order from dealer
-    "alice":  { x: '72%', y: '12%' },    // Top right (moved more towards middle)
-    "bob":    { x: '92%', y: '30%' },    // Right top curved
-    "charlie": { x: '92%', y: '70%' },   // Right bottom curved
-    "dave":   { x: '72%', y: '88%' },    // Bottom right (moved more towards middle)
-    "eve":    { x: '50%', y: '88%' },    // Bottom middle
-    "frank":  { x: '28%', y: '88%' },    // Bottom left (moved more towards middle)
-    "grace":  { x: '8%',  y: '70%' },    // Left bottom curved
-    "hank":   { x: '8%',  y: '30%' },    // Left top curved
-    "player": { x: '28%', y: '12%' }     // Top left (moved more towards middle)
-  };
+  // Dealer position is special
+  const dealerPosition = { x: '50%', y: '5%' };  // Top middle
   
   // Special cases
   if (playerId === "dealer") {
-    return seatPositions.dealer;
+    return dealerPosition;
   }
   
-  // Return position based on player ID
-  switch (playerId) {
-    case "player": return seatPositions.player;
-    case "ai1": return seatPositions.alice;
-    case "ai2": return seatPositions.bob;
-    case "ai3": return seatPositions.charlie;
-    case "ai4": return seatPositions.dave;
-    case "ai5": return seatPositions.eve;
-    case "ai6": return seatPositions.frank;
-    case "ai7": return seatPositions.grace;
-    case "ai8": return seatPositions.hank;
-    default: return seatPositions.eve; // Fallback
+  // Extract position number if present in the ID
+  // This handles cases like "player_0", "player_1", etc.
+  const posMatch = playerId.match(/.*?_?(\d+)$/);
+  if (posMatch && posMatch[1]) {
+    const position = parseInt(posMatch[1], 10);
+    if (!isNaN(position) && position >= 0 && position < seatPositions.length) {
+      return seatPositions[position];
+    }
   }
+  
+  // Handle common IDs
+  if (playerId === "player" || playerId.toLowerCase().includes("you")) {
+    return seatPositions[0]; // Human player usually in position 0
+  }
+  
+  // Handle specific player names if present in our system
+  const playerNameMap: {[key: string]: number} = {
+    "michael": 1,
+    "dwight": 2,
+    "jim": 3,
+    "mose": 4,
+    "andy": 5,
+    "pam": 6,
+    "angela": 7,
+    "kevin": 8
+  };
+  
+  // Check if player name is in our mapping
+  const lowerPlayerId = playerId.toLowerCase();
+  for (const [name, position] of Object.entries(playerNameMap)) {
+    if (lowerPlayerId.includes(name)) {
+      return seatPositions[position];
+    }
+  }
+  
+  // Handle AI player cases
+  if (playerId.startsWith("ai")) {
+    const aiNumber = parseInt(playerId.substring(2), 10);
+    if (!isNaN(aiNumber) && aiNumber > 0 && aiNumber <= seatPositions.length) {
+      return seatPositions[aiNumber % seatPositions.length];
+    }
+  }
+  
+  // For any UUID-like player ID, just use a consistent position based on first character
+  if (playerId.length > 8) {
+    const firstChar = playerId.charCodeAt(0);
+    return seatPositions[firstChar % seatPositions.length];
+  }
+  
+  // Default fallback - use middle bottom position
+  return seatPositions[5];
 };
 
 const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot }) => {
-  const activePlayers = players.filter(player => player.isActive);
+  // Ensure players array is valid and handle potential undefined/null values
+  const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
+  console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
+  
+  // Define active players (non-folded)
+  const activePlayers = validPlayers.filter(player => player.isActive);
+  console.log(`Active players: ${activePlayers.length}`);
+  
+  // Ensure communityCards is an array
+  const validCommunityCards = Array.isArray(communityCards) ? communityCards : [];
+  // Pad community cards to exactly 5 with nulls if necessary
+  const paddedCommunityCards = [...validCommunityCards];
+  while (paddedCommunityCards.length < 5) {
+    paddedCommunityCards.push(null);
+  }
+  
+  // Ensure pot is a valid number
+  const validPot = typeof pot === 'number' && !isNaN(pot) ? pot : 0;
   
   return (
     <TableContainer>
       <TableFelt>
-        <PotDisplay>Pot: ${pot}</PotDisplay>
+        <PotDisplay>Pot: ${validPot}</PotDisplay>
         
         <CommunityCardsArea>
-          {communityCards.map((card, index) => (
+          {paddedCommunityCards.slice(0, 5).map((card, index) => (
             <Card key={index} card={card} isCommunity={true} />
           ))}
         </CommunityCardsArea>
@@ -170,17 +218,41 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
           />
           
           {/* Player positions */}
-          {activePlayers.map(player => {
-            const position = getPlayerPosition(player.id);
-            
-            return (
-              <PlayerSeat
-                key={player.id}
-                player={player}
-                position={position}
-                isHuman={player.id === 'player'}
-              />
-            );
+          {activePlayers.map((player, index) => {
+            try {
+              // Ensure player has an ID
+              const playerId = player.id || `player_${index}`;
+              
+              // Get position - handle potential undefined values
+              const position = getPlayerPosition(playerId);
+              
+              return (
+                <PlayerSeat
+                  key={playerId}
+                  player={{
+                    ...player,
+                    // Ensure all required properties have fallback values
+                    id: playerId,
+                    name: player.name || `Player ${index}`,
+                    chips: typeof player.chips === 'number' ? player.chips : 1000,
+                    position: typeof player.position === 'number' ? player.position : index,
+                    cards: Array.isArray(player.cards) ? player.cards : [null, null],
+                    isActive: !!player.isActive,
+                    isCurrent: !!player.isCurrent,
+                    isDealer: !!player.isDealer,
+                    isButton: !!player.isButton,
+                    isSB: !!player.isSB,
+                    isBB: !!player.isBB
+                  }}
+                  position={position}
+                  isHuman={playerId === 'player'}
+                />
+              );
+            } catch (error) {
+              console.error(`Error rendering player at index ${index}:`, error);
+              // Return a placeholder in case of error
+              return null;
+            }
           })}
         </PlayerPositions>
       </TableFelt>

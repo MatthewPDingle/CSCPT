@@ -46,6 +46,23 @@ async def websocket_endpoint(
     game = service.get_game(game_id)
     if not game:
         logging.error(f"WebSocket connection failed - Game {game_id} not found")
+        # Send a specific error that the frontend can detect before closing
+        try:
+            await websocket.accept()
+            await connection_manager.send_personal_message(
+                websocket,
+                {
+                    "type": "error",
+                    "data": {
+                        "code": "game_not_found",
+                        "message": f"Game {game_id} not found. It may have expired or been deleted."
+                    }
+                }
+            )
+        except Exception as e:
+            logging.error(f"Error sending game not found message: {str(e)}")
+        
+        # Close with a standard reason code
         await websocket.close(code=1008, reason="Game not found")
         return
 
@@ -53,6 +70,23 @@ async def websocket_endpoint(
     poker_game = service.poker_games.get(game_id)
     if not poker_game:
         logging.error(f"WebSocket connection failed - Poker game {game_id} not found")
+        # Send a specific error that the frontend can detect before closing
+        try:
+            await websocket.accept()
+            await connection_manager.send_personal_message(
+                websocket,
+                {
+                    "type": "error",
+                    "data": {
+                        "code": "game_not_found",
+                        "message": f"Poker game {game_id} not found. It may have expired or been deleted."
+                    }
+                }
+            )
+        except Exception as e:
+            logging.error(f"Error sending poker game not found message: {str(e)}")
+            
+        # Close with a standard reason code
         await websocket.close(code=1008, reason="Game not found")
         return
 
@@ -71,41 +105,108 @@ async def websocket_endpoint(
 
     try:
         import logging
+        import traceback
         
         # Variable to track if state has been sent to avoid duplicates
         game_state_sent = False
         
         logging.warning(f"Sending initial game state for game {game_id}")
         
-        # Send initial game state
-        await game_notifier.notify_game_update(game_id, poker_game)
-        game_state_sent = True
+        # Wrap initial state sending in its own try/except block
+        try:
+            # Send initial game state
+            await game_notifier.notify_game_update(game_id, poker_game)
+            game_state_sent = True
+            logging.warning(f"Initial game state successfully sent for game {game_id}")
+        except Exception as e:
+            logging.error(f"Error sending initial game state: {str(e)}")
+            logging.error(traceback.format_exc())
+            # Continue despite error - don't terminate the connection
 
         # If it's this player's turn, send action request
         if player_id:
-            active_players = [
-                p
-                for p in poker_game.players
-                if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}
-            ]
-            if (
-                active_players
-                and poker_game.current_player_idx < len(active_players)
-                and active_players[poker_game.current_player_idx].player_id == player_id
-            ):
-                logging.warning(f"Requesting action from player {player_id}")
-                await game_notifier.notify_action_request(game_id, poker_game)
+            try:
+                active_players = [
+                    p
+                    for p in poker_game.players
+                    if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}
+                ]
+                if (
+                    active_players
+                    and poker_game.current_player_idx < len(active_players)
+                    and active_players[poker_game.current_player_idx].player_id == player_id
+                ):
+                    logging.warning(f"Requesting action from player {player_id}")
+                    await game_notifier.notify_action_request(game_id, poker_game)
+            except Exception as e:
+                logging.error(f"Error sending action request: {str(e)}")
+                logging.error(traceback.format_exc())
+                # Continue despite error - don't terminate the connection
 
         # Process messages
+        # Setup keepalive to prevent server timeout
+        last_activity_time = datetime.now()
+        keepalive_sent = False
+        
         while True:
             try:
-                # Wait for message with timeout
+                # Wait for message with timeout (60 seconds)
                 logging.warning(f"Waiting for messages from {player_id if player_id else 'observer'}")
-                data = await websocket.receive_text()
-                logging.warning(f"Received message from {player_id if player_id else 'observer'}: {data[:100]}...")
+                
+                # Use wait_for with timeout to prevent waiting forever
+                try:
+                    # Set a timeout of 30 seconds - if no message received, we'll send a keepalive
+                    receive_task = asyncio.create_task(websocket.receive_text())
+                    data = await asyncio.wait_for(receive_task, timeout=30.0)
+                    
+                    # Reset activity time since we received a message
+                    last_activity_time = datetime.now()
+                    keepalive_sent = False
+                    
+                    logging.warning(f"Received message from {player_id if player_id else 'observer'}: {data[:100]}...")
+                except asyncio.TimeoutError:
+                    # No message received within timeout - send a keepalive ping to client
+                    logging.warning(f"No message received for 30 seconds, sending keepalive to {player_id if player_id else 'observer'}")
+                    
+                    # Only send one keepalive until we get a response
+                    if not keepalive_sent:
+                        try:
+                            await connection_manager.send_personal_message(
+                                websocket, 
+                                {
+                                    "type": "keepalive", 
+                                    "timestamp": datetime.now().isoformat()
+                                }
+                            )
+                            keepalive_sent = True
+                        except Exception as ke:
+                            logging.error(f"Error sending keepalive: {str(ke)}")
+                            break
+                    
+                    # Check if we've been inactive for too long (2 minutes)
+                    if (datetime.now() - last_activity_time).total_seconds() > 120:
+                        logging.warning(f"No activity for 2 minutes, closing connection to {player_id if player_id else 'observer'}")
+                        break
+                    
+                    # Continue waiting for next message
+                    continue
+                    
+            except WebSocketDisconnect as e:
+                # Clean disconnect with code
+                logging.warning(f"WebSocket disconnected while waiting for message from {player_id if player_id else 'observer'}: code={e.code}, reason='{e.reason}'")
+                break
+            except RuntimeError as e:
+                # Runtime error like "WebSocket is disconnected"
+                if "disconnected" in str(e) or "closed" in str(e):
+                    logging.warning(f"WebSocket already disconnected while waiting: {str(e)}")
+                else:
+                    logging.error(f"Runtime error waiting for message: {str(e)}")
+                    logging.error(traceback.format_exc())
+                break
             except Exception as e:
-                # Exception during message receive is normal on client disconnect
-                logging.warning(f"Exception waiting for message: {str(e)}")
+                # Any other exception
+                logging.error(f"Unexpected exception waiting for message: {str(e)}")
+                logging.error(traceback.format_exc())
                 break
 
             try:
@@ -153,18 +254,38 @@ async def websocket_endpoint(
                     },
                 )
 
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as e:
         # Handle disconnect
         import logging
-        logging.warning(f"WebSocket disconnected for player {player_id if player_id else 'observer'}")
+        import traceback
+        logging.warning(f"WebSocket disconnect for player {player_id if player_id else 'observer'}: code={e.code}, reason='{e.reason}'")
+        connection_manager.disconnect(websocket)
+    except RuntimeError as e:
+        # Handle runtime errors like "WebSocket is disconnected" separately to avoid misleading error messages
+        import logging
+        import traceback
+        if "disconnected" in str(e) or "closed" in str(e):
+            logging.warning(f"WebSocket already disconnected for player {player_id if player_id else 'observer'}: {str(e)}")
+        else:
+            logging.error(f"Runtime error in WebSocket connection: {str(e)}")
+            logging.error(traceback.format_exc())
         connection_manager.disconnect(websocket)
     except Exception as e:
         # Handle other exceptions
         import logging
         import traceback
-        logging.error(f"Error in WebSocket connection: {str(e)}")
+        logging.error(f"Unexpected error in WebSocket connection: {str(e)}")
         logging.error(traceback.format_exc())
-        connection_manager.disconnect(websocket)
+        # Make sure to clean up the connection
+        try:
+            connection_manager.disconnect(websocket)
+        except Exception as cleanup_error:
+            logging.error(f"Error during connection cleanup: {str(cleanup_error)}")
+        # Try to send an error message to the client before closing
+        try:
+            await websocket.close(code=1011, reason="Internal server error")
+        except Exception:
+            pass  # If this fails, we've already tried our best
 
 
 async def process_action_message(

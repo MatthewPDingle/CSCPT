@@ -100,7 +100,14 @@ export const useWebSocket = (
         // Then call the user-provided handler in a try-catch block
         if (onMessage) {
           try {
-            onMessage(event);
+            // Add delay to prevent event handling race conditions
+            setTimeout(() => {
+              try {
+                onMessage(event);
+              } catch (delayedError) {
+                console.error('Error in delayed onMessage handler:', delayedError);
+              }
+            }, 0);
           } catch (innerError) {
             // Don't let errors in the message handler break the connection
             console.error('Error in onMessage handler:', innerError);
@@ -136,18 +143,33 @@ export const useWebSocket = (
 
   // Connect when component mounts or URL changes
   useEffect(() => {
+    console.log('useWebSocket mounting or URL changed, connecting to:', url);
+    
+    // Connect explicitly
     connect();
 
     // Cleanup on unmount
     return () => {
+      console.log('useWebSocket unmounting, closing connection to:', url);
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+      
+      // Only close if we still have a reference (might be null if already closed)
       if (websocketRef.current) {
-        websocketRef.current.close();
+        console.log('Explicitly closing WebSocket on cleanup');
+        try {
+          // Set a flag to prevent auto-reconnect on this deliberate close
+          websocketRef.current.onclose = null; // Remove onclose handler to prevent reconnect
+          websocketRef.current.close(1000, "Component unmounting");
+        } catch (e) {
+          console.error('Error closing WebSocket:', e);
+        }
+        websocketRef.current = null;
       }
     };
-  }, [connect]);
+  }, [connect, url]);
 
   return {
     sendMessage,
