@@ -100,14 +100,14 @@ cscp/
 ### Phase 3: Integration & Playability
 
 #### Backend-AI Integration
-- [ ] Create AI connector service in backend
+- [x] Create AI connector service in backend
   - [x] Implement AI decision endpoint
-  - [ ] Add AI turn triggering during game flow
-  - [ ] Implement AI player action processing
-- [ ] Enhance WebSocket game loop to include AI players
-  - [ ] Auto-advance game after human action to AI turn
-  - [ ] Process AI decisions and advance game state
-  - [ ] Broadcast AI actions to connected clients
+  - [x] Add AI turn triggering during game flow
+  - [x] Implement AI player action processing
+- [x] Enhance WebSocket game loop to include AI players
+  - [x] Auto-advance game after human action to AI turn
+  - [x] Process AI decisions and advance game state
+  - [x] Broadcast AI actions to connected clients
 
 #### Frontend-Backend Integration
 - [ ] Connect real-time game state to UI 

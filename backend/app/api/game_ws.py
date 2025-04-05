@@ -281,7 +281,26 @@ async def process_action_message(
     if poker_game.current_round == BettingRound.SHOWDOWN:
         await game_notifier.notify_hand_result(game_id, poker_game)
     else:
-        # Send action request to next player
+        # Check if next player is AI
+        active_players = [p for p in poker_game.players 
+                         if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
+        
+        if active_players and poker_game.current_player_idx < len(active_players):
+            next_player = active_players[poker_game.current_player_idx]
+            # Find the domain model for the next player to check if AI
+            game = service.get_game(game_id)
+            if game:
+                next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+                
+                if next_player_domain and not next_player_domain.is_human:
+                    # AI player's turn - trigger AI action asynchronously
+                    import asyncio
+                    asyncio.create_task(service._request_and_process_ai_action(
+                        game_id, next_player.player_id
+                    ))
+                    return  # AI will handle the turn, no need to send action request
+        
+        # Send action request to next player (if human)
         await game_notifier.notify_action_request(game_id, poker_game)
 
 

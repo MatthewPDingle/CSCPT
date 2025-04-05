@@ -2,15 +2,17 @@
 API routes for AI integration and memory system.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 import asyncio
 import json
 from datetime import datetime
 import logging
+from pydantic import BaseModel, Field
 
 # Try to import memory integration
 try:
     from ai.memory_integration import MemoryIntegration
+    from ai.agents.response_parser import AgentResponseParser
     MEMORY_SYSTEM_AVAILABLE = True
 except ImportError:
     MEMORY_SYSTEM_AVAILABLE = False
@@ -18,7 +20,33 @@ except ImportError:
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
-@router.get("/status")
+# === Models ===
+
+class AIDecisionRequest(BaseModel):
+    """Request model for AI decision."""
+    archetype: str
+    game_state: Dict[str, Any]
+    context: Dict[str, Any] = Field(default_factory=dict)
+    player_id: str
+    use_memory: bool = True
+    intelligence_level: str = "expert"
+
+class AIStatusResponse(BaseModel):
+    """Response model for AI status."""
+    memory_system_available: bool
+    memory_system_enabled: Optional[bool] = None
+    profiles_count: Optional[int] = None
+    error: Optional[str] = None
+    message: Optional[str] = None
+
+class StatusResponse(BaseModel):
+    """Generic status response."""
+    status: str
+    message: str
+
+# === Routes ===
+
+@router.get("/status", response_model=AIStatusResponse)
 async def get_ai_status():
     """
     Get the status of the AI and memory systems.
@@ -27,31 +55,31 @@ async def get_ai_status():
         Dict with system status information
     """
     if not MEMORY_SYSTEM_AVAILABLE:
-        return {
-            "memory_system_available": False,
-            "message": "AI memory system not available"
-        }
+        return AIStatusResponse(
+            memory_system_available=False,
+            message="AI memory system not available"
+        )
         
     try:
-        return {
-            "memory_system_available": True,
-            "memory_system_enabled": MemoryIntegration.is_memory_enabled(),
-            "profiles_count": len(MemoryIntegration.get_all_profiles())
-        }
+        return AIStatusResponse(
+            memory_system_available=True,
+            memory_system_enabled=MemoryIntegration.is_memory_enabled(),
+            profiles_count=len(MemoryIntegration.get_all_profiles())
+        )
     except Exception as e:
-        return {
-            "memory_system_available": True,
-            "memory_system_enabled": False,
-            "error": str(e)
-        }
+        return AIStatusResponse(
+            memory_system_available=True,
+            memory_system_enabled=False,
+            error=str(e)
+        )
 
 @router.post("/decision")
-async def get_ai_decision(request: Dict[str, Any]):
+async def get_ai_decision(request: AIDecisionRequest):
     """
     Get a decision from an AI agent.
     
     Parameters:
-        - request: A dictionary containing:
+        - request: A model containing:
             - archetype: The agent archetype (TAG, LAG, etc.)
             - game_state: Current game state
             - context: Additional context
@@ -66,31 +94,38 @@ async def get_ai_decision(request: Dict[str, Any]):
         raise HTTPException(status_code=503, detail="AI system not available")
         
     try:
-        # Extract parameters
-        archetype = request.get("archetype")
-        game_state = request.get("game_state", {})
-        context = request.get("context", {})
-        player_id = request.get("player_id")
-        use_memory = request.get("use_memory", True)
-        intelligence_level = request.get("intelligence_level", "expert")
-        
-        # Validate required parameters
-        if not archetype:
-            raise HTTPException(status_code=400, detail="Missing required parameter: archetype")
-        if not player_id:
-            raise HTTPException(status_code=400, detail="Missing required parameter: player_id")
-            
         # Get decision from agent
         decision = await MemoryIntegration.get_agent_decision(
-            archetype=archetype,
-            game_state=game_state,
-            context=context,
-            player_id=player_id,
-            use_memory=use_memory,
-            intelligence_level=intelligence_level
+            archetype=request.archetype,
+            game_state=request.game_state,
+            context=request.context,
+            player_id=request.player_id,
+            use_memory=request.use_memory,
+            intelligence_level=request.intelligence_level
         )
         
-        return decision
+        # Parse and validate response
+        try:
+            action, amount, metadata = AgentResponseParser.parse_response(decision)
+            
+            # Apply game rules
+            action, amount = AgentResponseParser.apply_game_rules(
+                action, amount, request.game_state
+            )
+            
+            # Return validated decision
+            return {
+                "action": action,
+                "amount": amount,
+                "reasoning": metadata.get("reasoning", {}),
+                "validated": True
+            }
+        except ValueError:
+            # Return the original decision but mark as not validated
+            return {
+                **decision,
+                "validated": False
+            }
         
     except Exception as e:
         logging.error(f"Error getting AI decision: {str(e)}")
@@ -136,7 +171,7 @@ async def get_player_profile(player_id: str):
         logging.error(f"Error getting player profile: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting player profile: {str(e)}")
 
-@router.post("/memory/enable")
+@router.post("/memory/enable", response_model=StatusResponse)
 async def enable_memory():
     """
     Enable the memory system.
@@ -149,12 +184,12 @@ async def enable_memory():
         
     try:
         MemoryIntegration.enable_memory()
-        return {"status": "success", "message": "Memory system enabled"}
+        return StatusResponse(status="success", message="Memory system enabled")
     except Exception as e:
         logging.error(f"Error enabling memory system: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error enabling memory system: {str(e)}")
 
-@router.post("/memory/disable")
+@router.post("/memory/disable", response_model=StatusResponse)
 async def disable_memory():
     """
     Disable the memory system.
@@ -167,12 +202,12 @@ async def disable_memory():
         
     try:
         MemoryIntegration.disable_memory()
-        return {"status": "success", "message": "Memory system disabled"}
+        return StatusResponse(status="success", message="Memory system disabled")
     except Exception as e:
         logging.error(f"Error disabling memory system: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error disabling memory system: {str(e)}")
 
-@router.delete("/memory/clear")
+@router.delete("/memory/clear", response_model=StatusResponse)
 async def clear_memory():
     """
     Clear all memory data.
@@ -187,7 +222,48 @@ async def clear_memory():
         connector = MemoryIntegration._memory_service
         if connector:
             connector.clear_all_memory()
-        return {"status": "success", "message": "Memory data cleared"}
+        return StatusResponse(status="success", message="Memory data cleared")
     except Exception as e:
         logging.error(f"Error clearing memory data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error clearing memory data: {str(e)}")
+
+@router.post("/process-hand-history", response_model=StatusResponse)
+async def process_hand_history(hand_data: Dict[str, Any]):
+    """
+    Process a hand history to update player profiles.
+    
+    Parameters:
+        - hand_data: Hand history data
+        
+    Returns:
+        Status response
+    """
+    if not MEMORY_SYSTEM_AVAILABLE:
+        raise HTTPException(status_code=503, detail="AI memory system not available")
+        
+    try:
+        MemoryIntegration.process_hand_history(hand_data)
+        return StatusResponse(
+            status="success", 
+            message=f"Processed hand #{hand_data.get('hand_number', 'Unknown')}"
+        )
+    except Exception as e:
+        logging.error(f"Error processing hand history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing hand history: {str(e)}")
+
+@router.get("/archetypes")
+async def get_available_archetypes():
+    """
+    Get a list of available AI archetypes.
+    
+    Returns:
+        List of available archetypes
+    """
+    try:
+        # Get list of available archetypes
+        from app.models.domain_models import ArchetypeEnum
+        return [archetype.value for archetype in ArchetypeEnum]
+    except Exception as e:
+        logging.error(f"Error getting archetypes: {str(e)}")
+        # Return basic archetypes if enum not available
+        return ["TAG", "LAG", "TightPassive", "CallingStation", "Maniac", "Beginner"]

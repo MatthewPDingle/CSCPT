@@ -325,6 +325,7 @@ class GameStateNotifier:
     async def notify_action_request(self, game_id: str, game: PokerGame):
         """
         Notify the current player that it's their turn to act.
+        Only sends action requests to human players.
         
         Args:
             game_id: The ID of the game
@@ -336,6 +337,29 @@ class GameStateNotifier:
             return
             
         current_player = active_players[game.current_player_idx]
+        
+        # Import necessary modules
+        import logging
+        from app.services.game_service import GameService
+        
+        # Check if player is human before sending action request
+        try:
+            # Get the game service
+            service = GameService.get_instance()
+            game_obj = service.get_game(game_id)
+            
+            if game_obj:
+                # Find the player in the domain model
+                player = next((p for p in game_obj.players if p.id == current_player.player_id), None)
+                
+                # If player is not human, we don't send an action request
+                if player and not player.is_human:
+                    return
+        except Exception as e:
+            logging.error(f"Error checking if player is human: {str(e)}")
+            # If we can't determine if the player is human, proceed with the action request
+        
+        # Continue with regular action request for human players
         valid_actions = game.get_valid_actions(current_player)
         
         # Create action options

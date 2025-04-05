@@ -1088,167 +1088,345 @@ class PokerCoach:
 
 ## Integration with Game Engine
 
-### AI Service
+The AI integration in this project involves multiple components working together to create a seamless experience where AI players can participate in poker games alongside human players. The integration follows a modular approach, where the core poker engine can interact with the AI agents through well-defined interfaces.
+
+### Updated Backend-AI Integration Flow
+
+The integration between the backend game engine and AI agents follows this workflow:
+
+1. **Player Setup**: During game setup, players are created with `is_human` and `archetype` parameters.
+2. **Turn Management**: When a player's turn is detected, the system checks if they are human or AI.
+3. **AI Decision Process**:
+   - If AI, the backend calls `_request_and_process_ai_action` asynchronously
+   - The game state is converted to a format suitable for AI consumption
+   - The AI agent is queried via `MemoryIntegration.get_agent_decision`
+   - The agent's decision is validated and processed in the game state
+   - The result is broadcast to all players
+4. **Chain of AI Actions**: If multiple AI players act in sequence, each action triggers the next
+5. **Human Notification**: When an AI action results in a human player's turn, the system sends an action request to the human player
+
+### Key Components
+
+#### Memory Integration Layer
+
+The `MemoryIntegration` class serves as a bridge between the backend and AI agents:
 
 ```python
-class AIService:
-    """Service for managing AI agents and coaching."""
+class MemoryIntegration:
+    """Integration class for AI memory and decision systems."""
     
-    def __init__(self, config):
-        """Initialize the AI service."""
-        self.config = config
-        self.llm_service = LLMService(config["llm"])
-        self.agent_factory = PokerAgentFactory(self.llm_service)
-        self.coach = PokerCoach(self.llm_service)
-        self.agents = {}
-        
-    async def initialize_agents(self, game_id, player_configs):
+    # Class-level references for easy access
+    _memory_service = None
+    _memory_enabled = False
+    
+    @classmethod
+    async def get_agent_decision(cls, archetype, game_state, context, player_id, 
+                               use_memory=True, intelligence_level="expert"):
         """
-        Initialize AI agents for a game.
+        Get a decision from an agent using the memory system.
         
         Args:
-            game_id: ID of the game
-            player_configs: Configuration for each AI player
+            archetype: The type of agent to use (e.g., "TAG", "LAG")
+            game_state: The current state of the game
+            context: Additional context information
+            player_id: The ID of the player making the decision
+            use_memory: Whether to use memory for this decision
+            intelligence_level: The agent's intelligence level
             
         Returns:
-            Dictionary of initialized agents
+            A dictionary containing the agent's decision
         """
-        game_agents = {}
-        
-        for config in player_configs:
-            agent_id = f"{game_id}_{config['player_id']}"
-            agent = self.agent_factory.create_agent(agent_id, config["archetype"])
-            game_agents[config["player_id"]] = agent
-            
-        self.agents[game_id] = game_agents
-        return game_agents
-    
-    async def get_agent_decision(self, game_id, player_id, game_state):
-        """
-        Get a decision from an AI agent.
-        
-        Args:
-            game_id: ID of the game
-            player_id: ID of the player
-            game_state: Current state of the game
-            
-        Returns:
-            Agent's decision (action, amount, reasoning)
-        """
-        if game_id not in self.agents or player_id not in self.agents[game_id]:
-            raise ValueError(f"No agent found for player {player_id} in game {game_id}")
-            
-        agent = self.agents[game_id][player_id]
-        return await agent.make_decision(game_state, player_id)
-    
-    async def analyze_hand(self, hand_history, player_id):
-        """
-        Get coaching analysis for a hand.
-        
-        Args:
-            hand_history: Complete history of the hand
-            player_id: ID of the player to analyze for
-            
-        Returns:
-            Coach's analysis of the hand
-        """
-        return await self.coach.analyze_hand(hand_history, player_id)
-    
-    async def get_coaching_advice(self, question, game_context=None):
-        """
-        Get coaching advice for a player question.
-        
-        Args:
-            question: Player's question
-            game_context: Current game context (optional)
-            
-        Returns:
-            Coach's response to the question
-        """
-        return await self.coach.chat(question, game_context)
-    
-    async def analyze_opponent(self, opponent_data, recent_hands):
-        """
-        Get analysis of an opponent.
-        
-        Args:
-            opponent_data: Opponent information and statistics
-            recent_hands: Recent hands played by the opponent
-            
-        Returns:
-            Analysis of the opponent's playing style
-        """
-        return await self.coach.analyze_opponent(opponent_data, recent_hands)
-    
-    async def get_strategy_advice(self, topic, skill_level, context=""):
-        """
-        Get strategic advice on a poker topic.
-        
-        Args:
-            topic: Poker topic to get advice on
-            skill_level: Player's skill level
-            context: Additional context
-            
-        Returns:
-            Strategic advice on the topic
-        """
-        return await self.coach.get_strategy_advice(topic, skill_level, context)
-    
-    def cleanup_agents(self, game_id):
-        """Clean up agents when a game ends."""
-        if game_id in self.agents:
-            del self.agents[game_id]
-```
-
-### Integration with Backend
-
-```python
-# In the game service
-async def process_ai_actions(game_id, game_state):
-    """Process actions for all AI players in the current game round."""
-    current_position = game_state.current_position
-    if current_position is None:
-        return
-        
-    player_id = game_state.seats[current_position]
-    if player_id is None:
-        return
-        
-    player = game_state.players[player_id]
-    
-    # Skip human players
-    if player.is_human:
-        return
-        
-    # Get AI decision
-    try:
-        decision = await ai_service.get_agent_decision(game_id, player_id, game_state)
-        
-        # Process the decision
-        action = decision["action"]
-        amount = decision.get("amount", 0)
-        
-        # Apply the action to the game
-        game_state.process_player_action(player_id, action, amount)
-        
-        # Broadcast the action to all players
-        await websocket_manager.broadcast_to_game(
-            game_id,
-            {
-                "type": "player_action",
-                "data": {
-                    "player_id": player_id,
-                    "action": action,
-                    "amount": amount
-                }
-            }
+        # Create an agent with specified parameters
+        agent = AgentFactory.create_agent(
+            archetype=archetype,
+            use_memory=use_memory,
+            intelligence_level=intelligence_level
         )
         
-        # Schedule the next AI action
-        asyncio.create_task(process_ai_actions(game_id, game_state))
+        # Add player_id to game state if not already there
+        if isinstance(game_state, dict) and "player_id" not in game_state:
+            game_state["player_id"] = player_id
+        
+        # Make decision
+        return await agent.make_decision(game_state, context)
+    
+    @classmethod
+    def get_all_profiles(cls):
+        """Get all player profiles from memory."""
+        if not cls._memory_service:
+            return []
+        
+        return [
+            profile.to_dict() 
+            for player_id, profile in cls._memory_service.active_profiles.items()
+        ]
+    
+    @classmethod
+    def get_player_profile(cls, player_id):
+        """Get a specific player's profile."""
+        if not cls._memory_service:
+            return None
+            
+        profile = cls._memory_service.get_profile(player_id)
+        if profile:
+            return profile.to_dict()
+        return None
+    
+    @classmethod
+    def is_memory_enabled(cls):
+        """Check if memory system is enabled."""
+        return cls._memory_enabled
+    
+    @classmethod
+    def enable_memory(cls):
+        """Enable the memory system."""
+        connector = MemoryConnector.get_instance()
+        connector.enable()
+        cls._memory_enabled = True
+```
+
+#### Backend AI Processing in GameService
+
+The `GameService` class has been enhanced with a new asynchronous method for processing AI actions:
+
+```python
+async def _request_and_process_ai_action(self, game_id: str, player_id: str):
+    """
+    Request a decision from an AI player and process it in the game.
+    
+    This method will:
+    1. Get the game and player information
+    2. Prepare the game state for the AI
+    3. Request a decision from the appropriate AI agent
+    4. Process the resulting action in the game
+    5. Notify clients of the action and state changes
+    """
+    # Import AI memory integration
+    from ai.memory_integration import MemoryIntegration
+    from ai.agents.response_parser import AgentResponseParser
+    
+    # Retrieve the game and poker game
+    game = self.game_repo.get(game_id)
+    poker_game = self.poker_games.get(game_id)
+    
+    # Find the player in the domain model
+    domain_player = next((p for p in game.players if p.id == player_id), None)
+    
+    # Verify this is an AI player
+    if domain_player.is_human:
+        return
+        
+    # Find the player in the poker game
+    poker_player = next((p for p in poker_game.players if p.player_id == player_id), None)
+    
+    # Get archetype and intelligence level (with defaults)
+    archetype = domain_player.archetype or "TAG"
+    intelligence_level = "expert"
+    
+    # Prepare game state for AI consumption
+    game_state = game_to_model(game_id, poker_game)
+    
+    # Filter sensitive information - only show this player's cards
+    game_state_dict = game_state.dict()
+    for player_model in game_state_dict["players"]:
+        if player_model["player_id"] != player_id:
+            player_model["cards"] = None
+    
+    try:
+        # Request decision from AI
+        ai_decision = await MemoryIntegration.get_agent_decision(
+            archetype=archetype,
+            game_state=game_state_dict,
+            context=context,
+            player_id=player_id,
+            use_memory=True,
+            intelligence_level=intelligence_level
+        )
+        
+        # Parse and validate the response
+        action, amount, metadata = AgentResponseParser.parse_response(ai_decision)
+        
+        # Process the action in the poker game
+        poker_game.process_action(poker_player, poker_action, action_amount)
+        
+        # Notify clients
+        await game_notifier.notify_player_action(game_id, player_id, action_type, action_amount)
+        await game_notifier.notify_game_update(game_id, poker_game)
+        
+        # Check if hand is complete or if it's next player's turn
+        if poker_game.current_round == BettingRound.SHOWDOWN:
+            await game_notifier.notify_hand_result(game_id, poker_game)
+            self._start_new_hand(game)
+        else:
+            # If next player is AI, trigger their action
+            next_player = active_players[poker_game.current_player_idx]
+            next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+            
+            if next_player_domain and not next_player_domain.is_human:
+                # Trigger next AI player action asynchronously
+                asyncio.create_task(self._request_and_process_ai_action(
+                    game_id, next_player.player_id
+                ))
+            else:
+                # If human, send action request
+                await game_notifier.notify_action_request(game_id, poker_game)
         
     except Exception as e:
-        logger.error(f"Error processing AI action: {str(e)}")
+        # Default to fold on error
+        poker_game.process_action(poker_player, PokerPlayerAction.FOLD, None)
+```
+
+#### WebSocket Game Flow Updates
+
+The WebSocket handler has been updated to check for AI players and trigger their actions:
+
+```python
+async def process_action_message(websocket, game_id, message, player_id, service):
+    """Process a player action WebSocket message."""
+    # Process the human player's action
+    success = poker_game.process_action(player, action_type, action_amount)
+    
+    # Notify about updated game state
+    await game_notifier.notify_game_update(game_id, poker_game)
+    
+    # Check if next player is AI
+    active_players = [p for p in poker_game.players 
+                     if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
+    
+    if active_players and poker_game.current_player_idx < len(active_players):
+        next_player = active_players[poker_game.current_player_idx]
+        game = service.get_game(game_id)
+        
+        if game:
+            next_player_domain = next((p for p in game.players 
+                                     if p.id == next_player.player_id), None)
+            
+            if next_player_domain and not next_player_domain.is_human:
+                # AI player's turn - trigger AI action asynchronously
+                asyncio.create_task(service._request_and_process_ai_action(
+                    game_id, next_player.player_id
+                ))
+                return  # AI will handle the turn
+    
+    # If hand is complete, notify about results
+    if poker_game.current_round == BettingRound.SHOWDOWN:
+        await game_notifier.notify_hand_result(game_id, poker_game)
+    else:
+        # Send action request to next player (if human)
+        await game_notifier.notify_action_request(game_id, poker_game)
+```
+
+#### GameStateNotifier Updates
+
+The `GameStateNotifier` has been enhanced to only send action requests to human players:
+
+```python
+async def notify_action_request(self, game_id: str, game: PokerGame):
+    """
+    Notify the current player that it's their turn to act.
+    Only sends action requests to human players.
+    """
+    active_players = [p for p in game.players 
+                     if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
+    if not active_players or game.current_player_idx >= len(active_players):
+        return
+        
+    current_player = active_players[game.current_player_idx]
+    
+    # Check if player is human before sending action request
+    try:
+        service = GameService.get_instance()
+        game_obj = service.get_game(game_id)
+        
+        if game_obj:
+            player = next((p for p in game_obj.players 
+                         if p.id == current_player.player_id), None)
+            
+            # If player is not human, we don't send an action request
+            if player and not player.is_human:
+                return
+    except Exception as e:
+        logging.error(f"Error checking if player is human: {str(e)}")
+    
+    # Continue with regular action request for human players
+    valid_actions = game.get_valid_actions(current_player)
+    
+    # Create action options
+    options = []
+    for action, params in valid_actions:
+        options.append(action.name)
+    
+    message = {
+        "type": "action_request",
+        "data": {
+            "handId": game.current_hand_id,
+            "player_id": current_player.player_id,
+            "options": options,
+            # Other data...
+        }
+    }
+    
+    await self.connection_manager.send_to_player(game_id, current_player.player_id, message)
+```
+
+### AI Connector API Endpoints
+
+The enhanced `ai_connector.py` provides these API endpoints:
+
+```python
+@router.get("/status")
+async def get_ai_status():
+    """Get the status of the AI and memory systems."""
+    # Returns memory availability, enabled status, and profiles count
+    
+@router.post("/decision")
+async def get_ai_decision(request: AIDecisionRequest):
+    """Get a decision from an AI agent."""
+    # Takes archetype, game_state, context, player_id
+    # Returns an action, amount, and reasoning
+    
+@router.get("/profiles")
+async def get_player_profiles():
+    """Get all available player profiles."""
+    # Returns all player profiles from memory
+    
+@router.get("/profiles/{player_id}")
+async def get_player_profile(player_id: str):
+    """Get a player's profile."""
+    # Returns a specific player profile
+    
+@router.post("/memory/enable")
+async def enable_memory():
+    """Enable the memory system."""
+    
+@router.post("/memory/disable")
+async def disable_memory():
+    """Disable the memory system."""
+    
+@router.delete("/memory/clear")
+async def clear_memory():
+    """Clear all memory data."""
+
+@router.post("/process-hand-history")
+async def process_hand_history(hand_data: Dict[str, Any]):
+    """Process a hand history to update player profiles."""
+    
+@router.get("/archetypes")
+async def get_available_archetypes():
+    """Get a list of available AI archetypes."""
+    # Returns all supported agent archetypes
+```
+
+### WebSocket Handler for Coaching
+
+The coaching WebSocket handler remains as previously implemented:
+
+```python
+@router.websocket("/ws/coach/{user_id}")
+async def websocket_coach(websocket: WebSocket, user_id: str):
+    """WebSocket endpoint for real-time coaching interactions."""
+    # Handles coaching queries and strategy questions
+    # Provides real-time advice during gameplay
 ```
 
 ### WebSocket Handler for Coaching
