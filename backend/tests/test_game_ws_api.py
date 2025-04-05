@@ -115,9 +115,12 @@ async def test_process_action_message():
     
     # Mock service
     mock_service = MagicMock(spec=GameService)
-    mock_service.get_game.return_value = mock_game_instance
+    # Create a mock game with players attribute for domain model checking
+    mock_domain_game = MagicMock()
+    mock_domain_game.players = [MagicMock(id=player_id, is_human=True)]
+    mock_service.get_game.return_value = mock_domain_game
     mock_service.poker_games = {game_id: mock_poker_game}
-    mock_service.process_action.return_value = mock_game_instance
+    mock_service.process_action.return_value = mock_domain_game
     
     # Patch dependencies
     with patch("app.api.game_ws.connection_manager") as mock_conn_manager, \
@@ -177,9 +180,12 @@ async def test_process_chat_message():
     
     # Mock service
     mock_service = MagicMock(spec=GameService)
-    mock_service.get_game.return_value = mock_game_instance
+    # Create a mock game with players attribute for domain model checking
+    mock_domain_game = MagicMock()
+    mock_domain_game.players = [MagicMock(id=player_id, is_human=True)]
+    mock_service.get_game.return_value = mock_domain_game
     mock_service.poker_games = {game_id: mock_poker_game}
-    mock_service.process_action.return_value = mock_game_instance
+    mock_service.process_action.return_value = mock_domain_game
     
     # Patch dependencies
     with patch("app.api.game_ws.connection_manager") as mock_conn_manager:
