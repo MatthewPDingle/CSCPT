@@ -73,6 +73,10 @@ async def setup_game(
     Returns:
         The created game ID and human player ID (if any)
     """
+    # Log the incoming request data
+    import logging
+    logging.warning(f"Setup data received: {setup.dict()}")
+    
     try:
         human_player_id = None
         
@@ -92,16 +96,24 @@ async def setup_game(
                 rake_cap=setup.rake_cap
             )
             
+            # Log the created game details
+            logging.warning(f"Game created with id: {game.id}, min_buy_in: {game.cash_game_info.min_buy_in}, max_buy_in: {game.cash_game_info.max_buy_in}")
+            
             # Add players to cash game
             for player_setup in setup.players:
-                _, player = service.add_player_to_cash_game(
-                    game_id=game.id,
-                    name=player_setup.name,
-                    buy_in=player_setup.buy_in,
-                    is_human=player_setup.is_human,
-                    archetype=player_setup.archetype,
-                    position=player_setup.position
-                )
+                logging.warning(f"Adding player: {player_setup.name}, buy_in: {player_setup.buy_in}, is_human: {player_setup.is_human}")
+                try:
+                    _, player = service.add_player_to_cash_game(
+                        game_id=game.id,
+                        name=player_setup.name,
+                        buy_in=player_setup.buy_in,
+                        is_human=player_setup.is_human,
+                        archetype=player_setup.archetype,
+                        position=player_setup.position
+                    )
+                except ValueError as ve:
+                    logging.error(f"Player validation error: {str(ve)}")
+                    raise
                 
                 # Store human player ID to return to frontend
                 if player_setup.is_human:

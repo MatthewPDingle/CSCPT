@@ -112,29 +112,69 @@ const GamePage: React.FC = () => {
     handResult,
     sendAction,
     isPlayerTurn,
-    errors
+    errors,
+    reconnect
   } = useGameWebSocket(gameId, playerId);
   
-  // Function to determine if we're showing loading screen
-  const isLoading = status !== 'open' || !gameState;
+  // Store game state in local state when received
+  const [localGameState, setLocalGameState] = React.useState<typeof gameState | null>(null);
+  const [connectionStatus, setConnectionStatus] = React.useState("connecting");
+  
+  // Update local game state when WebSocket state changes
+  React.useEffect(() => {
+    if (gameState) {
+      console.log('Saving new game state to local state');
+      setLocalGameState(gameState);
+      // Also save to localStorage as backup
+      try {
+        localStorage.setItem(`gameState_${gameId}`, JSON.stringify(gameState));
+      } catch (e) {
+        console.error('Failed to save game state to localStorage:', e);
+      }
+    }
+  }, [gameState, gameId]);
+  
+  // Update connection status for display
+  React.useEffect(() => {
+    setConnectionStatus(status);
+    // If disconnected, try reconnecting after a delay
+    if (status === 'closed' || status === 'error') {
+      const timeoutId = setTimeout(() => {
+        console.log('Attempting to reconnect...');
+        reconnect();
+      }, 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [status, reconnect]);
+  
+  // Debug logs to help identify the issue
+  console.log('WebSocket status:', status);
+  console.log('GameState exists:', !!gameState);
+  console.log('LocalGameState exists:', !!localGameState);
+  
+  // Use either WebSocket game state or local game state
+  const effectiveGameState = gameState || localGameState;
+  
+  // Only show loading if we have no game state at all
+  const isLoading = !effectiveGameState;
   
   // Function to get the human player's data
   const getHumanPlayer = () => {
-    if (!gameState) return null;
-    return gameState.players.find(p => p.player_id === playerId);
+    if (!effectiveGameState) return null;
+    return effectiveGameState.players.find(p => p.player_id === playerId);
   };
   
   // Function to transform backend player models to frontend format
   const transformPlayersForTable = () => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
     
-    return gameState.players.map(player => {
+    return effectiveGameState.players.map(player => {
       // Check if this player is at the button position
-      const isButton = gameState.button_position === player.position;
+      const isButton = effectiveGameState.button_position === player.position;
       
       // Check if this player is the current player (whose turn it is)
-      const isCurrent = gameState.current_player_idx !== undefined && 
-        gameState.players[gameState.current_player_idx]?.player_id === player.player_id;
+      const isCurrent = effectiveGameState.current_player_idx !== undefined && 
+        effectiveGameState.players[effectiveGameState.current_player_idx]?.player_id === player.player_id;
       
       // Transform card objects to strings for the Card component
       const transformedCards = player.cards 
@@ -151,8 +191,8 @@ const GamePage: React.FC = () => {
         isCurrent,
         isDealer: false, // The dealer seat is added separately in PokerTable
         isButton,
-        isSB: player.position === (gameState.button_position + 1) % gameState.players.length,
-        isBB: player.position === (gameState.button_position + 2) % gameState.players.length,
+        isSB: player.position === (effectiveGameState.button_position + 1) % effectiveGameState.players.length,
+        isBB: player.position === (effectiveGameState.button_position + 2) % effectiveGameState.players.length,
         currentBet: player.current_bet || 0
       };
     });
@@ -187,7 +227,23 @@ const GamePage: React.FC = () => {
   // Get human player
   const humanPlayer = getHumanPlayer();
   const chips = humanPlayer?.chips || 0;
-  const currentBet = gameState?.current_bet || 0;
+  const currentBet = effectiveGameState?.current_bet || 0;
+  
+  // Add a connection status indicator to the UI
+  const connectionIndicator = (
+    <div style={{ 
+      position: 'absolute', 
+      top: '10px', 
+      right: '10px', 
+      padding: '5px 10px',
+      borderRadius: '4px',
+      backgroundColor: connectionStatus === 'open' ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 0, 0, 0.3)',
+      color: 'white',
+      fontSize: '12px'
+    }}>
+      {connectionStatus === 'open' ? 'Connected' : 'Reconnecting...'}
+    </div>
+  );
   
   return (
     <GameContainer>
@@ -196,12 +252,15 @@ const GamePage: React.FC = () => {
         <ChipCount>Your Chips: {chips}</ChipCount>
       </GameHeader>
       
+      {/* Add connection status indicator */}
+      {connectionIndicator}
+      
       <PokerTable 
         players={transformPlayersForTable()}
-        communityCards={(gameState?.community_cards || []).map(card => 
+        communityCards={(effectiveGameState?.community_cards || []).map(card => 
           card ? `${card.rank}${card.suit}` : null
         )}
-        pot={gameState?.total_pot || 0}
+        pot={effectiveGameState?.total_pot || 0}
       />
       
       <ActionControls 
@@ -213,12 +272,12 @@ const GamePage: React.FC = () => {
       />
 
       {/* Only show cash game controls for cash games */}
-      {gameMode === 'cash' && gameState && (
+      {gameMode === 'cash' && effectiveGameState && (
         <CashGameControls
           gameId={gameId}
           playerId={playerId}
           chips={chips}
-          maxBuyIn={gameState.max_buy_in ?? 2000}
+          maxBuyIn={effectiveGameState.max_buy_in ?? 2000}
           onPlayerUpdate={handlePlayerUpdate}
         />
       )}

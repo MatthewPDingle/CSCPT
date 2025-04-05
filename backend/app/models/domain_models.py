@@ -68,6 +68,11 @@ class ArchetypeEnum(str, Enum):
     MANIAC = "Maniac"
     BEGINNER = "Beginner"
     UNPREDICTABLE = "Unpredictable"
+    ADAPTABLE = "Adaptable"
+    GTO = "GTO"  
+    SHORT_STACK = "ShortStack"
+    TRAPPY = "Trappy"
+    LOOSE_PASSIVE = "LoosePassive"
 
 
 class TournamentStage(str, Enum):

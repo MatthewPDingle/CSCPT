@@ -38,10 +38,18 @@ export const useWebSocket = (
   // Function to handle sending messages
   const sendMessage = useCallback((data: any) => {
     if (websocketRef.current?.readyState === WebSocket.OPEN) {
-      websocketRef.current.send(typeof data === 'string' ? data : JSON.stringify(data));
+      const message = typeof data === 'string' ? data : JSON.stringify(data);
+      console.log('Sending WebSocket message:', message.substring(0, 100));
+      websocketRef.current.send(message);
       return true;
+    } else {
+      console.warn('Cannot send message, WebSocket not open. Current state:', 
+        websocketRef.current ? 
+        ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][websocketRef.current.readyState] : 
+        'No connection'
+      );
+      return false;
     }
-    return false;
   }, []);
 
   // Function to close the connection
@@ -65,29 +73,54 @@ export const useWebSocket = (
     }
 
     // Create new connection
+    console.log(`Creating new WebSocket connection to ${url}`);
     const ws = new WebSocket(url);
     websocketRef.current = ws;
     setStatus('connecting');
 
     // Setup event handlers
     ws.onopen = (event) => {
+      console.log('WebSocket connection opened');
       reconnectCountRef.current = 0;
       setStatus('open');
       if (onOpen) onOpen(event);
     };
 
     ws.onmessage = (event) => {
-      setLastMessage(event);
-      if (onMessage) onMessage(event);
+      try {
+        console.log('WebSocket message received:', 
+          typeof event.data === 'string' ? 
+          event.data.substring(0, 100) + (event.data.length > 100 ? '...' : '') : 
+          'Binary data'
+        );
+        
+        // Process the message first
+        setLastMessage(event);
+        
+        // Then call the user-provided handler in a try-catch block
+        if (onMessage) {
+          try {
+            onMessage(event);
+          } catch (innerError) {
+            // Don't let errors in the message handler break the connection
+            console.error('Error in onMessage handler:', innerError);
+          }
+        }
+      } catch (error) {
+        // Don't let ANY error in message processing cause a disconnect
+        console.error('Critical error processing WebSocket message:', error);
+      }
     };
 
     ws.onclose = (event) => {
+      console.log(`WebSocket connection closed with code ${event.code}: ${event.reason}`);
       setStatus('closed');
       if (onClose) onClose(event);
 
       // Setup reconnection logic
       if (shouldReconnect && reconnectCountRef.current < reconnectAttempts) {
         reconnectCountRef.current += 1;
+        console.log(`Reconnecting attempt ${reconnectCountRef.current} of ${reconnectAttempts} in ${reconnectInterval}ms`);
         reconnectTimerRef.current = setTimeout(() => {
           connect();
         }, reconnectInterval);
@@ -95,6 +128,7 @@ export const useWebSocket = (
     };
 
     ws.onerror = (event) => {
+      console.error('WebSocket error occurred:', event);
       setStatus('error');
       if (onError) onError(event);
     };

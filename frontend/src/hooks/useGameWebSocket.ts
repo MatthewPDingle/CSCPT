@@ -120,26 +120,35 @@ export const useGameWebSocket = (gameId: string, playerId?: string) => {
   const handleMessage = useCallback((event: MessageEvent) => {
     try {
       const message: WebSocketMessage = JSON.parse(event.data);
+      console.log('Received WebSocket message type:', message.type);
       
       switch (message.type) {
         case 'game_state':
+          console.log('Game state received:', message.data);
           setGameState(message.data);
           break;
         case 'player_action':
+          console.log('Player action received:', message.data);
           setLastAction(message.data);
           break;
         case 'action_request':
+          console.log('Action request received:', message.data);
           setActionRequest(message.data);
           break;
         case 'hand_result':
+          console.log('Hand result received:', message.data);
           setHandResult(message.data);
           break;
         case 'chat':
+          console.log('Chat message received');
           setChatMessages(prev => [...prev, message.data]);
           break;
         case 'error':
-          setErrors(prev => [...prev, message.data]);
           console.error('Game WebSocket error:', message.data);
+          setErrors(prev => [...prev, message.data]);
+          break;
+        case 'pong':
+          console.log('Pong received');
           break;
         default:
           console.log('Unknown message type:', message.type);
@@ -154,6 +163,21 @@ export const useGameWebSocket = (gameId: string, playerId?: string) => {
     onMessage: handleMessage,
     reconnectAttempts: 10,
     shouldReconnect: true,
+    reconnectInterval: 1000, // Reconnect faster - every 1 second
+    onOpen: () => {
+      // Send an immediate ping when connection opens to establish stable connection
+      console.log('WebSocket connection opened, sending immediate ping');
+      setTimeout(() => {
+        try {
+          sendMessage({
+            type: 'ping',
+            timestamp: Date.now()
+          });
+        } catch (err) {
+          console.error('Error sending immediate ping:', err);
+        }
+      }, 100); // Small delay to ensure connection is really ready
+    }
   });
   
   // Send player action
@@ -185,15 +209,28 @@ export const useGameWebSocket = (gameId: string, playerId?: string) => {
   
   // Send heartbeat
   useEffect(() => {
+    if (status !== 'open') {
+      return; // Don't start ping interval unless connection is open
+    }
+    
+    console.log('Starting heartbeat interval');
     const pingInterval = setInterval(() => {
-      sendMessage({
-        type: 'ping',
-        timestamp: Date.now()
-      });
+      try {
+        console.log('Sending ping');
+        sendMessage({
+          type: 'ping',
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.error('Error sending ping:', err);
+      }
     }, 30000); // Send ping every 30 seconds
     
-    return () => clearInterval(pingInterval);
-  }, [sendMessage]);
+    return () => {
+      console.log('Clearing heartbeat interval');
+      clearInterval(pingInterval);
+    };
+  }, [sendMessage, status]);
   
   // Check if it's the player's turn
   const isPlayerTurn = useCallback(() => {

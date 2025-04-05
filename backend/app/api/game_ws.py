@@ -38,15 +38,21 @@ async def websocket_endpoint(
         player_id: The ID of the player connecting (None for observers)
         service: The game service
     """
+    # Add logging for debugging
+    import logging
+    logging.warning(f"WebSocket connection attempt - game_id: {game_id}, player_id: {player_id}")
+    
     # Verify game exists
     game = service.get_game(game_id)
     if not game:
+        logging.error(f"WebSocket connection failed - Game {game_id} not found")
         await websocket.close(code=1008, reason="Game not found")
         return
 
     # Get the poker game
     poker_game = service.poker_games.get(game_id)
     if not poker_game:
+        logging.error(f"WebSocket connection failed - Poker game {game_id} not found")
         await websocket.close(code=1008, reason="Game not found")
         return
 
@@ -54,15 +60,26 @@ async def websocket_endpoint(
     if player_id:
         player = next((p for p in poker_game.players if p.player_id == player_id), None)
         if not player:
+            logging.error(f"WebSocket connection failed - Player {player_id} not found in game {game_id}")
+            logging.warning(f"Available players: {[(p.player_id, p.name) for p in poker_game.players]}")
             await websocket.close(code=1008, reason="Player not found")
             return
+        logging.warning(f"Player {player.name} connected via WebSocket")
 
     # Accept the connection
     await connection_manager.connect(websocket, game_id, player_id)
 
     try:
+        import logging
+        
+        # Variable to track if state has been sent to avoid duplicates
+        game_state_sent = False
+        
+        logging.warning(f"Sending initial game state for game {game_id}")
+        
         # Send initial game state
         await game_notifier.notify_game_update(game_id, poker_game)
+        game_state_sent = True
 
         # If it's this player's turn, send action request
         if player_id:
@@ -76,12 +93,20 @@ async def websocket_endpoint(
                 and poker_game.current_player_idx < len(active_players)
                 and active_players[poker_game.current_player_idx].player_id == player_id
             ):
+                logging.warning(f"Requesting action from player {player_id}")
                 await game_notifier.notify_action_request(game_id, poker_game)
 
         # Process messages
         while True:
-            # Wait for message
-            data = await websocket.receive_text()
+            try:
+                # Wait for message with timeout
+                logging.warning(f"Waiting for messages from {player_id if player_id else 'observer'}")
+                data = await websocket.receive_text()
+                logging.warning(f"Received message from {player_id if player_id else 'observer'}: {data[:100]}...")
+            except Exception as e:
+                # Exception during message receive is normal on client disconnect
+                logging.warning(f"Exception waiting for message: {str(e)}")
+                break
 
             try:
                 # Parse the message
@@ -98,11 +123,25 @@ async def websocket_endpoint(
                     )
                 elif message.get("type") == "ping":
                     # Respond to heartbeat
-                    await connection_manager.send_personal_message(
-                        websocket,
-                        {"type": "pong", "timestamp": message.get("timestamp")},
-                    )
-            except json.JSONDecodeError:
+                    import logging
+                    logging.warning(f"Received ping, sending pong to {player_id}")
+                    # Include the same timestamp from the ping in the pong response
+                    try:
+                        await connection_manager.send_personal_message(
+                            websocket,
+                            {"type": "pong", "timestamp": message.get("timestamp")},
+                        )
+                        # Don't send game state on every ping - it causes too many updates
+                        # We only refresh every few pings if needed
+                        if message.get("needsRefresh") == True:
+                            logging.warning("Client requested game state refresh")
+                            poker_game = service.poker_games.get(game_id)
+                            if poker_game:
+                                await game_notifier.notify_game_update(game_id, poker_game)
+                    except Exception as e:
+                        logging.error(f"Error sending pong: {str(e)}")
+            except json.JSONDecodeError as e:
+                logging.error(f"JSON decode error: {str(e)}")
                 await connection_manager.send_personal_message(
                     websocket,
                     {
@@ -116,6 +155,15 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         # Handle disconnect
+        import logging
+        logging.warning(f"WebSocket disconnected for player {player_id if player_id else 'observer'}")
+        connection_manager.disconnect(websocket)
+    except Exception as e:
+        # Handle other exceptions
+        import logging
+        import traceback
+        logging.error(f"Error in WebSocket connection: {str(e)}")
+        logging.error(traceback.format_exc())
         connection_manager.disconnect(websocket)
 
 

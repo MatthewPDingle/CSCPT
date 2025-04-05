@@ -67,7 +67,9 @@ class ConnectionManager:
             game_id: The ID of the game
             message: The message to broadcast
         """
+        import logging
         if game_id not in self.active_connections:
+            logging.warning(f"Cannot broadcast to game {game_id}: no active connections")
             return
             
         # Convert message to JSON string
@@ -75,11 +77,18 @@ class ConnectionManager:
         
         # Send to all connections in the game
         disconnected = []
+        connection_count = len(self.active_connections[game_id])
+        logging.warning(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
+        
         for connection in self.active_connections[game_id]:
             try:
                 await connection.send_text(json_message)
-            except RuntimeError:
+            except RuntimeError as e:
+                logging.error(f"Error sending message: {str(e)}")
                 # Connection is closed
+                disconnected.append(connection)
+            except Exception as e:
+                logging.error(f"Unexpected error sending message: {str(e)}")
                 disconnected.append(connection)
                 
         # Clean up disconnected connections
@@ -94,11 +103,45 @@ class ConnectionManager:
             websocket: The WebSocket to send to
             message: The message to send
         """
-        json_message = json.dumps(message)
+        import logging
+        
+        # Skip if websocket is not in our maps (likely already closed)
+        if websocket not in self.socket_player_map:
+            logging.warning("Cannot send message: WebSocket not found in player map")
+            return
+            
+        player_id = self.socket_player_map.get(websocket, 'unknown')
+        msg_type = message.get('type', 'unknown')
+        logging.warning(f"Sending personal message of type '{msg_type}' to player {player_id}")
+        
+        # Check if websocket is in any active connection before sending
+        is_active = False
+        for game_connections in self.active_connections.values():
+            if websocket in game_connections:
+                is_active = True
+                break
+                
+        if not is_active:
+            logging.warning(f"WebSocket for player {player_id} not in active connections, removing from maps")
+            self.disconnect(websocket)
+            return
+        
+        # Serialize message
+        try:
+            json_message = json.dumps(message)
+        except Exception as e:
+            logging.error(f"Error serializing message: {str(e)}")
+            return
+        
+        # Send the message
         try:
             await websocket.send_text(json_message)
-        except RuntimeError:
-            # Connection is closed
+        except RuntimeError as e:
+            logging.error(f"Error sending personal message: {str(e)}")
+            # Connection is closed, clean up
+            self.disconnect(websocket)
+        except Exception as e:
+            logging.error(f"Unexpected error sending personal message: {str(e)}")
             self.disconnect(websocket)
     
     async def send_to_player(self, game_id: str, player_id: str, message: dict):
@@ -110,20 +153,33 @@ class ConnectionManager:
             player_id: The ID of the player
             message: The message to send
         """
+        import logging
         if game_id not in self.active_connections:
+            logging.warning(f"Cannot send to player {player_id} in game {game_id}: game not found")
             return
             
         json_message = json.dumps(message)
         
         # Find the player's connection and send
         disconnected = []
+        found_player = False
+        
         for connection in self.active_connections[game_id]:
             if self.socket_player_map.get(connection) == player_id:
+                found_player = True
+                logging.warning(f"Sending message of type '{message.get('type')}' to player {player_id}")
                 try:
                     await connection.send_text(json_message)
-                except RuntimeError:
+                except RuntimeError as e:
+                    logging.error(f"Error sending to player {player_id}: {str(e)}")
                     # Connection is closed
                     disconnected.append(connection)
+                except Exception as e:
+                    logging.error(f"Unexpected error sending to player {player_id}: {str(e)}")
+                    disconnected.append(connection)
+        
+        if not found_player:
+            logging.warning(f"No active connection found for player {player_id} in game {game_id}")
                 
         # Clean up disconnected connections
         for connection in disconnected:
@@ -185,19 +241,35 @@ class GameStateNotifier:
             game: The PokerGame instance
             game_to_model_func: Function to convert game to model (optional, uses imported by default)
         """
+        import logging
+        logging.warning(f"Notifying game update for game {game_id}")
+        
         # Get all connections for this game
         connections = self.connection_manager.get_connections_for_game(game_id)
         if not connections:
+            logging.warning(f"No connections found for game {game_id}")
             return
             
         # Get player connections
         player_connections = self.connection_manager.get_player_connections(game_id)
+        logging.warning(f"Found {len(player_connections)} player connections")
         
         # Use the function provided or the default imported function
         model_func = game_to_model_func or game_to_model
         
         # Convert game state
-        game_state = model_func(game_id, game)
+        try:
+            game_state = model_func(game_id, game)
+            logging.warning(f"Generated game state for game {game_id}")
+        except Exception as e:
+            import traceback
+            logging.error(f"Error generating game state: {str(e)}")
+            logging.error(traceback.format_exc())
+            return
+        
+        import logging
+        # Track processed connections to avoid double-sending
+        processed_sockets = set()
         
         # For players, send personalized game state (with their cards visible)
         for player_id, player_sockets in player_connections.items():
@@ -209,18 +281,40 @@ class GameStateNotifier:
                     player_model.cards = None
             
             # Send personalized game state to each of the player's connections
-            message = {
-                "type": "game_state",
-                "data": filtered_state.dict()
-            }
-            
-            for socket in player_sockets:
-                await self.connection_manager.send_personal_message(socket, message)
-                if socket in connections:
-                    connections.remove(socket)
+            try:
+                # Convert to a dict with error handling
+                state_dict = filtered_state.dict()
+                
+                message = {
+                    "type": "game_state",
+                    "data": state_dict
+                }
+                
+                logging.warning(f"Sending game state to player {player_id}")
+                
+                for socket in player_sockets:
+                    if socket in processed_sockets:
+                        logging.warning(f"Skipping already processed socket for player {player_id}")
+                        continue
+                        
+                    try:
+                        await self.connection_manager.send_personal_message(socket, message)
+                        processed_sockets.add(socket)
+                        # Remove from connections to avoid sending observer state to the same socket
+                        if socket in connections:
+                            connections.remove(socket)
+                    except Exception as e:
+                        logging.error(f"Error sending to player {player_id}: {str(e)}")
+            except Exception as e:
+                import traceback
+                logging.error(f"Error preparing game state message: {str(e)}")
+                logging.error(traceback.format_exc())
         
         # For observers (connections without player_id), send game state with all cards hidden
-        if connections:
+        # Exclude any connections we've already sent to
+        observer_connections = [conn for conn in connections if conn not in processed_sockets]
+        
+        if observer_connections:
             observer_state = copy.deepcopy(game_state)
             
             # Hide all player cards for observers
@@ -228,13 +322,28 @@ class GameStateNotifier:
                 player_model.cards = None
             
             # Send observer game state
-            message = {
-                "type": "game_state",
-                "data": observer_state.dict()
-            }
-            
-            for socket in connections:
-                await self.connection_manager.send_personal_message(socket, message)
+            try:
+                state_dict = observer_state.dict()
+                
+                message = {
+                    "type": "game_state",
+                    "data": state_dict
+                }
+                
+                logging.warning(f"Sending observer game state to {len(observer_connections)} connections")
+                
+                for socket in observer_connections:
+                    if socket in processed_sockets:
+                        continue
+                    try:
+                        await self.connection_manager.send_personal_message(socket, message)
+                        processed_sockets.add(socket)
+                    except Exception as e:
+                        logging.error(f"Error sending to observer: {str(e)}")
+            except Exception as e:
+                import traceback
+                logging.error(f"Error preparing observer game state message: {str(e)}")
+                logging.error(traceback.format_exc())
     
     async def notify_player_action(self, game_id: str, player_id: str, action: str, amount: Optional[int] = None):
         """

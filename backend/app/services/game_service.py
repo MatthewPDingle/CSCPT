@@ -181,6 +181,10 @@ class GameService:
         Returns:
             The created Game entity
         """
+        # Import for logging
+        import logging
+        logging.warning(f"Creating cash game with min_buy_in_chips={min_buy_in_chips}, max_buy_in_chips={max_buy_in_chips}")
+        
         # Set up cash game specific options
         options = {
             "buy_in": max_buy_in_chips,  # Default buy-in is the maximum
