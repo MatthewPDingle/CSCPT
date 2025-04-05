@@ -97,6 +97,39 @@ cscp/
 - [x] Add local storage adapters
 - [x] Design data models with future DB migration in mind
 
+### Phase 3: Integration & Playability
+
+#### Backend-AI Integration
+- [ ] Create AI connector service in backend
+  - [x] Implement AI decision endpoint
+  - [ ] Add AI turn triggering during game flow
+  - [ ] Implement AI player action processing
+- [ ] Enhance WebSocket game loop to include AI players
+  - [ ] Auto-advance game after human action to AI turn
+  - [ ] Process AI decisions and advance game state
+  - [ ] Broadcast AI actions to connected clients
+
+#### Frontend-Backend Integration
+- [ ] Connect real-time game state to UI 
+  - [x] Create WebSocket hooks
+  - [ ] Replace mock game data with WebSocket data
+  - [ ] Add loading/connecting states  
+- [ ] Implement action controls with WebSocket
+  - [ ] Connect action buttons to send commands
+  - [ ] Handle action validation and feedback
+- [ ] Complete game initialization flow
+  - [ ] Implement lobby to game transition
+  - [ ] Connect setup options to game creation API
+  - [ ] Add game ID passing to WebSocket connection
+
+#### Game Testing & Refinement
+- [ ] Test basic gameplay loop with AI opponents
+- [ ] Fix hand progression issues
+- [ ] Verify tournament and cash game differences
+- [ ] Test with different player counts
+- [ ] Implement logging for debugging
+- [ ] Add error handling and recovery
+
 #### Statistics System
 - [ ] Design statistics tracking framework
 - [ ] Implement real-time stats calculation
@@ -115,7 +148,7 @@ cscp/
 - [ ] Add local session persistence
 - [ ] Design local game history storage
 
-### Phase 3: Advanced Features
+### Phase 4: Advanced Features
 
 #### Advanced Statistics and Analytics
 - [ ] Implement equity calculations
@@ -157,7 +190,7 @@ cscp/
 - [ ] Add rate limiting and retry logic for API calls
 - [ ] Implement cost optimization strategies
 
-### Phase 4: Polish & Launch
+### Phase 5: Polish & Launch
 
 #### Testing and Bug Fixes
 - [ ] Conduct comprehensive test coverage
@@ -204,3 +237,25 @@ cscp/
    - PRs will be reviewed by other agents or human reviewers
    - Address all review comments before merging
    - Ensure CI/CD pipeline passes
+
+## Next Immediate Steps for Play Testing
+
+To enable play testing against AI opponents, focus on these critical tasks:
+
+1. **Backend: AI Turn Triggering**
+   - Modify the game service to recognize when it's an AI player's turn
+   - Call the AI connector to get decisions for AI players
+   - Process AI actions to advance the game state
+   - Implement a full game loop that handles both human and AI players
+
+2. **Frontend: Connect Real-time State**
+   - Update GamePage.tsx to use WebSocket data instead of mock state
+   - Connect action controls to send player decisions to backend
+   - Add responsive feedback for game state changes
+
+3. **Lobby to Game Flow**
+   - Implement the start game functionality from lobby settings
+   - Connect lobby player setup to backend player creation
+   - Create proper navigation from lobby to game with correct game ID
+
+These tasks come from the "Phase 3: Integration & Playability" section above and represent the minimum needed to achieve a playable game against AI opponents.
