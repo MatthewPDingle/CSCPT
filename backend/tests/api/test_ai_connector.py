@@ -1,5 +1,31 @@
 """
 Tests for the AI connector API endpoints.
+
+NOTE ON TEST ENVIRONMENT SETUP:
+These tests require specific environment configuration to run properly:
+
+1. PYTHONPATH Configuration:
+   - The parent directory (containing both 'ai' and 'backend' modules) must be in PYTHONPATH
+   - Example: export PYTHONPATH=/home/username/cscpt:$PYTHONPATH
+
+2. Module Requirements:
+   - The 'ai' module must be importable
+   - The import path in ai_connector.py is 'from ai.memory_integration import MemoryIntegration'
+   - For tests, we need to mock this import path exactly as it appears in the source code
+
+3. Mocking Strategy:
+   - Instead of mocking 'app.api.ai_connector.MemoryIntegration', consider:
+   - Using mock_import or importlib.patch to mock the import itself
+   - Or modify the test to patch MEMORY_SYSTEM_AVAILABLE instead
+
+4. Alternative Test Approach:
+   - If environment setup is challenging, consider:
+   - Unit testing individual functions outside the FastAPI context
+   - Using dependency_overrides in FastAPI to inject test dependencies
+
+To run these tests in the current structure:
+1. Navigate to the project root
+2. Run: PYTHONPATH=/path/to/project pytest backend/tests/api/test_ai_connector.py -v
 """
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock

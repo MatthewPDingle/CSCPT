@@ -1,5 +1,28 @@
 """
 Tests for AI integration with the backend.
+
+NOTE ON TEST ENVIRONMENT SETUP:
+These tests require specific environment configuration to run properly:
+
+1. PYTHONPATH Configuration:
+   - The parent directory (containing both 'ai' and 'backend' modules) must be in PYTHONPATH
+   - Example: export PYTHONPATH=/home/username/cscpt:$PYTHONPATH
+
+2. Module Requirements:
+   - The 'ai' module must be importable
+   - AI dependencies should be installed in the test environment
+
+3. Mock Configuration:
+   - When running in isolation, properly mock the AI module imports
+   - Consider using the @patch decorator at the module level to handle imports
+
+4. Test Database:
+   - Tests require a configured test database for proper integration testing
+   - Use pytest fixtures to set up and tear down test data
+
+To run these tests in the current structure:
+1. Navigate to the project root
+2. Run: PYTHONPATH=/path/to/project pytest backend/tests/api/test_ai_integration.py -v
 """
 import pytest
 import asyncio
