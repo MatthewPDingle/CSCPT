@@ -23,8 +23,8 @@ class TestCashGameIntegration:
         # 1. Create a cash game
         game = self.game_service.create_cash_game(
             name="Integration Test Game",
-            min_buy_in=40,
-            max_buy_in=100,
+            min_buy_in_chips=400,  # 40 BB * 10 (big blind)
+            max_buy_in_chips=1000, # 100 BB * 10 (big blind)
             small_blind=5,
             big_blind=10,
             betting_structure="no_limit"
@@ -161,8 +161,8 @@ class TestCashGameIntegration:
         # Create and start a game
         game = self.game_service.create_cash_game(
             name="Multiple Rebuys Test",
-            min_buy_in=200,
-            max_buy_in=1000
+            min_buy_in_chips=200,
+            max_buy_in_chips=1000
         )
         game_id = game.id
         

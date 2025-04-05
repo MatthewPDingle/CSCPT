@@ -109,7 +109,7 @@ The `GameService` was enhanced with the following cash game operations:
 1. **Cash Game Creation**
    ```python
    def create_cash_game(self, name: Optional[str] = None, 
-                       min_buy_in: int = 40, max_buy_in: int = 100,
+                       min_buy_in_chips: int = 80, max_buy_in_chips: int = 200,
                        small_blind: int = 1, big_blind: int = 2,
                        ante: int = 0, table_size: int = 9,
                        betting_structure: str = "no_limit",
@@ -117,6 +117,11 @@ The `GameService` was enhanced with the following cash game operations:
        """Create a new cash game with specific parameters."""
        # Implementation details
    ```
+
+   > **Important Note on Buy-In Values**: 
+   > - The `/api/cash_game.py` endpoints accept `min_buy_in` and `max_buy_in` as multiples of big blinds
+   > - The `/api/setup.py` endpoints accept `min_buy_in` and `max_buy_in` as chip amounts directly
+   > - Internally, `GameService.create_cash_game` now expects chip amounts directly via `min_buy_in_chips` and `max_buy_in_chips`
 
 2. **Player Management**
    ```python

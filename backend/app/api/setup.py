@@ -29,8 +29,8 @@ class GameSetup(BaseModel):
     small_blind: int = 5
     big_blind: int = 10
     ante: int = 0
-    min_buy_in: int = 400
-    max_buy_in: int = 2000
+    min_buy_in: int = 400  # Chip amount (not BB)
+    max_buy_in: int = 2000  # Chip amount (not BB)
     table_size: int = 6
     betting_structure: str = "no_limit"
     rake_percentage: float = 0.05
@@ -81,8 +81,8 @@ async def setup_game(
             # Create cash game
             game = service.create_cash_game(
                 name="Cash Game",
-                min_buy_in=setup.min_buy_in,
-                max_buy_in=setup.max_buy_in,
+                min_buy_in_chips=setup.min_buy_in,
+                max_buy_in_chips=setup.max_buy_in,
                 small_blind=setup.small_blind,
                 big_blind=setup.big_blind,
                 ante=setup.ante,

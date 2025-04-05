@@ -33,8 +33,8 @@ class GameResponse(BaseModel):
 class CashGameRequest(BaseModel):
     """Request model for creating a cash game."""
     name: Optional[str] = None
-    min_buy_in: int = 40
-    max_buy_in: int = 100
+    min_buy_in: int = 40  # In big blinds (will be converted to chips)
+    max_buy_in: int = 100  # In big blinds (will be converted to chips)
     small_blind: int = 1
     big_blind: int = 2
     ante: int = 0
@@ -65,10 +65,14 @@ async def create_cash_game(game_request: CashGameRequest):
     game_service = GameService.get_instance()
     
     try:
+        # Convert big blind multiples to actual chip amounts
+        min_buy_in_chips = game_request.min_buy_in * game_request.big_blind
+        max_buy_in_chips = game_request.max_buy_in * game_request.big_blind
+        
         game = game_service.create_cash_game(
             name=game_request.name,
-            min_buy_in=game_request.min_buy_in,
-            max_buy_in=game_request.max_buy_in,
+            min_buy_in_chips=min_buy_in_chips,
+            max_buy_in_chips=max_buy_in_chips,
             small_blind=game_request.small_blind,
             big_blind=game_request.big_blind,
             ante=game_request.ante,

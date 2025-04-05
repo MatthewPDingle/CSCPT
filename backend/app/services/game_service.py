@@ -153,8 +153,8 @@ class GameService:
     def create_cash_game(
         self,
         name: Optional[str] = None,
-        min_buy_in: int = 40,
-        max_buy_in: int = 100,
+        min_buy_in_chips: int = 80,
+        max_buy_in_chips: int = 200,
         small_blind: int = 1,
         big_blind: int = 2,
         ante: int = 0,
@@ -168,8 +168,8 @@ class GameService:
         
         Args:
             name: Optional name for the game
-            min_buy_in: Minimum buy-in in big blinds
-            max_buy_in: Maximum buy-in in big blinds
+            min_buy_in_chips: Minimum buy-in in chips (not big blinds)
+            max_buy_in_chips: Maximum buy-in in chips (not big blinds)
             small_blind: Small blind amount
             big_blind: Big blind amount
             ante: Ante amount
@@ -181,10 +181,6 @@ class GameService:
         Returns:
             The created Game entity
         """
-        # Convert big blind multiples to actual chip amounts
-        min_buy_in_chips = min_buy_in * big_blind
-        max_buy_in_chips = max_buy_in * big_blind
-        
         # Set up cash game specific options
         options = {
             "buy_in": max_buy_in_chips,  # Default buy-in is the maximum

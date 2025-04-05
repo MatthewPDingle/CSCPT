@@ -23,8 +23,8 @@ class TestCashGameService:
         # Create a cash game with default settings
         game = self.game_service.create_cash_game(
             name="Test Cash Game",
-            min_buy_in=40,
-            max_buy_in=100,
+            min_buy_in_chips=80,  # Equivalent to 40 BBs with BB=2
+            max_buy_in_chips=200, # Equivalent to 100 BBs with BB=2
             small_blind=1,
             big_blind=2
         )
@@ -65,8 +65,8 @@ class TestCashGameService:
         # Create a game
         game = self.game_service.create_cash_game(
             name="Test Cash Game",
-            min_buy_in=40,  # 40 BBs
-            max_buy_in=100  # 100 BBs
+            min_buy_in_chips=80,  # Equivalent to 40 BBs with BB=2
+            max_buy_in_chips=200  # Equivalent to 100 BBs with BB=2
         )
         game_id = game.id
         
@@ -97,8 +97,8 @@ class TestCashGameService:
         # Create a game and add a player
         game = self.game_service.create_cash_game(
             name="Test Cash Game",
-            min_buy_in=40,
-            max_buy_in=100,
+            min_buy_in_chips=80,  # Equivalent to 40 BBs with BB=2
+            max_buy_in_chips=200, # Equivalent to 100 BBs with BB=2
             big_blind=2
         )
         game_id = game.id
@@ -128,8 +128,8 @@ class TestCashGameService:
         # Create a game and add a player
         game = self.game_service.create_cash_game(
             name="Test Cash Game",
-            min_buy_in=40,
-            max_buy_in=100,
+            min_buy_in_chips=80,  # Equivalent to 40 BBs with BB=2
+            max_buy_in_chips=200, # Equivalent to 100 BBs with BB=2
             big_blind=2
         )
         game_id = game.id
