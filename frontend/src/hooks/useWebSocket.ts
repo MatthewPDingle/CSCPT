@@ -7,7 +7,10 @@ interface UseWebSocketOptions {
   onMessage?: (event: MessageEvent) => void;
   onClose?: (event: CloseEvent) => void;
   onError?: (event: Event) => void;
-  reconnectInterval?: number;
+  initialReconnectDelay?: number;   // Initial delay for first reconnect attempt
+  maxReconnectDelay?: number;       // Maximum delay cap for backoff
+  reconnectBackoffFactor?: number;  // Multiplier for each retry
+  reconnectJitter?: number;         // Random jitter factor (e.g., 0.2 = ±20%)
   reconnectAttempts?: number;
   shouldReconnect?: boolean;
 }
@@ -24,8 +27,11 @@ export const useWebSocket = (
     onMessage,
     onClose,
     onError,
-    reconnectInterval = 3000,
-    reconnectAttempts = 5,
+    initialReconnectDelay = 1000,   // Start with 1 second
+    maxReconnectDelay = 30000,      // Cap at 30 seconds
+    reconnectBackoffFactor = 1.5,   // Increase by 50% each attempt
+    reconnectJitter = 0.2,          // Add ±20% randomness
+    reconnectAttempts = 10,         // More attempts with backoff
     shouldReconnect = true,
   } = options;
 
@@ -34,6 +40,37 @@ export const useWebSocket = (
   const websocketRef = useRef<WebSocket | null>(null);
   const reconnectCountRef = useRef(0);
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Define the interface for connection metrics
+  interface ConnectionMetrics {
+    connectionStartTime: number;
+    connectionCount: number;
+    totalConnectionDuration: number;
+    disconnectionCount: number;
+    successfulReconnects: number;
+    failedReconnects: number;
+    averageReconnectTime: number;
+    lastDisconnectTime: number;
+    connectionStability: number;
+    // Extended metrics added by getConnectionMetrics
+    currentConnectionDuration?: number;
+    liveConnectionDuration?: number;
+    averageConnectionDuration?: number;
+    uptimePercentage?: number;
+  }
+  
+  // Track connection quality metrics
+  const connectionMetrics = useRef<ConnectionMetrics>({
+    connectionStartTime: 0,        // When the current connection was established
+    connectionCount: 0,            // Total successful connections
+    totalConnectionDuration: 0,    // Total time connected in ms
+    disconnectionCount: 0,         // Total number of disconnections
+    successfulReconnects: 0,       // Times we successfully reconnected
+    failedReconnects: 0,           // Times reconnection attempts ultimately failed
+    averageReconnectTime: 0,       // Average time to reconnect in ms
+    lastDisconnectTime: 0,         // When the last disconnect happened
+    connectionStability: 1.0       // Score 0-1 of connection stability (1 = stable)
+  });
 
   // Function to handle sending messages
   const sendMessage = useCallback((data: any) => {
@@ -95,8 +132,36 @@ export const useWebSocket = (
     // Setup event handlers
     ws.onopen = (event) => {
       console.log('WebSocket connection opened');
-      reconnectCountRef.current = 0;
       setStatus('open');
+      
+      // Update connection metrics
+      const now = Date.now();
+      connectionMetrics.current.connectionCount++;
+      connectionMetrics.current.connectionStartTime = now;
+      
+      // If this was a reconnect, record it as successful
+      if (reconnectCountRef.current > 0) {
+        connectionMetrics.current.successfulReconnects++;
+        
+        // Calculate how long it took to reconnect
+        if (connectionMetrics.current.lastDisconnectTime > 0) {
+          const reconnectTime = now - connectionMetrics.current.lastDisconnectTime;
+          
+          // Update moving average of reconnect time
+          const prevAvg = connectionMetrics.current.averageReconnectTime;
+          const successfulReconnects = connectionMetrics.current.successfulReconnects;
+          connectionMetrics.current.averageReconnectTime = 
+            successfulReconnects === 1 ? 
+            reconnectTime : // First reconnect, just use the time
+            (prevAvg * (successfulReconnects - 1) + reconnectTime) / successfulReconnects; // Moving average
+          
+          console.log(`Reconnected after ${reconnectTime}ms (avg: ${Math.round(connectionMetrics.current.averageReconnectTime)}ms)`);
+        }
+        
+        // Reset reconnect counter after successful connection
+        reconnectCountRef.current = 0;
+      }
+      
       if (onOpen) onOpen(event);
     };
 
@@ -136,15 +201,71 @@ export const useWebSocket = (
     ws.onclose = (event) => {
       console.log(`WebSocket connection closed with code ${event.code}: ${event.reason}`);
       setStatus('closed');
+      
+      // Update connection metrics
+      const now = Date.now();
+      connectionMetrics.current.disconnectionCount++;
+      connectionMetrics.current.lastDisconnectTime = now;
+      
+      // Calculate connection duration if we had an active connection
+      if (connectionMetrics.current.connectionStartTime > 0) {
+        const connectionDuration = now - connectionMetrics.current.connectionStartTime;
+        connectionMetrics.current.totalConnectionDuration += connectionDuration;
+        
+        // Update connection stability metric
+        // Short connections (< 5 seconds) indicate stability issues
+        const wasShortConnection = connectionDuration < 5000;
+        if (wasShortConnection) {
+          // Reduce stability score for short connections (min 0.2)
+          connectionMetrics.current.connectionStability = 
+            Math.max(0.2, connectionMetrics.current.connectionStability * 0.8);
+          console.log(`Short connection detected (${connectionDuration}ms). Stability score: ${connectionMetrics.current.connectionStability.toFixed(2)}`);
+        } else {
+          // Gradually improve stability score for longer connections
+          connectionMetrics.current.connectionStability = 
+            Math.min(1.0, connectionMetrics.current.connectionStability * 1.05);
+        }
+        
+        connectionMetrics.current.connectionStartTime = 0;
+      }
+      
       if (onClose) onClose(event);
 
-      // Setup reconnection logic
+      // Setup reconnection logic with exponential backoff
       if (shouldReconnect && reconnectCountRef.current < reconnectAttempts) {
+        // Calculate exponential backoff delay
+        const attempt = reconnectCountRef.current;
+        
+        // Base delay with exponential increase
+        let delay = initialReconnectDelay * 
+                    Math.pow(reconnectBackoffFactor, attempt);
+        
+        // Apply maximum cap
+        delay = Math.min(delay, maxReconnectDelay);
+        
+        // Adjust delay based on connection stability
+        // Less stable connections get longer delays to prevent overwhelming the server
+        const stabilityAdjustedDelay = delay / connectionMetrics.current.connectionStability;
+        
+        // Add random jitter (±jitter%) to prevent reconnection storms
+        const jitterRange = stabilityAdjustedDelay * reconnectJitter;
+        const actualDelay = Math.floor(
+          stabilityAdjustedDelay + (Math.random() * jitterRange * 2 - jitterRange)
+        );
+        
         reconnectCountRef.current += 1;
-        console.log(`Reconnecting attempt ${reconnectCountRef.current} of ${reconnectAttempts} in ${reconnectInterval}ms`);
+        console.log(
+          `Reconnecting attempt ${reconnectCountRef.current} of ${reconnectAttempts} ` +
+          `in ${actualDelay}ms (base: ${Math.floor(delay)}ms, ` +
+          `stability: ${connectionMetrics.current.connectionStability.toFixed(2)})`
+        );
+        
         reconnectTimerRef.current = setTimeout(() => {
           connect();
-        }, reconnectInterval);
+        }, actualDelay);
+      } else if (reconnectCountRef.current >= reconnectAttempts) {
+        connectionMetrics.current.failedReconnects++;
+        console.log(`Maximum reconnection attempts (${reconnectAttempts}) reached. Giving up.`);
       }
     };
 
@@ -153,7 +274,9 @@ export const useWebSocket = (
       setStatus('error');
       if (onError) onError(event);
     };
-  }, [url, onOpen, onMessage, onClose, onError, reconnectInterval, reconnectAttempts, shouldReconnect]);
+  }, [url, onOpen, onMessage, onClose, onError, 
+      initialReconnectDelay, maxReconnectDelay, reconnectBackoffFactor, reconnectJitter,
+      reconnectAttempts, shouldReconnect]);
 
   // Connect when component mounts or URL changes
   useEffect(() => {
@@ -185,11 +308,38 @@ export const useWebSocket = (
     };
   }, [url]); // Removed 'connect' from the dependency array to prevent reconnection cycles
 
+  // Function to get the connection metrics
+  const getConnectionMetrics = useCallback((): ConnectionMetrics => {
+    const now = Date.now();
+    const metrics = { ...connectionMetrics.current };
+    
+    // If we're currently connected, add the current session to the duration
+    if (status === 'open' && metrics.connectionStartTime > 0) {
+      metrics.currentConnectionDuration = now - metrics.connectionStartTime;
+      metrics.liveConnectionDuration = metrics.totalConnectionDuration + metrics.currentConnectionDuration;
+    } else {
+      metrics.currentConnectionDuration = 0;
+      metrics.liveConnectionDuration = metrics.totalConnectionDuration;
+    }
+    
+    // Calculate average connection duration
+    if (metrics.connectionCount > 0) {
+      metrics.averageConnectionDuration = metrics.liveConnectionDuration / metrics.connectionCount;
+    }
+    
+    // Calculate uptime percentage
+    const totalTime = now - metrics.connectionStartTime + metrics.totalConnectionDuration;
+    metrics.uptimePercentage = totalTime > 0 ? (metrics.liveConnectionDuration / totalTime) * 100 : 0;
+    
+    return metrics;
+  }, [status]);
+
   return {
     sendMessage,
     lastMessage,
     status,
     closeConnection,
     reconnect: connect,
+    getConnectionMetrics
   };
 };

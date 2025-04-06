@@ -257,11 +257,14 @@ export const useGameWebSocket = (wsUrl: string) => {
   const sendMessageRef = useRef<any>(null);
   
   // Setup WebSocket connection
-  const { sendMessage, status, reconnect, lastMessage } = useWebSocket(wsUrlRef.current, {
+  const { sendMessage, status, reconnect, lastMessage, getConnectionMetrics } = useWebSocket(wsUrlRef.current, {
     onMessage: handleMessage,
-    reconnectAttempts: 20, // Increased for more persistent reconnection
+    reconnectAttempts: 20, // More attempts with backoff
     shouldReconnect: true,
-    reconnectInterval: 3000, // Increased to 3 seconds for more stability
+    initialReconnectDelay: 1000,
+    maxReconnectDelay: 30000,
+    reconnectBackoffFactor: 1.5,
+    reconnectJitter: 0.2,
     onOpen: () => {
       // Send just a single ping with a delay to establish a connection
       console.log('WebSocket connection opened, will send ping after delay');
@@ -433,6 +436,31 @@ export const useGameWebSocket = (wsUrl: string) => {
     }
   }, [lastAction, actionRequest]);
   
+  // Method to get and log connection health statistics
+  const getConnectionHealth = useCallback(() => {
+    const metrics = getConnectionMetrics();
+    console.log('WebSocket Connection Health Report:');
+    console.log(`- Status: ${status}`);
+    console.log(`- Connection stability: ${(metrics.connectionStability * 100).toFixed(0)}%`);
+    console.log(`- Total connections: ${metrics.connectionCount}`);
+    console.log(`- Disconnections: ${metrics.disconnectionCount}`);
+    console.log(`- Successful reconnects: ${metrics.successfulReconnects}`);
+    console.log(`- Failed reconnects: ${metrics.failedReconnects}`);
+    console.log(`- Average reconnect time: ${Math.round(metrics.averageReconnectTime)}ms`);
+    
+    // Special handling for extended metrics
+    const extendedMetrics = metrics as any;
+    
+    if (extendedMetrics.currentConnectionDuration !== undefined) {
+      console.log(`- Current connection duration: ${Math.round(extendedMetrics.currentConnectionDuration / 1000)}s`);
+    }
+    
+    if (extendedMetrics.uptimePercentage !== undefined) {
+      console.log(`- Estimated uptime: ${extendedMetrics.uptimePercentage.toFixed(1)}%`);
+    }
+    return metrics;
+  }, [status, getConnectionMetrics]);
+
   return {
     status,
     gameState,
@@ -445,6 +473,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     sendChat,
     reconnect,
     isPlayerTurn,
-    lastMessage
+    lastMessage,
+    getConnectionHealth
   };
 };

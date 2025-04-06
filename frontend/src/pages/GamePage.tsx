@@ -175,12 +175,15 @@ const GamePage: React.FC = () => {
     sendAction,
     isPlayerTurn,
     errors,
-    reconnect
+    reconnect,
+    getConnectionHealth
   } = useGameWebSocket(wsUrl || '');
   
   // Store game state in local state when received
   const [localGameState, setLocalGameState] = React.useState<typeof gameState | null>(null);
   const [connectionStatus, setConnectionStatus] = React.useState("connecting");
+  const [showConnectionDetails, setShowConnectionDetails] = useState(false);
+  const [connectionHealth, setConnectionHealth] = useState<any>(null);
   
   // Update local game state when WebSocket state changes
   React.useEffect(() => {
@@ -220,20 +223,34 @@ const GamePage: React.FC = () => {
       return;
     }
     
-    // If disconnected, try reconnecting after a delay
+    // The useWebSocket hook now handles reconnection with exponential backoff
+    // We don't need manual reconnection logic here as it's handled by the hook
     if (status === 'closed' || status === 'error') {
-      const timeoutId = setTimeout(() => {
-        console.log('Attempting to reconnect...');
-        reconnect();
-      }, 2000);
-      return () => clearTimeout(timeoutId);
+      console.log('Connection closed or errored. The WebSocket hook will handle reconnection with exponential backoff.');
+      // We can still update the UI to show reconnection status
+      setConnectionHealth(getConnectionHealth());
     }
-  }, [status, reconnect, errors, gameId, navigate]);
+  }, [status, errors, gameId, navigate, getConnectionHealth]);
   
   // Use refs to track state changes and only log when they actually change
   const prevStatusRef = React.useRef(status);
   const prevGameStateRef = React.useRef(!!gameState);
   const prevLocalGameStateRef = React.useRef(!!localGameState);
+  
+  // Update connection health metrics periodically
+  React.useEffect(() => {
+    if (connectionStatus === 'open') {
+      // Fetch connection health immediately when connected
+      setConnectionHealth(getConnectionHealth());
+      
+      // Update every 5 seconds while connected
+      const intervalId = setInterval(() => {
+        setConnectionHealth(getConnectionHealth());
+      }, 5000);
+      
+      return () => clearInterval(intervalId);
+    }
+  }, [connectionStatus, getConnectionHealth]);
   
   React.useEffect(() => {
     // Only log when values actually change
@@ -419,6 +436,9 @@ const GamePage: React.FC = () => {
   
   // Render loading screen if needed
   if (isLoading || !wsUrl || status === 'connecting' || status === 'error') {
+    // Get connection health metrics even during loading/connecting
+    const metrics = connectionHealth || (getConnectionHealth && getConnectionHealth());
+    
     return (
       <GameContainer>
         <StatusOverlay>
@@ -427,15 +447,45 @@ const GamePage: React.FC = () => {
             {!wsUrl 
               ? 'Initializing game connection...' 
               : status === 'error' 
-                ? 'Connection error. Trying to reconnect...'
+                ? 'Connection error. Reconnecting...'
                 : status === 'connecting' 
                   ? 'Connecting to game...' 
                   : 'Loading game state...'}
           </StatusText>
+          
+          {/* Show connection metrics if available */}
+          {metrics && status !== 'open' && metrics.successfulReconnects > 0 && (
+            <div style={{ 
+              color: '#bdc3c7', 
+              marginBottom: '1rem', 
+              fontSize: '0.9rem',
+              padding: '10px',
+              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '4px',
+              maxWidth: '80%'
+            }}>
+              <div>Connection attempts: {metrics.connectionCount}</div>
+              <div>Successful reconnects: {metrics.successfulReconnects}</div>
+              <div>Connection stability: {(metrics.connectionStability * 100).toFixed(0)}%</div>
+            </div>
+          )}
+          
           <div style={{ color: '#f39c12', marginBottom: '1rem', fontSize: '0.9rem' }}>
             {!wsUrl && 'Game ID not found. Please try again.'}
           </div>
-          <BackButton onClick={handleBackToLobby}>Back to Lobby</BackButton>
+          
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <BackButton onClick={handleBackToLobby}>Back to Lobby</BackButton>
+            
+            {status === 'error' && (
+              <BackButton 
+                onClick={() => reconnect()} 
+                style={{ backgroundColor: '#3498db' }}
+              >
+                Force Reconnect
+              </BackButton>
+            )}
+          </div>
         </StatusOverlay>
       </GameContainer>
     );
@@ -447,20 +497,93 @@ const GamePage: React.FC = () => {
   const currentBet = effectiveGameState?.current_bet || 0;
   
   // Add a connection status indicator to the UI
-  const connectionIndicator = (
-    <div style={{ 
-      position: 'absolute', 
-      top: '10px', 
-      right: '10px', 
-      padding: '5px 10px',
-      borderRadius: '4px',
-      backgroundColor: connectionStatus === 'open' ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 0, 0, 0.3)',
-      color: 'white',
-      fontSize: '12px'
-    }}>
-      {connectionStatus === 'open' ? 'Connected' : 'Reconnecting...'}
+  // Add styled component for connection health display
+const ConnectionHealthDisplay = styled.div`
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  z-index: 15;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  max-width: 250px;
+`;
+
+const ConnectionStatusDot = styled.div<{ status: string }>`
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background-color: ${props => {
+    if (props.status === 'open') return '#2ecc71';
+    if (props.status === 'connecting') return '#f39c12';
+    return '#e74c3c';
+  }};
+  display: inline-block;
+`;
+
+const ConnectionStats = styled.div`
+  margin-top: 5px;
+  font-size: 11px;
+  color: #bdc3c7;
+  line-height: 1.4;
+`;
+
+
+const toggleConnectionDetails = () => {
+  setShowConnectionDetails(prev => !prev);
+  // Update metrics when expanding
+  if (!showConnectionDetails) {
+    setConnectionHealth(getConnectionHealth());
+  }
+};
+
+const connectionIndicator = (
+  <ConnectionHealthDisplay onClick={toggleConnectionDetails}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <ConnectionStatusDot status={connectionStatus} />
+        <span>{connectionStatus === 'open' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}</span>
+      </div>
+      <span style={{ marginLeft: '5px', fontSize: '10px' }}>{showConnectionDetails ? '▲' : '▼'}</span>
     </div>
-  );
+    
+    {showConnectionDetails && connectionHealth && (
+      <ConnectionStats>
+        <div>Stability: {(connectionHealth.connectionStability * 100).toFixed(0)}%</div>
+        {connectionHealth.currentConnectionDuration !== undefined && (
+          <div>Uptime: {Math.floor(connectionHealth.currentConnectionDuration / 1000)}s</div>
+        )}
+        <div>Reconnects: {connectionHealth.successfulReconnects}</div>
+        {connectionHealth.successfulReconnects > 0 && (
+          <div>Connection count: {connectionHealth.connectionCount}</div>
+        )}
+        <div style={{ marginTop: '4px' }}>
+          <DebugButton
+            onClick={(e) => {
+              e.stopPropagation();
+              reconnect();
+            }}
+            style={{ 
+              padding: '3px 6px', 
+              fontSize: '10px', 
+              backgroundColor: '#3498db'
+            }}
+          >
+            Force Reconnect
+          </DebugButton>
+        </div>
+      </ConnectionStats>
+    )}
+  </ConnectionHealthDisplay>
+);
   
   // Function to trigger AI move
   const triggerAIMove = async () => {

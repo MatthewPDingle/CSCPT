@@ -123,7 +123,7 @@ describe('useWebSocket', () => {
     const { result } = renderHook(() => 
       useWebSocket('ws://localhost:8000/ws', { 
         shouldReconnect: true,
-        reconnectInterval: 1000,
+        initialReconnectDelay: 1000,
         reconnectAttempts: 3
       })
     );
