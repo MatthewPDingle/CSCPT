@@ -155,6 +155,7 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
         current_bet = getattr(game, 'current_bet', 0)
         small_blind = getattr(game, 'small_blind', 1)
         big_blind = getattr(game, 'big_blind', 2)
+        ante = getattr(game, 'ante', 0)
 
         # Create the game state model with base fields
         game_state = GameStateModel(
@@ -169,6 +170,7 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             current_bet=current_bet,
             small_blind=small_blind,
             big_blind=big_blind,
+            ante=ante,
         )
         
         # Add cash game specific fields if available
@@ -218,6 +220,7 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             current_bet=0,
             small_blind=1,
             big_blind=2,
+            ante=0,
         )
         
         return emergency_game_state

@@ -589,18 +589,54 @@ const connectionIndicator = (
   const triggerAIMove = async () => {
     try {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      
+      // Add more detailed logging
+      console.log(`Triggering AI move for game ${gameId}`);
+      
+      // CRITICAL: Delay first to allow any in-flight WebSocket operations to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const response = await fetch(`${API_URL}/game/ai-move/${gameId}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
+        // Don't include credentials to avoid CORS issues
+        credentials: 'omit',
+        // Use cors mode for cross-origin requests
+        mode: 'cors'
       });
       
       if (!response.ok) {
         console.error('Failed to trigger AI move:', await response.text());
+      } else {
+        console.log('AI move triggered successfully');
       }
+      
+      // IMPORTANT: After AI move, we don't need to send manual pings
+      // The WebSocket connection will automatically send keepalive pings
+      // Just let the system handle reconnection if needed
+      console.log('AI move completed, letting WebSocket manage its own connection');
+      
+      // Check connection health later
+      setTimeout(() => {
+        // Get connection health status
+        const metrics = getConnectionHealth();
+        console.log('Connection health after AI move:', 
+          metrics?.connectionStability ? 
+          `${(metrics.connectionStability * 100).toFixed(0)}%` : 'unknown');
+      }, 1000);
+      
     } catch (error) {
       console.error('Error triggering AI move:', error);
+      
+      // If there was an actual error with the fetch, then reconnect
+      if (status !== 'open') {
+        setTimeout(() => {
+          console.log('Reconnecting WebSocket due to closed status');
+          reconnect();
+        }, 500);
+      }
     }
   };
   

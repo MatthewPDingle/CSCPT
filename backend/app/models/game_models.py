@@ -81,6 +81,7 @@ class GameStateModel(BaseModel):
     current_bet: int
     small_blind: int
     big_blind: int
+    ante: Optional[int] = None
     # Optional fields for cash games
     max_buy_in: Optional[int] = None
     min_buy_in: Optional[int] = None
@@ -132,7 +133,8 @@ class GameStateModel(BaseModel):
                 "current_player_idx": 0,
                 "current_bet": 20,
                 "small_blind": 10,
-                "big_blind": 20
+                "big_blind": 20,
+                "ante": 0
             }
         }
 
