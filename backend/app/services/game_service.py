@@ -1060,8 +1060,9 @@ class GameService:
                     self.game_repo.update(game)
                 else:
                     # Get the next player
+                    from app.core.poker_game import PlayerStatus
                     active_players = [p for p in poker_game.players 
-                                     if p.status in {PokerPlayerAction.ACTIVE, PokerPlayerAction.ALL_IN}]
+                                     if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
                     
                     if active_players and poker_game.current_player_idx < len(active_players):
                         next_player = active_players[poker_game.current_player_idx]
@@ -1083,8 +1084,8 @@ class GameService:
             logging.error(f"Error processing AI action: {str(e)}")
             
             # Default to fold on error
-            from app.core.poker_game import PlayerAction as PokerPlayerAction
-            poker_action = PokerPlayerAction.FOLD
+            from app.core.poker_game import PlayerAction
+            poker_action = PlayerAction.FOLD
             
             # Process the fold action
             poker_game.process_action(poker_player, poker_action, None)
@@ -1095,8 +1096,9 @@ class GameService:
             await game_notifier.notify_game_update(game_id, poker_game)
             
             # Continue game flow for next player
+            from app.core.poker_game import PlayerStatus
             active_players = [p for p in poker_game.players 
-                             if p.status in {PokerPlayerAction.ACTIVE, PokerPlayerAction.ALL_IN}]
+                             if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
             
             if active_players and poker_game.current_player_idx < len(active_players):
                 next_player = active_players[poker_game.current_player_idx]

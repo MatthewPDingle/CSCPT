@@ -91,8 +91,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Set to specific origin in production
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400  # Cache preflight requests for 24 hours
 )
 
 @app.get("/")

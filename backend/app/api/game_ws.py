@@ -118,6 +118,11 @@ async def websocket_endpoint(
             await game_notifier.notify_game_update(game_id, poker_game)
             game_state_sent = True
             logging.warning(f"Initial game state successfully sent for game {game_id}")
+            
+            # Add a 2-second delay to ensure the connection is fully registered
+            logging.warning(f"Waiting 2 seconds for connection registration to complete for {player_id}")
+            await asyncio.sleep(2.0)
+            
         except Exception as e:
             logging.error(f"Error sending initial game state: {str(e)}")
             logging.error(traceback.format_exc())
@@ -137,9 +142,23 @@ async def websocket_endpoint(
                     and active_players[poker_game.current_player_idx].player_id == player_id
                 ):
                     logging.warning(f"Requesting action from player {player_id}")
-                    await game_notifier.notify_action_request(game_id, poker_game)
+                    
+                    # Add retry mechanism for action request
+                    max_retries = 3
+                    for retry in range(max_retries):
+                        try:
+                            await game_notifier.notify_action_request(game_id, poker_game)
+                            logging.warning(f"Action request successfully sent to player {player_id}")
+                            break
+                        except Exception as retry_error:
+                            if retry < max_retries - 1:
+                                logging.warning(f"Error sending action request (retry {retry+1}/{max_retries}): {str(retry_error)}")
+                                await asyncio.sleep(1.0)  # Wait before retrying
+                            else:
+                                raise  # Re-raise the last exception if all retries fail
+                    
             except Exception as e:
-                logging.error(f"Error sending action request: {str(e)}")
+                logging.error(f"Error sending action request after {max_retries} attempts: {str(e)}")
                 logging.error(traceback.format_exc())
                 # Continue despite error - don't terminate the connection
 

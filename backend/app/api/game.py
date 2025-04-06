@@ -403,16 +403,32 @@ async def trigger_ai_move(
             logging.warning(f"Treating human player {domain_player.name} as AI for testing purposes")
         
         # Trigger the AI action
-        import asyncio
-        # Use the service method for requesting AI action
-        await service._request_and_process_ai_action(game_id, current_player.player_id)
-        
-        # Return success
-        return ActionResponse(
-            success=True,
-            message=f"AI move triggered for player {current_player.name}",
-            game_state=game_to_model(game_id, poker_game),
-        )
+        import logging
+        try:
+            logging.info(f"Requesting AI action for player {current_player.name} in game {game_id}")
+            # Use the service method for requesting AI action
+            await service._request_and_process_ai_action(game_id, current_player.player_id)
+            
+            # Get updated game state after AI move - poker_game should already be updated
+            # Use the same poker_game instance as it should have been updated by _request_and_process_ai_action
+            updated_poker_game = poker_game
+            logging.info(f"Using updated poker game for game {game_id}")
+                
+            # Return success with updated game state
+            logging.info(f"AI move successfully triggered for player {current_player.name}")
+            return ActionResponse(
+                success=True,
+                message=f"AI move triggered for player {current_player.name}",
+                game_state=game_to_model(game_id, updated_poker_game),
+            )
+        except Exception as e:
+            logging.error(f"Error processing AI action: {str(e)}")
+            # Still return a success response to avoid CORS issues
+            return ActionResponse(
+                success=False,
+                message=f"Error triggering AI move: {str(e)}",
+                game_state=game_to_model(game_id, poker_game),
+            )
             
     except KeyError:
         raise HTTPException(status_code=404, detail="Game not found")
