@@ -354,3 +354,67 @@ async def player_action(
         raise HTTPException(status_code=404, detail="Game not found")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/ai-move/{game_id}", response_model=ActionResponse)
+async def trigger_ai_move(
+    game_id: str,
+    service: GameService = Depends(get_game_service),
+) -> ActionResponse:
+    """
+    Debug endpoint for triggering the current AI player to make a move.
+    
+    Args:
+        game_id: The ID of the game
+        service: The game service
+        
+    Returns:
+        The result of the action
+    """
+    try:
+        # Get the poker game
+        poker_game = service.poker_games.get(game_id)
+        if not poker_game:
+            raise HTTPException(status_code=404, detail="Game not found")
+            
+        # Get the current player
+        active_players = [
+            p for p in poker_game.players
+            if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}
+        ]
+        
+        if not active_players or poker_game.current_player_idx >= len(active_players):
+            raise HTTPException(status_code=400, detail="No active player to move")
+            
+        current_player = active_players[poker_game.current_player_idx]
+        
+        # Get the domain player to check if it's AI
+        game = service.get_game(game_id)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+            
+        domain_player = next((p for p in game.players if p.id == current_player.player_id), None)
+        if not domain_player:
+            raise HTTPException(status_code=404, detail="Player not found")
+            
+        # If it's a human player, treat it like an AI for testing
+        if domain_player.is_human:
+            import logging
+            logging.warning(f"Treating human player {domain_player.name} as AI for testing purposes")
+        
+        # Trigger the AI action
+        import asyncio
+        # Use the service method for requesting AI action
+        await service._request_and_process_ai_action(game_id, current_player.player_id)
+        
+        # Return success
+        return ActionResponse(
+            success=True,
+            message=f"AI move triggered for player {current_player.name}",
+            game_state=game_to_model(game_id, poker_game),
+        )
+            
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Game not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

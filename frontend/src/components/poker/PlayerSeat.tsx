@@ -25,9 +25,9 @@ interface PlayerSeatProps {
 interface PositionProps {
   x: string;
   y: string;
-  isActive: boolean;
-  isCurrent: boolean;
-  isHuman: boolean;
+  $isActive: boolean;
+  $isCurrent: boolean;
+  $isHuman: boolean;
 }
 
 const SeatContainer = styled.div<PositionProps>`
@@ -41,30 +41,30 @@ const SeatContainer = styled.div<PositionProps>`
   z-index: 10;
   transition: all 0.3s ease-in-out;
   
-  ${props => props.isCurrent && `
+  ${props => props.$isCurrent && `
     box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.8);
   `}
   
   /* Removed the scaling for human player so all players are the same size */
-  ${props => props.isHuman && `
+  ${props => props.$isHuman && `
     z-index: 20;
   `}
   
-  ${props => !props.isActive && `
+  ${props => !props.$isActive && `
     opacity: 0.5;
     filter: grayscale(70%);
   `}
 `;
 
 interface PlayerInfoProps {
-  isHuman: boolean;
-  isDealer?: boolean;
+  $isHuman: boolean;
+  $isDealer?: boolean;
 }
 
 const PlayerInfo = styled.div<PlayerInfoProps>`
   background-color: ${props => {
-    if (props.isDealer) return 'rgba(155, 89, 182, 0.85)';
-    if (props.isHuman) return 'rgba(41, 128, 185, 0.85)';
+    if (props.$isDealer) return 'rgba(155, 89, 182, 0.85)';
+    if (props.$isHuman) return 'rgba(41, 128, 185, 0.85)';
     return 'rgba(0, 0, 0, 0.75)';
   }};
   color: white;
@@ -76,13 +76,13 @@ const PlayerInfo = styled.div<PlayerInfoProps>`
   max-width: 110px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
   border: ${props => {
-    if (props.isDealer) return '2px solid #8e44ad';
-    if (props.isHuman) return '2px solid #3498db';
+    if (props.$isDealer) return '2px solid #8e44ad';
+    if (props.$isHuman) return '2px solid #3498db';
     return 'none';
   }};
 `;
 
-const PlayerName = styled.div<{ isHuman: boolean }>`
+const PlayerName = styled.div<{ $isHuman: boolean }>`
   font-weight: bold;
   /* Same font size for all players */
   font-size: 0.85rem;
@@ -93,10 +93,10 @@ const PlayerName = styled.div<{ isHuman: boolean }>`
   text-overflow: ellipsis;
 `;
 
-const ChipCount = styled.div<{ isHuman: boolean }>`
+const ChipCount = styled.div<{ $isHuman: boolean }>`
   /* Same font size for all players */
   font-size: 0.75rem;
-  font-weight: ${props => props.isHuman ? 'bold' : 'normal'};
+  font-weight: ${props => props.$isHuman ? 'bold' : 'normal'};
   background-color: rgba(0, 0, 0, 0.3);
   padding: 0.1rem 0.4rem;
   border-radius: 10px;
@@ -104,7 +104,7 @@ const ChipCount = styled.div<{ isHuman: boolean }>`
   margin-top: 0.15rem;
 `;
 
-const PlayerCards = styled.div<{ isHuman: boolean }>`
+const PlayerCards = styled.div<{ $isHuman: boolean }>`
   display: flex;
   gap: 0.3rem;
   /* Same scale for all players */
@@ -160,13 +160,13 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
     <SeatContainer 
       x={position.x} 
       y={position.y} 
-      isActive={player.isActive}
-      isCurrent={player.isCurrent}
-      isHuman={isHuman}
+      $isActive={player.isActive}
+      $isCurrent={player.isCurrent}
+      $isHuman={isHuman}
     >
-      <PlayerInfo isHuman={isHuman} isDealer={player.id === 'dealer'}>
-        <PlayerName isHuman={isHuman}>{player.name}</PlayerName>
-        <ChipCount isHuman={isHuman}>${player.chips}</ChipCount>
+      <PlayerInfo $isHuman={isHuman} $isDealer={player.id === 'dealer'}>
+        <PlayerName $isHuman={isHuman}>{player.name}</PlayerName>
+        <ChipCount $isHuman={isHuman}>${player.chips}</ChipCount>
         
         {/* Container for all markers */}
         {(player.isButton || player.isSB || player.isBB) && (
@@ -178,7 +178,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
         )}
       </PlayerInfo>
       
-      <PlayerCards isHuman={isHuman}>
+      <PlayerCards $isHuman={isHuman}>
         {player.id === 'dealer' ? (
           // Empty div placeholders for dealer (invisible)
           <>

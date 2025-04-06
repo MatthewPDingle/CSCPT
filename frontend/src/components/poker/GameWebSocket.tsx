@@ -211,7 +211,7 @@ const GameWebSocket: React.FC<GameWebSocketProps> = ({ gameId, playerId }) => {
             onChange={e => setChatText(e.target.value)}
             placeholder="Type a message..."
           />
-          <button type="submit">Send</button>
+          <button type="submit" formMethod="post">Send</button>
         </form>
       </div>
     </div>

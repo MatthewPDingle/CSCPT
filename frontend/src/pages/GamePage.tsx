@@ -26,6 +26,7 @@ const GameHeader = styled.div`
   display: flex;
   justify-content: space-between;
   background-color: rgba(0, 0, 0, 0.5);
+  z-index: 5;
 `;
 
 const GameTitle = styled.h1`
@@ -34,7 +35,18 @@ const GameTitle = styled.h1`
 `;
 
 const ChipCount = styled.div`
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 1.2rem;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 `;
 
 const StatusOverlay = styled.div`
@@ -86,6 +98,26 @@ const BackButton = styled.button`
   }
 `;
 
+const DebugButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  z-index: 10;
+  
+  &:hover {
+    background-color: #c0392b;
+  }
+  
+  &:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+  }
+`;
+
 interface LocationState {
   gameId: string;
   playerId: string;
@@ -118,16 +150,23 @@ const GamePage: React.FC = () => {
     }
   }, [gameId, playerId, navigate]);
   
-  // Create websocket URL only once to avoid recreating the connection
+  // Create websocket URL using useMemo, as it needs to be available at first render
   const wsUrl = React.useMemo(() => {
+    if (!gameId || !playerId) {
+      return ''; // Don't create URL if we don't have required params
+    }
+    
     const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsBaseUrl = API_URL.replace(/^https?:\/\//, `${wsProtocol}://`);
-    return `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
+    const url = `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
+    
+    // Only log on initial creation, not on every render
+    return url;
   }, [gameId, playerId]);
-  console.log('Using WebSocket URL:', wsUrl);
   
-  // Connect to game using WebSocket with a stable reference
+  // Always use the hook (to follow React Hooks rules) but pass an empty 
+  // string if we don't have a valid URL - the hook will handle this internally
   const {
     status,
     gameState,
@@ -137,7 +176,7 @@ const GamePage: React.FC = () => {
     isPlayerTurn,
     errors,
     reconnect
-  } = useGameWebSocket(wsUrl);
+  } = useGameWebSocket(wsUrl || '');
   
   // Store game state in local state when received
   const [localGameState, setLocalGameState] = React.useState<typeof gameState | null>(null);
@@ -191,10 +230,28 @@ const GamePage: React.FC = () => {
     }
   }, [status, reconnect, errors, gameId, navigate]);
   
-  // Debug logs to help identify the issue
-  console.log('WebSocket status:', status);
-  console.log('GameState exists:', !!gameState);
-  console.log('LocalGameState exists:', !!localGameState);
+  // Use refs to track state changes and only log when they actually change
+  const prevStatusRef = React.useRef(status);
+  const prevGameStateRef = React.useRef(!!gameState);
+  const prevLocalGameStateRef = React.useRef(!!localGameState);
+  
+  React.useEffect(() => {
+    // Only log when values actually change
+    if (prevStatusRef.current !== status) {
+      console.log('WebSocket status changed to:', status);
+      prevStatusRef.current = status;
+    }
+    
+    if (prevGameStateRef.current !== !!gameState) {
+      console.log('GameState exists:', !!gameState);
+      prevGameStateRef.current = !!gameState;
+    }
+    
+    if (prevLocalGameStateRef.current !== !!localGameState) {
+      console.log('LocalGameState exists:', !!localGameState);
+      prevLocalGameStateRef.current = !!localGameState;
+    }
+  }, [status, gameState, localGameState]);
   
   // Use either WebSocket game state or local game state
   const effectiveGameState = gameState || localGameState;
@@ -361,14 +418,23 @@ const GamePage: React.FC = () => {
   };
   
   // Render loading screen if needed
-  if (isLoading) {
+  if (isLoading || !wsUrl || status === 'connecting' || status === 'error') {
     return (
       <GameContainer>
         <StatusOverlay>
           <LoadingSpinner />
           <StatusText>
-            {status === 'connecting' ? 'Connecting to game...' : 'Loading game state...'}
+            {!wsUrl 
+              ? 'Initializing game connection...' 
+              : status === 'error' 
+                ? 'Connection error. Trying to reconnect...'
+                : status === 'connecting' 
+                  ? 'Connecting to game...' 
+                  : 'Loading game state...'}
           </StatusText>
+          <div style={{ color: '#f39c12', marginBottom: '1rem', fontSize: '0.9rem' }}>
+            {!wsUrl && 'Game ID not found. Please try again.'}
+          </div>
           <BackButton onClick={handleBackToLobby}>Back to Lobby</BackButton>
         </StatusOverlay>
       </GameContainer>
@@ -396,11 +462,29 @@ const GamePage: React.FC = () => {
     </div>
   );
   
+  // Function to trigger AI move
+  const triggerAIMove = async () => {
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/game/ai-move/${gameId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to trigger AI move:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error triggering AI move:', error);
+    }
+  };
+  
   return (
     <GameContainer>
       <GameHeader>
         <GameTitle>Texas Hold'em Poker</GameTitle>
-        <ChipCount>Your Chips: {chips}</ChipCount>
       </GameHeader>
       
       {/* Add connection status indicator */}
@@ -422,16 +506,41 @@ const GamePage: React.FC = () => {
         actionRequest={actionRequest}
       />
 
-      {/* Only show cash game controls for cash games */}
+      {/* Chips count now appears at the bottom center */}
+      <ChipCount>Your Chips: ${chips}</ChipCount>
+
+      {/* Only show cash game controls for cash games - now positioned at bottom */}
       {gameMode === 'cash' && effectiveGameState && (
-        <CashGameControls
-          gameId={gameId}
-          playerId={playerId}
-          chips={chips}
-          maxBuyIn={effectiveGameState.max_buy_in ?? 2000}
-          onPlayerUpdate={handlePlayerUpdate}
-        />
+        <div style={{
+          position: 'absolute',
+          bottom: '80px',
+          right: '20px',
+          zIndex: 10
+        }}>
+          <CashGameControls
+            gameId={gameId}
+            playerId={playerId}
+            chips={chips}
+            maxBuyIn={effectiveGameState.max_buy_in ?? 2000}
+            onPlayerUpdate={handlePlayerUpdate}
+          />
+        </div>
       )}
+      
+      {/* Debug button to trigger AI moves */}
+      <div style={{
+        position: 'absolute',
+        top: '80px',
+        right: '20px',
+        zIndex: 10
+      }}>
+        <DebugButton 
+          onClick={triggerAIMove}
+          disabled={status !== 'open'}
+        >
+          Trigger AI Move
+        </DebugButton>
+      </div>
       
       {/* Show hand result overlay if available */}
       {handResult && (
@@ -444,7 +553,11 @@ const GamePage: React.FC = () => {
               </div>
             ))}
           </div>
-          <BackButton onClick={() => navigate(0)}>Play Next Hand</BackButton>
+          <BackButton onClick={() => {
+            // Reset UI state without page refresh
+            setConnectionStatus("connecting");
+            reconnect();
+          }}>Play Next Hand</BackButton>
         </StatusOverlay>
       )}
       
@@ -455,7 +568,11 @@ const GamePage: React.FC = () => {
           <div style={{ color: 'red', marginBottom: '1rem' }}>
             {errors[errors.length - 1].message}
           </div>
-          <BackButton onClick={() => navigate(0)}>Refresh Game</BackButton>
+          <BackButton onClick={() => {
+            // Reset UI state without page refresh
+            setConnectionStatus("connecting");
+            reconnect();
+          }}>Refresh Game</BackButton>
         </StatusOverlay>
       )}
     </GameContainer>

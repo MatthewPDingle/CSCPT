@@ -107,6 +107,12 @@ export const useGameWebSocket = (wsUrl: string) => {
   
   // Extract playerId from URL if present
   useEffect(() => {
+    // Skip if URL isn't provided
+    if (!wsUrl) {
+      console.log('No WebSocket URL provided, skipping URL parsing');
+      return;
+    }
+
     try {
       const url = new URL(wsUrl);
       const playerIdParam = url.searchParams.get('player_id');
@@ -130,12 +136,25 @@ export const useGameWebSocket = (wsUrl: string) => {
   // Handle WebSocket messages
   const handleMessage = useCallback((event: MessageEvent) => {
     try {
+      // Check if data is empty or invalid
+      if (!event.data) {
+        console.error('Empty WebSocket message received');
+        return;
+      }
+
       // Log raw data for debugging
       console.log('Raw message data:', typeof event.data === 'string' ? 
         event.data.substring(0, 200) + (event.data.length > 200 ? '...' : '') : 
         'Binary data');
-        
-      const message: WebSocketMessage = JSON.parse(event.data);
+      
+      let message: WebSocketMessage;
+      try {  
+        message = JSON.parse(event.data);
+      } catch (parseError) {
+        console.error('Failed to parse WebSocket message:', parseError);
+        return;
+      }
+      
       console.log('Received WebSocket message type:', message.type);
       
       // Add defensive checks
@@ -238,43 +257,28 @@ export const useGameWebSocket = (wsUrl: string) => {
   const sendMessageRef = useRef<any>(null);
   
   // Setup WebSocket connection
-  const { sendMessage, status, reconnect } = useWebSocket(wsUrlRef.current, {
+  const { sendMessage, status, reconnect, lastMessage } = useWebSocket(wsUrlRef.current, {
     onMessage: handleMessage,
     reconnectAttempts: 20, // Increased for more persistent reconnection
     shouldReconnect: true,
     reconnectInterval: 3000, // Increased to 3 seconds for more stability
     onOpen: () => {
-      // Send an immediate ping when connection opens to establish stable connection
-      console.log('WebSocket connection opened, sending immediate ping');
+      // Send just a single ping with a delay to establish a connection
+      console.log('WebSocket connection opened, will send ping after delay');
       
       // Use a longer delay to give things time to fully settle
       setTimeout(() => {
         try {
-          console.log('Sending initial ping to confirm connection');
+          console.log('Sending single initialization ping');
           sendMessage({
             type: 'ping',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            stabilize: true
           });
         } catch (err) {
-          console.error('Error sending immediate ping:', err);
+          console.error('Error sending initialization ping:', err);
         }
-      }, 700); // Increased delay to let connection fully stabilize
-      
-      // Send multiple pings to ensure connection is stable
-      for (let i = 1; i <= 5; i++) {
-        setTimeout(() => {
-          try {
-            console.log(`Sending stabilization ping #${i}`);
-            sendMessage({
-              type: 'ping',
-              timestamp: Date.now(),
-              stabilize: true
-            });
-          } catch (err) {
-            console.error(`Error sending stabilization ping #${i}:`, err);
-          }
-        }, 1000 + i * 500); // Spaced out pings every 500ms starting 1s after connection
-      }
+      }, 2000); // Single ping with 2 second delay
     },
     onClose: (event) => {
       console.log(`WebSocket closed with code ${event.code}, reason: "${event.reason}"`);
@@ -320,7 +324,36 @@ export const useGameWebSocket = (wsUrl: string) => {
     return sendMessage(message);
   }, [sendMessage]);
   
-  // Heartbeat manager - send regular pings to keep connection alive
+  // Store connection status in a ref to avoid closure issues
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+  
+  // Track last successful response time to detect one-way connections
+  const lastResponseRef = useRef(Date.now());
+  
+  // Keep track of ping/pong success rate
+  const pingCountRef = useRef(0);
+  const pongCountRef = useRef(0);
+  
+  // Store received pongs when they come in
+  useEffect(() => {
+    if (lastMessage?.data && typeof lastMessage.data === 'string') {
+      try {
+        const message = JSON.parse(lastMessage.data);
+        if (message.type === 'pong') {
+          console.log('Received pong response from server');
+          lastResponseRef.current = Date.now();
+          pongCountRef.current++;
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+  }, [lastMessage]);
+  
+  // Heartbeat manager with adaptive ping interval based on connection quality
   useEffect(() => {
     if (status !== 'open') {
       return; // Don't start ping interval unless connection is open
@@ -331,65 +364,58 @@ export const useGameWebSocket = (wsUrl: string) => {
       sendMessageRef.current = sendMessage;
     }
     
-    console.log('Starting primary heartbeat interval - every 15 seconds');
-    // Send ping every 15 seconds (reduced from 30)
-    const primaryPingInterval = setInterval(() => {
+    // Reset counters when connection (re)opens
+    pingCountRef.current = 0;
+    pongCountRef.current = 0;
+    lastResponseRef.current = Date.now();
+    
+    // Increased ping interval to reduce traffic
+    const basePingInterval = 60000; // 60 seconds instead of 30
+    console.log('Starting heartbeat interval - approximately every 60 seconds');
+    
+    // Send ping every ~60 seconds, with refresh every ~4 minutes
+    let pingCount = 0;
+    const pingInterval = setInterval(() => {
       try {
-        console.log('Sending primary heartbeat ping');
+        // Check if we've received any responses recently (within 2 intervals)
+        const timeSinceLastResponse = Date.now() - lastResponseRef.current;
+        const responseTimeout = basePingInterval * 2;
+        
+        // If server seems unresponsive but WebSocket is still "open",
+        // we might be in the "backend tracking lost" state
+        if (pingCountRef.current > 3 && 
+            timeSinceLastResponse > responseTimeout && 
+            statusRef.current === 'open') {
+          console.log('Server not responding to pings. Reducing ping frequency to avoid log spam.');
+          // Still send occasional pings in case the server reconnects
+          if (pingCount % 5 !== 0) {
+            return; // Skip 4 out of 5 pings when in this state
+          }
+        }
+        
+        pingCount++;
+        pingCountRef.current++;
+        const needsRefresh = pingCount % 4 === 0; // Request refresh every 4th ping
+        console.log(`Sending heartbeat ping${needsRefresh ? ' with refresh' : ''}`);
+        
         sendMessageRef.current({
           type: 'ping',
           timestamp: Date.now(),
-          needsRefresh: false
+          needsRefresh: needsRefresh
         });
       } catch (err) {
-        console.error('Error sending primary ping:', err);
+        console.error('Error sending ping:', err);
       }
-    }, 15000);
+    }, basePingInterval);
     
-    // Secondary, more frequent ping for first few minutes to maintain stability
-    console.log('Starting secondary heartbeat interval - every 3 seconds for first 2 minutes');
-    const secondaryPingInterval = setInterval(() => {
-      try {
-        console.log('Sending secondary heartbeat ping');
-        sendMessageRef.current({
-          type: 'ping',
-          timestamp: Date.now(),
-          stabilize: true
-        });
-      } catch (err) {
-        console.error('Error sending secondary ping:', err);
-      }
-    }, 3000); // Every 3 seconds
-    
-    // Clear secondary interval after 2 minutes
-    const secondaryTimeoutId = setTimeout(() => {
-      console.log('Clearing secondary heartbeat interval after 2 minutes');
-      clearInterval(secondaryPingInterval);
-    }, 120000); // 2 minutes
-    
-    // Request a state refresh every 30 seconds
-    console.log('Starting refresh ping interval - every 30 seconds');
-    const refreshPingInterval = setInterval(() => {
-      try {
-        console.log('Sending refresh ping');
-        sendMessageRef.current({
-          type: 'ping',
-          timestamp: Date.now(),
-          needsRefresh: true
-        });
-      } catch (err) {
-        console.error('Error sending refresh ping:', err);
-      }
-    }, 30000); // Every 30 seconds
+    // We don't need an immediate ping after connection as we already have 
+    // one from the onOpen handler. This was causing double pings.
     
     return () => {
-      console.log('Clearing all heartbeat intervals');
-      clearInterval(primaryPingInterval);
-      clearInterval(secondaryPingInterval);
-      clearInterval(refreshPingInterval);
-      clearTimeout(secondaryTimeoutId);
+      console.log('Clearing heartbeat interval');
+      clearInterval(pingInterval);
     };
-  }, [sendMessage, status]);
+  }, [status]); // Only depend on status changes, not lastMessage or sendMessage
   
   // Check if it's the player's turn
   const isPlayerTurn = useCallback(() => {
@@ -418,6 +444,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     sendAction,
     sendChat,
     reconnect,
-    isPlayerTurn
+    isPlayerTurn,
+    lastMessage
   };
 };

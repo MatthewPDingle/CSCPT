@@ -20,7 +20,7 @@ interface ActionControlsProps {
   actionRequest: ActionRequest | null;
 }
 
-const ControlsContainer = styled.div<{ isActive: boolean }>`
+const ControlsContainer = styled.div<{ $isActive: boolean }>`
   position: fixed;
   bottom: 0;
   left: 0;
@@ -31,12 +31,12 @@ const ControlsContainer = styled.div<{ isActive: boolean }>`
   justify-content: center;
   align-items: center;
   gap: 1rem;
-  opacity: ${props => props.isActive ? 1 : 0.5};
-  pointer-events: ${props => props.isActive ? 'auto' : 'none'};
+  opacity: ${props => props.$isActive ? 1 : 0.5};
+  pointer-events: ${props => props.$isActive ? 'auto' : 'none'};
   transition: opacity 0.3s ease;
 `;
 
-const ActionButton = styled.button<{ action: string }>`
+const ActionButton = styled.button<{ $action: string }>`
   padding: 0.8rem 1.5rem;
   border: none;
   border-radius: 4px;
@@ -46,7 +46,7 @@ const ActionButton = styled.button<{ action: string }>`
   transition: background-color 0.2s;
   
   ${props => {
-    switch (props.action) {
+    switch (props.$action) {
       case 'fold':
         return `
           background-color: #e74c3c;
@@ -131,9 +131,9 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   const canFold = availableOptions.includes('FOLD') || !canCheck;
   
   return (
-    <ControlsContainer isActive={isPlayerTurn}>
+    <ControlsContainer $isActive={isPlayerTurn}>
       <ActionButton 
-        action="fold"
+        $action="fold"
         onClick={() => onAction('FOLD')}
         disabled={!canFold || !isPlayerTurn}
       >
@@ -142,7 +142,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
       
       {canCheck ? (
         <ActionButton 
-          action="check" 
+          $action="check" 
           onClick={() => onAction('CHECK')}
           disabled={!isPlayerTurn}
         >
@@ -150,7 +150,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
         </ActionButton>
       ) : (
         <ActionButton 
-          action="call" 
+          $action="call" 
           onClick={() => onAction('CALL')}
           disabled={!canCall || !isPlayerTurn}
         >
@@ -169,7 +169,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
           />
           <BetAmount>${betAmount}</BetAmount>
           <ActionButton 
-            action="bet" 
+            $action="bet" 
             onClick={() => onAction('BET', betAmount)}
             disabled={!isPlayerTurn}
           >
@@ -187,7 +187,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
           />
           <BetAmount>${betAmount}</BetAmount>
           <ActionButton 
-            action="raise" 
+            $action="raise" 
             onClick={() => onAction('RAISE', betAmount)}
             disabled={!isPlayerTurn}
           >
@@ -198,7 +198,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
       
       {availableOptions.includes('ALL_IN') && (
         <ActionButton 
-          action="allIn"
+          $action="allIn"
           onClick={() => onAction('ALL_IN', playerChips)}
           disabled={playerChips === 0 || !isPlayerTurn}
         >

@@ -19,6 +19,8 @@ class ConnectionManager:
         self.active_connections: Dict[str, Set[WebSocket]] = {}
         # Maps WebSocket -> player_id
         self.socket_player_map: Dict[WebSocket, str] = {}
+        # Maps WebSocket -> game_id
+        self.socket_game_map: Dict[WebSocket, str] = {}
         
     async def connect(self, websocket: WebSocket, game_id: str, player_id: Optional[str] = None):
         """
@@ -39,6 +41,11 @@ class ConnectionManager:
         self.active_connections[game_id].add(websocket)
         self.socket_player_map[websocket] = player_id
         
+        # Store the game_id for this WebSocket
+        self.socket_game_map[websocket] = game_id
+        import logging
+        logging.warning(f"Stored game_id {game_id} for WebSocket connection {id(websocket)}")
+        
     def disconnect(self, websocket: WebSocket):
         """
         Disconnect a WebSocket.
@@ -46,6 +53,7 @@ class ConnectionManager:
         Args:
             websocket: The WebSocket to disconnect
         """
+        import logging
         # Find the game this websocket belongs to
         for game_id, connections in list(self.active_connections.items()):
             if websocket in connections:
@@ -58,6 +66,12 @@ class ConnectionManager:
         # Remove from player map
         if websocket in self.socket_player_map:
             del self.socket_player_map[websocket]
+            
+        # Remove from game map
+        if websocket in self.socket_game_map:
+            game_id = self.socket_game_map[websocket]
+            logging.warning(f"Removing game_id {game_id} for WebSocket connection {id(websocket)}")
+            del self.socket_game_map[websocket]
     
     async def broadcast_to_game(self, game_id: str, message: dict):
         """
@@ -118,9 +132,15 @@ class ConnectionManager:
             
         player_id = self.socket_player_map.get(websocket, 'unknown')
         msg_type = message.get('type', 'unknown')
-        logging.warning(f"Sending personal message of type '{msg_type}' to player {player_id}")
+        
+        # Only log non-routine messages
+        if msg_type not in ['pong']:
+            logging.warning(f"Sending personal message of type '{msg_type}' to player {player_id}")
         
         # Check if websocket is in any active connection before sending
+        # But don't disconnect if it's not in active_connections
+        # This fixes the race condition where we might consider a connection inactive
+        # but it's still physically open
         is_active = False
         for game_id, game_connections in self.active_connections.items():
             if websocket in game_connections:
@@ -129,9 +149,37 @@ class ConnectionManager:
                 break
                 
         if not is_active:
-            logging.warning(f"WebSocket for player {player_id} not in active connections, removing from maps")
-            self.disconnect(websocket)
-            return
+            # Add connection back to the maps instead of disconnecting it
+            # This recovers from the race condition
+            logging.warning(f"WebSocket for player {player_id} not in active connections, but connection is still open. Re-adding to maps.")
+            
+            # First try to get game_id from our socket_game_map
+            found_game_id = self.socket_game_map.get(websocket)
+            
+            # If not found in map, try to find from other connections
+            if not found_game_id:
+                for _websocket, _player_id in self.socket_player_map.items():
+                    if _player_id == player_id:
+                        # Found another socket for this player, use that game
+                        for _game_id, _connections in self.active_connections.items():
+                            if _websocket in _connections:
+                                found_game_id = _game_id
+                                break
+                        if found_game_id:
+                            break
+                            
+            # If we found a game_id, re-add to active connections
+            if found_game_id:
+                # Re-add to active connections for this game
+                if found_game_id not in self.active_connections:
+                    self.active_connections[found_game_id] = set()
+                self.active_connections[found_game_id].add(websocket)
+                # Ensure it's in both socket maps
+                self.socket_player_map[websocket] = player_id
+                self.socket_game_map[websocket] = found_game_id
+                logging.warning(f"Successfully re-added WebSocket for player {player_id} to game {found_game_id}")
+            else:
+                logging.warning(f"Could not re-add WebSocket for player {player_id} - unable to determine game_id")
         
         # Serialize message
         try:

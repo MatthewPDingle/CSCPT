@@ -1,4 +1,6 @@
-# CLAUDE.md - Project Guidelines
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build & Run Commands
 - Backend: `cd backend && uvicorn app.main:app --reload`
@@ -23,13 +25,7 @@
 - Naming: snake_case (Python), camelCase (JS/TS), PascalCase (React components)
 - Error Handling: Use specific exceptions, never silent fails, proper logging
 
-## Git Workflow
-- Branch naming: `feature/`, `fix/`, `docs/`, `refactor/`, `test/` prefix + issue number
-- Commit style: Present tense, imperative mood, include issue number
-- PR requirements: Reference issue, tests pass, docs updated
-
 ## Repository Structure
 - Backend: FastAPI (Python) in backend/
 - Frontend: React/TypeScript in frontend/
 - AI: Python models in ai/ (OpenAI, Anthropic, Gemini providers)
-- Tests: Unit/integration tests in tests/

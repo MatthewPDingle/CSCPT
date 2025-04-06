@@ -67,9 +67,23 @@ export const useWebSocket = (
       reconnectTimerRef.current = null;
     }
 
+    // Prevent connecting if no URL provided
+    if (!url) {
+      console.warn('Cannot connect WebSocket - no URL provided');
+      return;
+    }
+
     // Close any existing connection
     if (websocketRef.current) {
+      // Remove event handlers before closing to prevent unexpected callbacks
+      if (websocketRef.current) {
+        websocketRef.current.onclose = null;
+        websocketRef.current.onopen = null;
+        websocketRef.current.onmessage = null;
+        websocketRef.current.onerror = null;
+      }
       websocketRef.current.close();
+      websocketRef.current = null;
     }
 
     // Create new connection
@@ -169,7 +183,7 @@ export const useWebSocket = (
         websocketRef.current = null;
       }
     };
-  }, [connect, url]);
+  }, [url]); // Removed 'connect' from the dependency array to prevent reconnection cycles
 
   return {
     sendMessage,

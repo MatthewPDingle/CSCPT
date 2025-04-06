@@ -7,12 +7,12 @@ interface CardProps {
   isCommunity?: boolean;
 }
 
-const CardContainer = styled.div<{ faceDown: boolean; isCommunity: boolean }>`
-  width: ${props => props.isCommunity ? '80px' : '70px'};
-  height: ${props => props.isCommunity ? '115px' : '100px'};
+const CardContainer = styled.div<{ $faceDown: boolean; $isCommunity: boolean }>`
+  width: ${props => props.$isCommunity ? '80px' : '70px'};
+  height: ${props => props.$isCommunity ? '115px' : '100px'};
   border-radius: 8px;
   background-color: white;
-  box-shadow: ${props => props.isCommunity ? 
+  box-shadow: ${props => props.$isCommunity ? 
     '0 3px 15px rgba(0, 0, 0, 0.4), 0 0 10px rgba(255, 255, 255, 0.3)' : 
     '0 2px 8px rgba(0, 0, 0, 0.3)'};
   display: flex;
@@ -27,7 +27,7 @@ const CardContainer = styled.div<{ faceDown: boolean; isCommunity: boolean }>`
     transform: translateY(-5px);
   }
   
-  ${props => props.faceDown && `
+  ${props => props.$faceDown && `
     background: linear-gradient(135deg, #6d4c41 25%, #8d6e63 25%, #8d6e63 50%, #6d4c41 50%, #6d4c41 75%, #8d6e63 75%);
     background-size: 20px 20px;
     color: transparent;
@@ -44,7 +44,7 @@ const CardContainer = styled.div<{ faceDown: boolean; isCommunity: boolean }>`
     }
   `}
   
-  ${props => props.isCommunity && !props.faceDown && `
+  ${props => props.$isCommunity && !props.$faceDown && `
     animation: pulse 1.5s infinite alternate;
     
     @keyframes pulse {
@@ -54,25 +54,25 @@ const CardContainer = styled.div<{ faceDown: boolean; isCommunity: boolean }>`
   `}
 `;
 
-const CardValue = styled.div<{ color: string; isCommunity: boolean }>`
+const CardValue = styled.div<{ color: string; $isCommunity: boolean }>`
   position: absolute;
   top: 5px;
   left: 5px;
-  font-size: ${props => props.isCommunity ? '1.4rem' : '1.2rem'};
+  font-size: ${props => props.$isCommunity ? '1.4rem' : '1.2rem'};
   color: ${props => props.color};
   font-weight: bold;
-  text-shadow: ${props => props.isCommunity ? '0 1px 2px rgba(0, 0, 0, 0.2)' : 'none'};
+  text-shadow: ${props => props.$isCommunity ? '0 1px 2px rgba(0, 0, 0, 0.2)' : 'none'};
 `;
 
-const CardSymbol = styled.div<{ color: string; isCommunity: boolean }>`
-  font-size: ${props => props.isCommunity ? '2.5rem' : '2rem'};
+const CardSymbol = styled.div<{ color: string; $isCommunity: boolean }>`
+  font-size: ${props => props.$isCommunity ? '2.5rem' : '2rem'};
   color: ${props => props.color};
-  text-shadow: ${props => props.isCommunity ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none'};
+  text-shadow: ${props => props.$isCommunity ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none'};
 `;
 
-const EmptyCard = styled.div<{ isCommunity: boolean }>`
-  width: ${props => props.isCommunity ? '80px' : '70px'};
-  height: ${props => props.isCommunity ? '115px' : '100px'};
+const EmptyCard = styled.div<{ $isCommunity: boolean }>`
+  width: ${props => props.$isCommunity ? '80px' : '70px'};
+  height: ${props => props.$isCommunity ? '115px' : '100px'};
   border-radius: 8px;
   border: 2px dashed rgba(255, 255, 255, 0.4);
   background-color: rgba(255, 255, 255, 0.05);
@@ -121,15 +121,15 @@ const parseCard = (cardString: string) => {
 
 const Card: React.FC<CardProps> = ({ card, faceDown = false, isCommunity = false }) => {
   if (!card) {
-    return <EmptyCard isCommunity={isCommunity} />;
+    return <EmptyCard $isCommunity={!!isCommunity} />;
   }
   
   const { value, suit, color } = parseCard(card);
   
   return (
-    <CardContainer faceDown={faceDown} isCommunity={isCommunity}>
-      <CardValue color={color} isCommunity={isCommunity}>{value}</CardValue>
-      <CardSymbol color={color} isCommunity={isCommunity}>{suit}</CardSymbol>
+    <CardContainer $faceDown={!!faceDown} $isCommunity={!!isCommunity}>
+      <CardValue color={color} $isCommunity={!!isCommunity}>{value}</CardValue>
+      <CardSymbol color={color} $isCommunity={!!isCommunity}>{suit}</CardSymbol>
     </CardContainer>
   );
 };

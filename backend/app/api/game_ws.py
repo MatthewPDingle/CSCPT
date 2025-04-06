@@ -223,9 +223,13 @@ async def websocket_endpoint(
                         websocket, game_id, message, player_id, service
                     )
                 elif message.get("type") == "ping":
-                    # Respond to heartbeat
+                    # Respond to heartbeat - only log if it's a stabilize or refresh ping
                     import logging
-                    logging.warning(f"Received ping, sending pong to {player_id}")
+                    should_log = message.get("stabilize") == True or message.get("needsRefresh") == True
+                    
+                    if should_log:
+                        logging.warning(f"Received special ping from {player_id}: stabilize={message.get('stabilize')}, refresh={message.get('needsRefresh')}")
+                        
                     # Include the same timestamp from the ping in the pong response
                     try:
                         await connection_manager.send_personal_message(

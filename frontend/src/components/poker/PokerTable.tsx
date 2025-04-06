@@ -90,7 +90,7 @@ const PlayerPositions = styled.div`
 
 // Define fixed positions for proper 10-seat oval poker table
 // With dealer at top middle and players in position order clockwise
-const getPlayerPosition = (playerId: string) => {
+const getPlayerPosition = (player: Player) => {
   // Define the 10 fixed positions around the oval table in clockwise order
   const seatPositions = [
     { x: '28%', y: '12%' },    // Position 0: Top left
@@ -108,9 +108,19 @@ const getPlayerPosition = (playerId: string) => {
   const dealerPosition = { x: '50%', y: '5%' };  // Top middle
   
   // Special cases
-  if (playerId === "dealer") {
+  if (player.id === "dealer") {
     return dealerPosition;
   }
+  
+  // Use player.position if it exists and is valid
+  if (typeof player.position === 'number' && 
+      player.position >= 0 && 
+      player.position < seatPositions.length) {
+    return seatPositions[player.position];
+  }
+  
+  // Fallback to ID-based positioning if position property isn't valid
+  const playerId = player.id;
   
   // Extract position number if present in the ID
   // This handles cases like "player_0", "player_1", etc.
@@ -147,20 +157,6 @@ const getPlayerPosition = (playerId: string) => {
     }
   }
   
-  // Handle AI player cases
-  if (playerId.startsWith("ai")) {
-    const aiNumber = parseInt(playerId.substring(2), 10);
-    if (!isNaN(aiNumber) && aiNumber > 0 && aiNumber <= seatPositions.length) {
-      return seatPositions[aiNumber % seatPositions.length];
-    }
-  }
-  
-  // For any UUID-like player ID, just use a consistent position based on first character
-  if (playerId.length > 8) {
-    const firstChar = playerId.charCodeAt(0);
-    return seatPositions[firstChar % seatPositions.length];
-  }
-  
   // Default fallback - use middle bottom position
   return seatPositions[5];
 };
@@ -192,7 +188,7 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
         
         <CommunityCardsArea>
           {paddedCommunityCards.slice(0, 5).map((card, index) => (
-            <Card key={index} card={card} isCommunity={true} />
+            <Card key={index} card={card} isCommunity />
           ))}
         </CommunityCardsArea>
         
@@ -213,7 +209,16 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
               isSB: false,
               isBB: false
             }}
-            position={getPlayerPosition('dealer')}
+            position={getPlayerPosition({
+              id: 'dealer',
+              name: 'Dealer',
+              chips: 0,
+              position: -1,
+              cards: [],
+              isActive: true,
+              isCurrent: false,
+              isDealer: true
+            })}
             isHuman={false}
           />
           
@@ -223,29 +228,31 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
               // Ensure player has an ID
               const playerId = player.id || `player_${index}`;
               
-              // Get position - handle potential undefined values
-              const position = getPlayerPosition(playerId);
+              // Create sanitized player object with fallback values
+              const sanitizedPlayer = {
+                ...player,
+                id: playerId,
+                name: player.name || `Player ${index}`,
+                chips: typeof player.chips === 'number' ? player.chips : 1000,
+                position: typeof player.position === 'number' ? player.position : index,
+                cards: Array.isArray(player.cards) ? player.cards : [null, null],
+                isActive: !!player.isActive,
+                isCurrent: !!player.isCurrent,
+                isDealer: !!player.isDealer,
+                isButton: !!player.isButton,
+                isSB: !!player.isSB,
+                isBB: !!player.isBB
+              };
+              
+              // Get position - use player's actual position from the game state
+              const position = getPlayerPosition(sanitizedPlayer);
               
               return (
                 <PlayerSeat
                   key={playerId}
-                  player={{
-                    ...player,
-                    // Ensure all required properties have fallback values
-                    id: playerId,
-                    name: player.name || `Player ${index}`,
-                    chips: typeof player.chips === 'number' ? player.chips : 1000,
-                    position: typeof player.position === 'number' ? player.position : index,
-                    cards: Array.isArray(player.cards) ? player.cards : [null, null],
-                    isActive: !!player.isActive,
-                    isCurrent: !!player.isCurrent,
-                    isDealer: !!player.isDealer,
-                    isButton: !!player.isButton,
-                    isSB: !!player.isSB,
-                    isBB: !!player.isBB
-                  }}
+                  player={sanitizedPlayer}
                   position={position}
-                  isHuman={playerId === 'player'}
+                  isHuman={playerId.toLowerCase().includes('you')}
                 />
               );
             } catch (error) {
