@@ -340,15 +340,33 @@ export const useGameWebSocket = (wsUrl: string) => {
   const pingCountRef = useRef(0);
   const pongCountRef = useRef(0);
   
-  // Store received pongs when they come in
+  // Store pending pings and their IDs for tracking
+  const pendingPingsRef = useRef(new Map());
+  
+  // Handle pong responses and match them to pending pings
   useEffect(() => {
     if (lastMessage?.data && typeof lastMessage.data === 'string') {
       try {
         const message = JSON.parse(lastMessage.data);
         if (message.type === 'pong') {
-          console.log('Received pong response from server');
+          // Extract pingId if available
+          const { pingId } = message;
+          
+          console.log('Received pong response from server', pingId ? `for ping ${pingId}` : '');
           lastResponseRef.current = Date.now();
           pongCountRef.current++;
+          
+          // If we have the pingId, remove it from pending pings
+          if (pingId && pendingPingsRef.current.has(pingId)) {
+            pendingPingsRef.current.delete(pingId);
+            console.log(`Matched and cleared ping ${pingId}`);
+          }
+          
+          // Calculate latency if timestamp was included
+          if (message.timestamp) {
+            const latency = Date.now() - message.timestamp;
+            console.log(`Ping latency: ${latency}ms`);
+          }
         }
       } catch (e) {
         // Ignore parsing errors
@@ -356,7 +374,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     }
   }, [lastMessage]);
   
-  // Heartbeat manager with adaptive ping interval based on connection quality
+  // Heartbeat manager with ping tracking to prevent abandoned promises
   useEffect(() => {
     if (status !== 'open') {
       return; // Don't start ping interval unless connection is open
@@ -372,14 +390,33 @@ export const useGameWebSocket = (wsUrl: string) => {
     pongCountRef.current = 0;
     lastResponseRef.current = Date.now();
     
+    // Make sure we're using the shared pendingPingsRef
+    pendingPingsRef.current.clear(); // Start fresh
+    const pingTimeoutMs = 30000; // 30 second timeout for pings
+    
     // Increased ping interval to reduce traffic
-    const basePingInterval = 60000; // 60 seconds instead of 30
+    const basePingInterval = 60000; // 60 seconds
     console.log('Starting heartbeat interval - approximately every 60 seconds');
+    
+    // Cleanup function for stale pings
+    const cleanupStalePings = () => {
+      const now = Date.now();
+      // Use Array.from to convert the Map entries to an array we can iterate safely
+      Array.from(pendingPingsRef.current.entries()).forEach(([pingId, timestamp]) => {
+        if (now - timestamp > pingTimeoutMs) {
+          console.warn(`Ping ${pingId} timed out after ${pingTimeoutMs}ms`);
+          pendingPingsRef.current.delete(pingId);
+        }
+      });
+    };
     
     // Send ping every ~60 seconds, with refresh every ~4 minutes
     let pingCount = 0;
     const pingInterval = setInterval(() => {
       try {
+        // First cleanup any stale pings
+        cleanupStalePings();
+        
         // Check if we've received any responses recently (within 2 intervals)
         const timeSinceLastResponse = Date.now() - lastResponseRef.current;
         const responseTimeout = basePingInterval * 2;
@@ -396,27 +433,49 @@ export const useGameWebSocket = (wsUrl: string) => {
           }
         }
         
+        // If we have too many pending pings, skip this one to avoid memory issues
+        if (pendingPingsRef.current.size >= 3) {
+          console.warn(`Skipping ping - already have ${pendingPingsRef.current.size} pending pings`);
+          return;
+        }
+        
         pingCount++;
         pingCountRef.current++;
         const needsRefresh = pingCount % 4 === 0; // Request refresh every 4th ping
-        console.log(`Sending heartbeat ping${needsRefresh ? ' with refresh' : ''}`);
         
+        // Create a unique ID for this ping to track it
+        const pingId = `ping-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        
+        console.log(`Sending heartbeat ping ${pingId}${needsRefresh ? ' with refresh' : ''}`);
+        
+        // Track this ping
+        pendingPingsRef.current.set(pingId, Date.now());
+        
+        // Send with pingId to match with pong
         sendMessageRef.current({
           type: 'ping',
+          pingId: pingId,
           timestamp: Date.now(),
           needsRefresh: needsRefresh
         });
+        
+        // Auto-cleanup this ping after timeout
+        setTimeout(() => {
+          if (pendingPingsRef.current.has(pingId)) {
+            console.warn(`Auto-cleaning ping ${pingId} that never received response`);
+            pendingPingsRef.current.delete(pingId);
+          }
+        }, pingTimeoutMs);
+        
       } catch (err) {
         console.error('Error sending ping:', err);
       }
     }, basePingInterval);
     
-    // We don't need an immediate ping after connection as we already have 
-    // one from the onOpen handler. This was causing double pings.
-    
     return () => {
-      console.log('Clearing heartbeat interval');
+      console.log('Cleaning up heartbeat resources');
       clearInterval(pingInterval);
+      pendingPingsRef.current.clear(); // Clean up any pending pings
     };
   }, [status]); // Only depend on status changes, not lastMessage or sendMessage
   

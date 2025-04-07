@@ -362,7 +362,11 @@ async def trigger_ai_move(
     service: GameService = Depends(get_game_service),
 ) -> ActionResponse:
     """
-    Debug endpoint for triggering the current AI player to make a move.
+    DEBUG ENDPOINT: Manually triggers the current player to make an AI move.
+    
+    WARNING: This endpoint is for debugging purposes only. In normal gameplay,
+    AI players should act automatically through the chain of actions in the backend.
+    Using this endpoint may disrupt the natural flow of the game and cause unexpected behavior.
     
     Args:
         game_id: The ID of the game
@@ -371,6 +375,11 @@ async def trigger_ai_move(
     Returns:
         The result of the action
     """
+    import logging
+    logging.warning(
+        "DEBUG AI MOVE ENDPOINT CALLED: This is a debug-only endpoint and should not be used "
+        "in normal gameplay. AI players should act automatically."
+    )
     try:
         # Get the poker game
         poker_game = service.poker_games.get(game_id)

@@ -118,6 +118,50 @@ const DebugButton = styled.button`
   }
 `;
 
+// Connection status styled components
+const ConnectionHealthDisplay = styled.div`
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  z-index: 15;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  max-width: 250px;
+`;
+
+// Define the status type to avoid PropType warnings
+type ConnectionStatus = 'open' | 'connecting' | 'closed';
+
+// Use transient prop to avoid DOM warnings
+// The $ prefix makes styled-components not pass the prop to the DOM
+const ConnectionStatusDot = styled.div<{ $status: ConnectionStatus }>`
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background-color: ${props => {
+    if (props.$status === 'open') return '#2ecc71';
+    if (props.$status === 'connecting') return '#f39c12';
+    return '#e74c3c';
+  }};
+  display: inline-block;
+`;
+
+const ConnectionStats = styled.div`
+  margin-top: 5px;
+  font-size: 11px;
+  color: #bdc3c7;
+  line-height: 1.4;
+`;
+
 interface LocationState {
   gameId: string;
   playerId: string;
@@ -497,59 +541,20 @@ const GamePage: React.FC = () => {
   const currentBet = effectiveGameState?.current_bet || 0;
   
   // Add a connection status indicator to the UI
-  // Add styled component for connection health display
-const ConnectionHealthDisplay = styled.div`
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background-color: rgba(0, 0, 0, 0.6);
-  color: white;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  z-index: 15;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s ease;
-  cursor: pointer;
-  max-width: 250px;
-`;
-
-const ConnectionStatusDot = styled.div<{ status: string }>`
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-  background-color: ${props => {
-    if (props.status === 'open') return '#2ecc71';
-    if (props.status === 'connecting') return '#f39c12';
-    return '#e74c3c';
-  }};
-  display: inline-block;
-`;
-
-const ConnectionStats = styled.div`
-  margin-top: 5px;
-  font-size: 11px;
-  color: #bdc3c7;
-  line-height: 1.4;
-`;
-
-
-const toggleConnectionDetails = () => {
-  setShowConnectionDetails(prev => !prev);
-  // Update metrics when expanding
-  if (!showConnectionDetails) {
-    setConnectionHealth(getConnectionHealth());
-  }
-};
+  // Toggle connection details function must be defined inside the component
+  const toggleConnectionDetails = () => {
+    setShowConnectionDetails(prev => !prev);
+    // Update metrics when expanding
+    if (!showConnectionDetails) {
+      setConnectionHealth(getConnectionHealth());
+    }
+  };
 
 const connectionIndicator = (
   <ConnectionHealthDisplay onClick={toggleConnectionDetails}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
-        <ConnectionStatusDot status={connectionStatus} />
+        <ConnectionStatusDot $status={connectionStatus as ConnectionStatus} />
         <span>{connectionStatus === 'open' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}</span>
       </div>
       <span style={{ marginLeft: '5px', fontSize: '10px' }}>{showConnectionDetails ? '▲' : '▼'}</span>
@@ -585,12 +590,18 @@ const connectionIndicator = (
   </ConnectionHealthDisplay>
 );
   
-  // Function to trigger AI move
+  // Function to manually trigger AI move - FOR DEBUGGING ONLY
   const triggerAIMove = async () => {
     try {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       
-      // Add more detailed logging
+      // Display warning that this is a debug-only function
+      console.warn(
+        "⚠️ DEBUG FUNCTION USED: Manually triggering AI move. " +
+        "In normal gameplay, AI players should act automatically without manual triggers. " +
+        "This may disrupt the natural flow of the game."
+      );
+      
       console.log(`Triggering AI move for game ${gameId}`);
       
       // CRITICAL: Delay first to allow any in-flight WebSocket operations to complete
@@ -691,13 +702,28 @@ const connectionIndicator = (
         position: 'absolute',
         top: '80px',
         right: '20px',
-        zIndex: 10
+        zIndex: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center'
       }}>
+        <div style={{
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          color: 'white',
+          padding: '5px',
+          borderRadius: '4px',
+          marginBottom: '5px',
+          fontSize: '10px',
+          maxWidth: '120px',
+          textAlign: 'center'
+        }}>
+          DEBUG ONLY: AI actions should happen automatically
+        </div>
         <DebugButton 
           onClick={triggerAIMove}
           disabled={status !== 'open'}
         >
-          Trigger AI Move
+          Force AI Move
         </DebugButton>
       </div>
       

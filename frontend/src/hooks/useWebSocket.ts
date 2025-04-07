@@ -97,6 +97,14 @@ export const useWebSocket = (
   }, []);
 
   // Function to connect or reconnect
+  // Keep a reference to the current status
+  const statusRef = useRef<WebSocketStatus>('connecting');
+  
+  // Update status ref whenever status changes
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   const connect = useCallback(() => {
     // Clear any existing reconnect timer
     if (reconnectTimerRef.current) {
@@ -123,157 +131,206 @@ export const useWebSocket = (
       websocketRef.current = null;
     }
 
-    // Create new connection
-    console.log(`Creating new WebSocket connection to ${url}`);
-    const ws = new WebSocket(url);
-    websocketRef.current = ws;
-    setStatus('connecting');
-
-    // Setup event handlers
-    ws.onopen = (event) => {
-      console.log('WebSocket connection opened');
-      setStatus('open');
+    // Create new connection with try/catch
+    try {
+      console.log(`Creating new WebSocket connection to ${url}`);
+      const ws = new WebSocket(url);
+      websocketRef.current = ws;
+      setStatus('connecting');
       
-      // Update connection metrics
-      const now = Date.now();
-      connectionMetrics.current.connectionCount++;
-      connectionMetrics.current.connectionStartTime = now;
-      
-      // If this was a reconnect, record it as successful
-      if (reconnectCountRef.current > 0) {
-        connectionMetrics.current.successfulReconnects++;
-        
-        // Calculate how long it took to reconnect
-        if (connectionMetrics.current.lastDisconnectTime > 0) {
-          const reconnectTime = now - connectionMetrics.current.lastDisconnectTime;
-          
-          // Update moving average of reconnect time
-          const prevAvg = connectionMetrics.current.averageReconnectTime;
-          const successfulReconnects = connectionMetrics.current.successfulReconnects;
-          connectionMetrics.current.averageReconnectTime = 
-            successfulReconnects === 1 ? 
-            reconnectTime : // First reconnect, just use the time
-            (prevAvg * (successfulReconnects - 1) + reconnectTime) / successfulReconnects; // Moving average
-          
-          console.log(`Reconnected after ${reconnectTime}ms (avg: ${Math.round(connectionMetrics.current.averageReconnectTime)}ms)`);
-        }
-        
-        // Reset reconnect counter after successful connection
-        reconnectCountRef.current = 0;
-      }
-      
-      if (onOpen) onOpen(event);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        console.log('WebSocket message received:', 
-          typeof event.data === 'string' ? 
-          event.data.substring(0, 100) + (event.data.length > 100 ? '...' : '') : 
-          'Binary data'
-        );
-        
-        // Process the message first
-        setLastMessage(event);
-        
-        // Then call the user-provided handler in a try-catch block
-        if (onMessage) {
-          try {
-            // Add delay to prevent event handling race conditions
-            setTimeout(() => {
-              try {
-                onMessage(event);
-              } catch (delayedError) {
-                console.error('Error in delayed onMessage handler:', delayedError);
-              }
-            }, 0);
-          } catch (innerError) {
-            // Don't let errors in the message handler break the connection
-            console.error('Error in onMessage handler:', innerError);
+      // Set a connection timeout to handle stalled connections
+      const connectionTimeoutId = setTimeout(() => {
+        if (websocketRef.current === ws && statusRef.current === 'connecting') {
+          console.warn('WebSocket connection attempt timed out after 5 seconds');
+          // Force an error state to trigger reconnection logic
+          if (ws.readyState === WebSocket.CONNECTING) {
+            console.log('WebSocket still in CONNECTING state, closing and retrying');
+            ws.close();
+            // Try to reconnect if enabled
+            if (shouldReconnect) {
+              const delayMs = 1000; // Simple 1 second delay for timeouts
+              console.log(`Scheduling reconnect in ${delayMs}ms due to timeout`);
+              reconnectTimerRef.current = setTimeout(() => {
+                reconnectCountRef.current++;
+                connect();
+              }, delayMs);
+            }
           }
         }
-      } catch (error) {
-        // Don't let ANY error in message processing cause a disconnect
-        console.error('Critical error processing WebSocket message:', error);
-      }
-    };
-
-    ws.onclose = (event) => {
-      console.log(`WebSocket connection closed with code ${event.code}: ${event.reason}`);
-      setStatus('closed');
+      }, 5000); // 5 second connection timeout
       
-      // Update connection metrics
-      const now = Date.now();
-      connectionMetrics.current.disconnectionCount++;
-      connectionMetrics.current.lastDisconnectTime = now;
+      // Define common handler for clearing timeouts
+      const clearTimeouts = () => {
+        clearTimeout(connectionTimeoutId);
+      };
       
-      // Calculate connection duration if we had an active connection
-      if (connectionMetrics.current.connectionStartTime > 0) {
-        const connectionDuration = now - connectionMetrics.current.connectionStartTime;
-        connectionMetrics.current.totalConnectionDuration += connectionDuration;
+      // Setup event handlers
+      ws.onopen = (event) => {
+        clearTimeouts();
+        console.log('WebSocket connection opened');
+        setStatus('open');
         
-        // Update connection stability metric
-        // Short connections (< 5 seconds) indicate stability issues
-        const wasShortConnection = connectionDuration < 5000;
-        if (wasShortConnection) {
-          // Reduce stability score for short connections (min 0.2)
-          connectionMetrics.current.connectionStability = 
-            Math.max(0.2, connectionMetrics.current.connectionStability * 0.8);
-          console.log(`Short connection detected (${connectionDuration}ms). Stability score: ${connectionMetrics.current.connectionStability.toFixed(2)}`);
-        } else {
-          // Gradually improve stability score for longer connections
-          connectionMetrics.current.connectionStability = 
-            Math.min(1.0, connectionMetrics.current.connectionStability * 1.05);
+        // Update connection metrics
+        const now = Date.now();
+        connectionMetrics.current.connectionCount++;
+        connectionMetrics.current.connectionStartTime = now;
+        
+        // If this was a reconnect, record it as successful
+        if (reconnectCountRef.current > 0) {
+          connectionMetrics.current.successfulReconnects++;
+        
+          // Calculate how long it took to reconnect
+          if (connectionMetrics.current.lastDisconnectTime > 0) {
+            const reconnectTime = now - connectionMetrics.current.lastDisconnectTime;
+            
+            // Update moving average of reconnect time
+            const prevAvg = connectionMetrics.current.averageReconnectTime;
+            const successfulReconnects = connectionMetrics.current.successfulReconnects;
+            connectionMetrics.current.averageReconnectTime = 
+              successfulReconnects === 1 ? 
+              reconnectTime : // First reconnect, just use the time
+              (prevAvg * (successfulReconnects - 1) + reconnectTime) / successfulReconnects; // Moving average
+            
+            console.log(`Reconnected after ${reconnectTime}ms (avg: ${Math.round(connectionMetrics.current.averageReconnectTime)}ms)`);
+          }
+          
+          // Reset reconnect counter after successful connection
+          reconnectCountRef.current = 0;
         }
         
-        connectionMetrics.current.connectionStartTime = 0;
-      }
+        if (onOpen) onOpen(event);
+      };
       
-      if (onClose) onClose(event);
+      // Setup message handler
+      ws.onmessage = (event) => {
+        try {
+          console.log('WebSocket message received:', 
+            typeof event.data === 'string' ? 
+            event.data.substring(0, 100) + (event.data.length > 100 ? '...' : '') : 
+            'Binary data'
+          );
+          
+          // Process the message first
+          setLastMessage(event);
+          
+          // Then call the user-provided handler in a try-catch block
+          if (onMessage) {
+            try {
+              // Add delay to prevent event handling race conditions
+              setTimeout(() => {
+                try {
+                  onMessage(event);
+                } catch (delayedError) {
+                  console.error('Error in delayed onMessage handler:', delayedError);
+                }
+              }, 0);
+            } catch (innerError) {
+              // Don't let errors in the message handler break the connection
+              console.error('Error in onMessage handler:', innerError);
+            }
+          }
+        } catch (error) {
+          // Don't let ANY error in message processing cause a disconnect
+          console.error('Critical error processing WebSocket message:', error);
+        }
+      };
+      
+      // Setup error handler for the WebSocket
+      ws.onerror = (event) => {
+        console.error('WebSocket error occurred:', event);
+        clearTimeouts();
+        setStatus('error');
+        
+        if (onError) onError(event);
+      };
+      
+      // Setup close handler for the WebSocket
+      ws.onclose = (event) => {
+        clearTimeouts();
+        console.log(`WebSocket connection closed with code ${event.code}: ${event.reason}`);
+        setStatus('closed');
+        
+        // Update connection metrics
+        const now = Date.now();
+        connectionMetrics.current.disconnectionCount++;
+        connectionMetrics.current.lastDisconnectTime = now;
+        
+        // Calculate connection duration if we had an active connection
+        if (connectionMetrics.current.connectionStartTime > 0) {
+          const connectionDuration = now - connectionMetrics.current.connectionStartTime;
+          connectionMetrics.current.totalConnectionDuration += connectionDuration;
+          
+          // Update connection stability metric
+          // Short connections (< 5 seconds) indicate stability issues
+          const wasShortConnection = connectionDuration < 5000;
+          if (wasShortConnection) {
+            // Reduce stability score for short connections (min 0.2)
+            connectionMetrics.current.connectionStability = 
+              Math.max(0.2, connectionMetrics.current.connectionStability * 0.8);
+            console.log(`Short connection detected (${connectionDuration}ms). Stability score: ${connectionMetrics.current.connectionStability.toFixed(2)}`);
+          } else {
+            // Gradually improve stability score for longer connections
+            connectionMetrics.current.connectionStability = 
+              Math.min(1.0, connectionMetrics.current.connectionStability * 1.05);
+          }
+          
+          connectionMetrics.current.connectionStartTime = 0;
+        }
+        
+        if (onClose) onClose(event);
 
-      // Setup reconnection logic with exponential backoff
-      if (shouldReconnect && reconnectCountRef.current < reconnectAttempts) {
-        // Calculate exponential backoff delay
-        const attempt = reconnectCountRef.current;
-        
-        // Base delay with exponential increase
-        let delay = initialReconnectDelay * 
-                    Math.pow(reconnectBackoffFactor, attempt);
-        
-        // Apply maximum cap
-        delay = Math.min(delay, maxReconnectDelay);
-        
-        // Adjust delay based on connection stability
-        // Less stable connections get longer delays to prevent overwhelming the server
-        const stabilityAdjustedDelay = delay / connectionMetrics.current.connectionStability;
-        
-        // Add random jitter (±jitter%) to prevent reconnection storms
-        const jitterRange = stabilityAdjustedDelay * reconnectJitter;
-        const actualDelay = Math.floor(
-          stabilityAdjustedDelay + (Math.random() * jitterRange * 2 - jitterRange)
-        );
-        
-        reconnectCountRef.current += 1;
-        console.log(
-          `Reconnecting attempt ${reconnectCountRef.current} of ${reconnectAttempts} ` +
-          `in ${actualDelay}ms (base: ${Math.floor(delay)}ms, ` +
-          `stability: ${connectionMetrics.current.connectionStability.toFixed(2)})`
-        );
-        
-        reconnectTimerRef.current = setTimeout(() => {
-          connect();
-        }, actualDelay);
-      } else if (reconnectCountRef.current >= reconnectAttempts) {
-        connectionMetrics.current.failedReconnects++;
-        console.log(`Maximum reconnection attempts (${reconnectAttempts}) reached. Giving up.`);
-      }
-    };
-
-    ws.onerror = (event) => {
-      console.error('WebSocket error occurred:', event);
+        // Setup reconnection logic with exponential backoff
+        if (shouldReconnect && reconnectCountRef.current < reconnectAttempts) {
+          // Calculate exponential backoff delay
+          const attempt = reconnectCountRef.current;
+          
+          // Base delay with exponential increase
+          let delay = initialReconnectDelay * 
+                      Math.pow(reconnectBackoffFactor, attempt);
+          
+          // Apply maximum cap
+          delay = Math.min(delay, maxReconnectDelay);
+          
+          // Adjust delay based on connection stability
+          // Less stable connections get longer delays to prevent overwhelming the server
+          const stabilityAdjustedDelay = delay / connectionMetrics.current.connectionStability;
+          
+          // Add random jitter (±jitter%) to prevent reconnection storms
+          const jitterRange = stabilityAdjustedDelay * reconnectJitter;
+          const actualDelay = Math.floor(
+            stabilityAdjustedDelay + (Math.random() * jitterRange * 2 - jitterRange)
+          );
+          
+          reconnectCountRef.current += 1;
+          console.log(
+            `Reconnecting attempt ${reconnectCountRef.current} of ${reconnectAttempts} ` +
+            `in ${actualDelay}ms (base: ${Math.floor(delay)}ms, ` +
+            `stability: ${connectionMetrics.current.connectionStability.toFixed(2)})`
+          );
+          
+          reconnectTimerRef.current = setTimeout(() => {
+            connect();
+          }, actualDelay);
+        } else if (reconnectCountRef.current >= reconnectAttempts) {
+          connectionMetrics.current.failedReconnects++;
+          console.log(`Maximum reconnection attempts (${reconnectAttempts}) reached. Giving up.`);
+        }
+      };
+      
+    } catch (connectionError) {
+      // Handle errors during connection creation
+      console.error('Error creating WebSocket connection:', connectionError);
       setStatus('error');
-      if (onError) onError(event);
-    };
+      
+      // Try to reconnect if enabled
+      if (shouldReconnect) {
+        console.log('Scheduling reconnect after connection error');
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectCountRef.current++;
+          connect();
+        }, initialReconnectDelay);
+      }
+    }
   }, [url, onOpen, onMessage, onClose, onError, 
       initialReconnectDelay, maxReconnectDelay, reconnectBackoffFactor, reconnectJitter,
       reconnectAttempts, shouldReconnect]);

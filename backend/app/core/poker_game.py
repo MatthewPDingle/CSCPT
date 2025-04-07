@@ -761,11 +761,19 @@ class PokerGame:
         Returns:
             True if the betting round is complete, False otherwise
         """
+        # Only consider ACTIVE players (not FOLDED or ALL_IN)
         active_players = [p for p in self.players 
                          if p.status == PlayerStatus.ACTIVE]
         
+        # Log the state for debugging
+        active_player_names = [p.name for p in active_players]
+        print(f"Active players: {active_player_names}")
+        to_act_players = [p.name for p in self.players if p.player_id in self.to_act]
+        print(f"Players still to act: {to_act_players}")
+        
         if not active_players:
             # No active players (all folded or all-in), end the betting round
+            print("No active players remaining, ending betting round")
             return self._end_betting_round()
             
         # Check if all players have acted - if to_act is empty, betting round is complete
@@ -773,21 +781,41 @@ class PokerGame:
             print("All players have acted. Ending betting round.")
             return self._end_betting_round()
             
+        # Create a mapping from player indexes to active players
+        active_player_map = {
+            self.players.index(p): p for p in active_players
+        }
+        
         # Find next active player
         initial_idx = self.current_player_idx
         while True:
+            # Move to the next player index
             self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
             
-            # We don't need this special case hack anymore
-            # The proper to_act tracking handles betting round advancement correctly
+            # Get the player at this index
+            if self.current_player_idx >= len(self.players):
+                # Safety check in case of index error
+                self.current_player_idx = 0
                 
-            # Check if next player can act
             player = self.players[self.current_player_idx]
-            if player.status == PlayerStatus.ACTIVE:
+            
+            # If the player is active and still needs to act, we found our next player
+            if (player.status == PlayerStatus.ACTIVE and 
+                player.player_id in self.to_act):
+                print(f"Next player to act: {player.name} (index {self.current_player_idx})")
                 break
                 
-            # If we've gone through all players and back to the start, end the round
+            # If we've gone through all players and back to the start,
+            # check if there are still players who need to act
             if self.current_player_idx == initial_idx:
+                if self.to_act:
+                    # There are still players who need to act but we couldn't find them
+                    # This might be due to inconsistency in the to_act set
+                    print("Warning: Found players who need to act, but couldn't locate them")
+                    # Clear to_act to avoid infinite loops and end the round
+                    self.to_act.clear()
+                
+                print("Completed full circle through players, ending betting round")
                 return self._end_betting_round()
                 
         return False

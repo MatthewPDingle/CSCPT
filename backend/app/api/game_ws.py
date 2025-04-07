@@ -473,27 +473,82 @@ async def process_action_message(
     if poker_game.current_round == BettingRound.SHOWDOWN:
         await game_notifier.notify_hand_result(game_id, poker_game)
     else:
-        # Check if next player is AI
-        active_players = [p for p in poker_game.players 
-                         if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
+        # Check which player should act next - use more robust logic
+        import logging
         
-        if active_players and poker_game.current_player_idx < len(active_players):
-            next_player = active_players[poker_game.current_player_idx]
+        # Get active players and players who need to act
+        active_players = [p for p in poker_game.players if p.status == PlayerStatus.ACTIVE]
+        to_act_players = [p for p in active_players if p.player_id in poker_game.to_act]
+        
+        logging.info(f"After player action, finding next player. Current index: {poker_game.current_player_idx}")
+        logging.info(f"Active players: {len(active_players)}, Players to act: {len(to_act_players)}")
+        
+        # Check if the current player index is valid
+        if poker_game.current_player_idx < len(poker_game.players):
+            next_player = poker_game.players[poker_game.current_player_idx]
+            
             # Find the domain model for the next player to check if AI
             game = service.get_game(game_id)
-            if game:
-                next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+            if not game:
+                logging.error(f"Could not find game {game_id} in repository")
+                return
                 
-                if next_player_domain and not next_player_domain.is_human:
+            next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+            
+            logging.info(f"Next player is {next_player.name} (index {poker_game.current_player_idx})")
+            logging.info(f"Next player status: {next_player.status}, in to_act: {next_player.player_id in poker_game.to_act}")
+            
+            # Verify this player is active and needs to act
+            if (next_player.status == PlayerStatus.ACTIVE and 
+                next_player.player_id in poker_game.to_act and
+                next_player_domain):
+                
+                if not next_player_domain.is_human:
                     # AI player's turn - trigger AI action asynchronously
+                    logging.info(f"Triggering AI action for next player: {next_player.name}")
                     import asyncio
                     asyncio.create_task(service._request_and_process_ai_action(
                         game_id, next_player.player_id
                     ))
                     return  # AI will handle the turn, no need to send action request
-        
-        # Send action request to next player (if human)
-        await game_notifier.notify_action_request(game_id, poker_game)
+                else:
+                    # Human player's turn - send action request
+                    logging.info(f"Requesting action from human player: {next_player.name}")
+                    await game_notifier.notify_action_request(game_id, poker_game)
+            else:
+                # If the current next player isn't valid, find the first player who still needs to act
+                if poker_game.to_act:
+                    logging.warning(f"Next player {next_player.name} cannot act, but to_act is not empty")
+                    next_active_player = next((p for p in poker_game.players 
+                                              if p.player_id in poker_game.to_act and 
+                                              p.status == PlayerStatus.ACTIVE), None)
+                    
+                    if next_active_player:
+                        # Update current_player_idx to point to this player
+                        poker_game.current_player_idx = poker_game.players.index(next_active_player)
+                        next_player_domain = next((p for p in game.players 
+                                                  if p.id == next_active_player.player_id), None)
+                        
+                        if next_player_domain and not next_player_domain.is_human:
+                            # AI player's turn
+                            logging.info(f"Triggering AI action for alternate next player: {next_active_player.name}")
+                            import asyncio
+                            asyncio.create_task(service._request_and_process_ai_action(
+                                game_id, next_active_player.player_id
+                            ))
+                            return
+                        else:
+                            # Human player's turn
+                            logging.info(f"Requesting action from alternate human player: {next_active_player.name}")
+                            await game_notifier.notify_action_request(game_id, poker_game)
+                else:
+                    # No players need to act - we should be moving to the next round
+                    logging.info("No more players need to act in this round")
+        else:
+            # Invalid current_player_idx - this is a serious error
+            logging.error(f"Invalid current_player_idx: {poker_game.current_player_idx}")
+            # Try to recover by resetting to a valid index
+            poker_game.current_player_idx = 0
 
 
 async def process_chat_message(
