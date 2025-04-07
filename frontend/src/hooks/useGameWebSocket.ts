@@ -252,14 +252,11 @@ export const useGameWebSocket = (wsUrl: string) => {
     }
   }, []);
   
-  // Prevent unnecessary re-creation of WebSocket
-  const wsUrlRef = useRef(wsUrl);
-  
   // Create a ref to hold the sendMessage function
   const sendMessageRef = useRef<any>(null);
   
-  // Setup WebSocket connection
-  const { sendMessage, status, reconnect, lastMessage, getConnectionMetrics } = useWebSocket(wsUrlRef.current, {
+  // Setup WebSocket connection - pass wsUrl directly to useWebSocket
+  const { sendMessage, status, reconnect, lastMessage, getConnectionMetrics } = useWebSocket(wsUrl, {
     onMessage: handleMessage,
     reconnectAttempts: 20, // More attempts with backoff
     shouldReconnect: true,
@@ -269,21 +266,22 @@ export const useGameWebSocket = (wsUrl: string) => {
     reconnectJitter: 0.2,
     onOpen: () => {
       // Send just a single ping with a delay to establish a connection
-      console.log('WebSocket connection opened, will send ping after delay');
+      console.log('WebSocket connection opened successfully, will send ping after delay');
       
-      // Use a longer delay to give things time to fully settle
+      // Use a shorter delay to quickly establish the connection
       setTimeout(() => {
         try {
-          console.log('Sending single initialization ping');
+          console.log('Sending initialization ping to request game state');
           sendMessage({
             type: 'ping',
             timestamp: Date.now(),
-            stabilize: true
+            stabilize: true,
+            needsRefresh: true // Request initial state refresh immediately
           });
         } catch (err) {
           console.error('Error sending initialization ping:', err);
         }
-      }, 2000); // Single ping with 2 second delay
+      }, 500); // Reduced delay to 500ms for faster initial state
     },
     onClose: (event) => {
       console.log(`WebSocket closed with code ${event.code}, reason: "${event.reason}"`);

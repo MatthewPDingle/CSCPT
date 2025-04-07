@@ -133,7 +133,7 @@ export const useWebSocket = (
 
     // Create new connection with try/catch
     try {
-      console.log(`Creating new WebSocket connection to ${url}`);
+      console.log(`useWebSocket: Attempting to create WebSocket instance for URL: ${url}`);
       const ws = new WebSocket(url);
       websocketRef.current = ws;
       setStatus('connecting');
@@ -337,60 +337,54 @@ export const useWebSocket = (
 
   // Connect when component mounts or URL changes
   useEffect(() => {
-    console.log('useWebSocket mounting or URL changed, URL:', url);
-    
-    // Only connect if the URL is valid and non-empty
-    if (url && url.startsWith('ws')) {
-      console.log('URL is valid, attempting to connect:', url);
-      connect();
-    } else {
-      console.log('URL is not yet valid, delaying connection:', url);
-      // Status remains in 'connecting' state or changes to 'idle'
-      if (status === 'open') {
-        // If we were previously connected but URL is now invalid, update status
-        setStatus('connecting');
+    // Check if the URL is valid before attempting connection
+    if (!url || !url.startsWith('ws')) {
+      console.log(`useWebSocket Effect: URL is invalid ('${url}'), skipping connection.`);
+      // Ensure status reflects reality if URL becomes invalid after being open
+      if (statusRef.current === 'open') {
+          setStatus('closed'); // Or 'connecting' if you expect a new valid URL soon
       }
+      // Explicitly return undefined for cleanup when no connection is attempted
+      return undefined; 
     }
 
-    // Cleanup on unmount or URL change
+    console.log(`useWebSocket Effect: Valid URL ('${url}'), calling connect().`);
+    connect(); // Attempt connection
+
+    // Cleanup function: Only return this if connect() was actually called
     return () => {
-      console.log(`Running WebSocket cleanup for URL: ${url}`);
-      
-      // First ensure all timers are cleared
+      console.log(`useWebSocket Effect Cleanup: Running for URL: ${url}`);
+
+      // Clear any pending reconnect timers
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
         console.log('Cleared reconnect timer during cleanup.');
       }
-      
-      // Capture the ref before nullifying
+
       const ws = websocketRef.current;
-      
-      // Nullify the ref immediately to prevent any new usage
-      websocketRef.current = null;
-      
-      // Then handle the WebSocket close if it exists
+      websocketRef.current = null; // Nullify ref immediately
+
       if (ws) {
-        console.log(`Closing WebSocket instance ${ws.url ? ws.url.split('/').pop()?.split('?')[0] : 'unknown'}...`);
+        console.log(`Closing WebSocket instance for URL: ${url}`);
+        // Remove handlers before closing
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null; // Prevent the onclose handler from triggering reconnect logic again
         
-        try {
-          // First remove ALL handlers to prevent any callbacks during/after close
-          ws.onopen = null;
-          ws.onmessage = null;
-          ws.onerror = null;
-          ws.onclose = null;
-          
-          // Then close with a normal closure code
+        // Check readyState before closing
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
           ws.close(1000, "Component unmounting or URL change");
-          console.log('WebSocket closed successfully during cleanup');
-        } catch (e) {
-          console.error('Error closing WebSocket during cleanup:', e);
+          console.log('WebSocket closed successfully during cleanup.');
+        } else {
+           console.log(`WebSocket already closing or closed (state: ${ws.readyState}), no explicit close needed.`);
         }
       } else {
         console.log('No WebSocket instance to close during cleanup.');
       }
     };
-  }, [url, connect, status]); // Added connect and status to the dependency array
+  }, [url]); // IMPORTANT: Only depend on url, not connect - prevents reconnection loops
 
   // Function to get the connection metrics
   const getConnectionMetrics = useCallback((): ConnectionMetrics => {

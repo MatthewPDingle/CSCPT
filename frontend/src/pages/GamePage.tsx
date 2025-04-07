@@ -208,7 +208,10 @@ const GamePage: React.FC = () => {
   
   // Create websocket URL using useMemo, but only when initData is ready
   const wsUrl = React.useMemo(() => {
-    if (!initData) return ''; // Don't create URL before initData is set
+    if (!initData) {
+      console.log("GamePage: initData not ready for WebSocket URL.");
+      return ''; 
+    }
     
     const { gameId, playerId } = initData;
     const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -216,7 +219,7 @@ const GamePage: React.FC = () => {
     const wsBaseUrl = API_URL.replace(/^https?:\/\//, `${wsProtocol}://`);
     const url = `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
     
-    console.log(`Creating WebSocket URL: ${url}`);
+    console.log(`GamePage: Generated WebSocket URL: ${url}`);
     return url;
   }, [initData]);
   
@@ -493,6 +496,8 @@ const GamePage: React.FC = () => {
   if (isLoading || !initData || !wsUrl || status === 'connecting' || status === 'error') {
     // Get connection health metrics even during loading/connecting
     const metrics = connectionHealth || (getConnectionHealth && getConnectionHealth());
+    
+    console.log(`GamePage Loading State - isLoading: ${isLoading}, initData: ${!!initData}, wsUrl: ${!!wsUrl}, status: ${status}`);
     
     return (
       <GameContainer>
