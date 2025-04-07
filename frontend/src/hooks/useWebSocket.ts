@@ -337,10 +337,20 @@ export const useWebSocket = (
 
   // Connect when component mounts or URL changes
   useEffect(() => {
-    console.log('useWebSocket mounting or URL changed, connecting to:', url);
+    console.log('useWebSocket mounting or URL changed, URL:', url);
     
-    // Connect explicitly
-    connect();
+    // Only connect if the URL is valid and non-empty
+    if (url && url.startsWith('ws')) {
+      console.log('URL is valid, attempting to connect:', url);
+      connect();
+    } else {
+      console.log('URL is not yet valid, delaying connection:', url);
+      // Status remains in 'connecting' state or changes to 'idle'
+      if (status === 'open') {
+        // If we were previously connected but URL is now invalid, update status
+        setStatus('connecting');
+      }
+    }
 
     // Cleanup on unmount or URL change
     return () => {
@@ -380,7 +390,7 @@ export const useWebSocket = (
         console.log('No WebSocket instance to close during cleanup.');
       }
     };
-  }, [url]); // Removed 'connect' from the dependency array to prevent reconnection cycles
+  }, [url, connect, status]); // Added connect and status to the dependency array
 
   // Function to get the connection metrics
   const getConnectionMetrics = useCallback((): ConnectionMetrics => {
