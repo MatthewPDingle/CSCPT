@@ -114,14 +114,11 @@ async def websocket_endpoint(
         
         # Wrap initial state sending in its own try/except block
         try:
-            # Send initial game state
+            # Send initial game state - no need for arbitrary delay anymore with proper locking
+            logging.warning(f"Sending initial game state for game {game_id}")
             await game_notifier.notify_game_update(game_id, poker_game)
             game_state_sent = True
             logging.warning(f"Initial game state successfully sent for game {game_id}")
-            
-            # Add a 2-second delay to ensure the connection is fully registered
-            logging.warning(f"Waiting 2 seconds for connection registration to complete for {player_id}")
-            await asyncio.sleep(2.0)
             
         except Exception as e:
             logging.error(f"Error sending initial game state: {str(e)}")
@@ -282,7 +279,7 @@ async def websocket_endpoint(
         import logging
         import traceback
         logging.warning(f"WebSocket disconnect for player {player_id if player_id else 'observer'}: code={e.code}, reason='{e.reason}'")
-        connection_manager.disconnect(websocket)
+        await connection_manager.disconnect(websocket)
     except RuntimeError as e:
         # Handle runtime errors like "WebSocket is disconnected" separately to avoid misleading error messages
         import logging
@@ -292,7 +289,7 @@ async def websocket_endpoint(
         else:
             logging.error(f"Runtime error in WebSocket connection: {str(e)}")
             logging.error(traceback.format_exc())
-        connection_manager.disconnect(websocket)
+        await connection_manager.disconnect(websocket)
     except Exception as e:
         # Handle other exceptions
         import logging
@@ -301,7 +298,7 @@ async def websocket_endpoint(
         logging.error(traceback.format_exc())
         # Make sure to clean up the connection
         try:
-            connection_manager.disconnect(websocket)
+            await connection_manager.disconnect(websocket)
         except Exception as cleanup_error:
             logging.error(f"Error during connection cleanup: {str(cleanup_error)}")
         # Try to send an error message to the client before closing

@@ -5,6 +5,7 @@ from typing import Dict, List, Set, Optional
 from fastapi import WebSocket
 import json
 import copy
+import asyncio
 from datetime import datetime
 
 from app.core.poker_game import PokerGame, PlayerStatus
@@ -21,6 +22,8 @@ class ConnectionManager:
         self.socket_player_map: Dict[WebSocket, str] = {}
         # Maps WebSocket -> game_id
         self.socket_game_map: Dict[WebSocket, str] = {}
+        # Lock for concurrent access to connection dictionaries
+        self.lock = asyncio.Lock()
         
     async def connect(self, websocket: WebSocket, game_id: str, player_id: Optional[str] = None):
         """
@@ -36,49 +39,57 @@ class ConnectionManager:
         # First accept the WebSocket connection
         await websocket.accept()
         
-        # Initialize game connections set if it doesn't exist
-        if game_id not in self.active_connections:
-            self.active_connections[game_id] = set()
+        logging.warning(f"Beginning connect process for WebSocket {id(websocket)} to game {game_id}")
         
-        # For safety, clean up any existing connection for this player in this game
-        if player_id:
-            for existing_ws in list(self.active_connections.get(game_id, set())):
-                if self.socket_player_map.get(existing_ws) == player_id:
-                    logging.warning(f"Found existing connection for player {player_id}, removing it")
-                    if existing_ws != websocket:  # Don't remove the one we're adding
-                        try:
-                            self.active_connections[game_id].remove(existing_ws)
-                            if existing_ws in self.socket_player_map:
-                                del self.socket_player_map[existing_ws]
-                            if existing_ws in self.socket_game_map:
-                                del self.socket_game_map[existing_ws]
-                        except Exception as e:
-                            logging.error(f"Error removing old connection: {str(e)}")
-        
-        # Add the new connection to all maps atomically
-        try:
-            self.active_connections[game_id].add(websocket)
-            self.socket_player_map[websocket] = player_id
-            self.socket_game_map[websocket] = game_id
-            logging.warning(f"Stored game_id {game_id} for WebSocket connection {id(websocket)}")
+        # Use a lock to prevent race conditions in the connection maps
+        async with self.lock:
+            logging.warning(f"Acquired lock for connect to game {game_id}")
             
-            # Log a status report to debug connection tracking
-            connections_in_game = len(self.active_connections[game_id])
-            total_connections = sum(len(conns) for conns in self.active_connections.values())
-            player_map_size = len(self.socket_player_map)
-            game_map_size = len(self.socket_game_map)
+            # Initialize game connections set if it doesn't exist
+            if game_id not in self.active_connections:
+                self.active_connections[game_id] = set()
+                logging.warning(f"Created new connection set for game {game_id}")
             
-            logging.warning(f"Connection registration complete. Stats: " +
-                           f"connections in game: {connections_in_game}, " +
-                           f"total connections: {total_connections}, " +
-                           f"player map size: {player_map_size}, " +
-                           f"game map size: {game_map_size}")
-        except Exception as e:
-            logging.error(f"Error adding connection to maps: {str(e)}")
-            import traceback
-            logging.error(traceback.format_exc())
+            # For safety, clean up any existing connection for this player in this game
+            if player_id:
+                for existing_ws in list(self.active_connections.get(game_id, set())):
+                    if self.socket_player_map.get(existing_ws) == player_id:
+                        logging.warning(f"Found existing connection for player {player_id}, removing it")
+                        if existing_ws != websocket:  # Don't remove the one we're adding
+                            try:
+                                self.active_connections[game_id].remove(existing_ws)
+                                if existing_ws in self.socket_player_map:
+                                    del self.socket_player_map[existing_ws]
+                                if existing_ws in self.socket_game_map:
+                                    del self.socket_game_map[existing_ws]
+                                logging.warning(f"Removed old WebSocket {id(existing_ws)} for player {player_id}")
+                            except Exception as e:
+                                logging.error(f"Error removing old connection: {str(e)}")
+            
+            # Add the new connection to all maps atomically
+            try:
+                self.active_connections[game_id].add(websocket)
+                self.socket_player_map[websocket] = player_id
+                self.socket_game_map[websocket] = game_id
+                logging.warning(f"Stored game_id {game_id} for WebSocket connection {id(websocket)}")
+                
+                # Log a status report to debug connection tracking
+                connections_in_game = len(self.active_connections[game_id])
+                total_connections = sum(len(conns) for conns in self.active_connections.values())
+                player_map_size = len(self.socket_player_map)
+                game_map_size = len(self.socket_game_map)
+                
+                logging.warning(f"Connection registration complete. Stats: " +
+                               f"connections in game: {connections_in_game}, " +
+                               f"total connections: {total_connections}, " +
+                               f"player map size: {player_map_size}, " +
+                               f"game map size: {game_map_size}")
+            except Exception as e:
+                logging.error(f"Error adding connection to maps: {str(e)}")
+                import traceback
+                logging.error(traceback.format_exc())
         
-    def disconnect(self, websocket: WebSocket):
+    async def disconnect(self, websocket: WebSocket):
         """
         Disconnect a WebSocket.
         
@@ -89,49 +100,53 @@ class ConnectionManager:
         import traceback
         
         try:
-            # Don't disconnect if websocket isn't in any of our maps
-            in_player_map = websocket in self.socket_player_map
-            in_game_map = websocket in self.socket_game_map
-            
-            if not in_player_map and not in_game_map:
-                logging.warning(f"Ignoring disconnect for WebSocket {id(websocket)} not found in maps")
-                return
+            # Use lock for atomic disconnection
+            async with self.lock:
+                logging.warning(f"Acquired lock for disconnect of WebSocket {id(websocket)}")
                 
-            # First log the status of the websocket
-            logging.warning(f"Disconnecting WebSocket {id(websocket)} - "
-                          f"in player map: {in_player_map}, "
-                          f"in game map: {in_game_map}")
+                # Don't disconnect if websocket isn't in any of our maps
+                in_player_map = websocket in self.socket_player_map
+                in_game_map = websocket in self.socket_game_map
                 
-            # Get player ID and game ID for logging
-            player_id = self.socket_player_map.get(websocket, 'unknown')
-            game_id = self.socket_game_map.get(websocket, 'unknown')
-            
-            # Find the game this websocket belongs to
-            found_in_game = False
-            for g_id, connections in list(self.active_connections.items()):
-                if websocket in connections:
-                    connections.remove(websocket)
-                    found_in_game = True
-                    logging.warning(f"Removed WebSocket {id(websocket)} for player {player_id} from game {g_id}")
-                    # Clean up empty games
-                    if not connections:
-                        del self.active_connections[g_id]
-                        logging.warning(f"Removed empty game {g_id} from active_connections")
-                    break
+                if not in_player_map and not in_game_map:
+                    logging.warning(f"Ignoring disconnect for WebSocket {id(websocket)} not found in maps")
+                    return
                     
-            if not found_in_game:
-                logging.warning(f"WebSocket {id(websocket)} for player {player_id} not found in any active game connections")
+                # First log the status of the websocket
+                logging.warning(f"Disconnecting WebSocket {id(websocket)} - "
+                              f"in player map: {in_player_map}, "
+                              f"in game map: {in_game_map}")
+                    
+                # Get player ID and game ID for logging
+                player_id = self.socket_player_map.get(websocket, 'unknown')
+                game_id = self.socket_game_map.get(websocket, 'unknown')
                 
-            # Remove from player map
-            if in_player_map:
-                del self.socket_player_map[websocket]
-                logging.warning(f"Removed player {player_id} mapping for WebSocket {id(websocket)}")
-                
-            # Remove from game map
-            if in_game_map:
-                logging.warning(f"Removing game_id {game_id} for WebSocket connection {id(websocket)}")
-                del self.socket_game_map[websocket]
-                
+                # Find the game this websocket belongs to
+                found_in_game = False
+                for g_id, connections in list(self.active_connections.items()):
+                    if websocket in connections:
+                        connections.remove(websocket)
+                        found_in_game = True
+                        logging.warning(f"Removed WebSocket {id(websocket)} for player {player_id} from game {g_id}")
+                        # Clean up empty games
+                        if not connections:
+                            del self.active_connections[g_id]
+                            logging.warning(f"Removed empty game {g_id} from active_connections")
+                        break
+                        
+                if not found_in_game:
+                    logging.warning(f"WebSocket {id(websocket)} for player {player_id} not found in any active game connections")
+                    
+                # Remove from player map
+                if in_player_map:
+                    del self.socket_player_map[websocket]
+                    logging.warning(f"Removed player {player_id} mapping for WebSocket {id(websocket)}")
+                    
+                # Remove from game map
+                if in_game_map:
+                    logging.warning(f"Removing game_id {game_id} for WebSocket connection {id(websocket)}")
+                    del self.socket_game_map[websocket]
+                    
         except Exception as e:
             logging.error(f"Error during WebSocket disconnect: {str(e)}")
             logging.error(traceback.format_exc())
@@ -145,19 +160,27 @@ class ConnectionManager:
             message: The message to broadcast
         """
         import logging
-        if game_id not in self.active_connections:
-            logging.warning(f"Cannot broadcast to game {game_id}: no active connections")
-            return
+        
+        # Get active connections atomically
+        connections_to_broadcast = []
+        
+        async with self.lock:
+            if game_id not in self.active_connections:
+                logging.warning(f"Cannot broadcast to game {game_id}: no active connections")
+                return
+            
+            # Make a copy of the connections to avoid modification during iteration
+            connections_to_broadcast = list(self.active_connections[game_id])
+            connection_count = len(connections_to_broadcast)
+            logging.warning(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
             
         # Convert message to JSON string
         json_message = json.dumps(message)
         
-        # Send to all connections in the game
+        # Send to all connections in the game (outside the lock to avoid blocking)
         disconnected = []
-        connection_count = len(self.active_connections[game_id])
-        logging.warning(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
         
-        for connection in self.active_connections[game_id]:
+        for connection in connections_to_broadcast:
             try:
                 await connection.send_text(json_message)
             except RuntimeError as e:
@@ -168,9 +191,9 @@ class ConnectionManager:
                 logging.error(f"Unexpected error sending message: {str(e)}")
                 disconnected.append(connection)
                 
-        # Clean up disconnected connections
+        # Clean up disconnected connections outside the loop
         for connection in disconnected:
-            self.disconnect(connection)
+            await self.disconnect(connection)
     
     async def send_personal_message(self, websocket: WebSocket, message: dict):
         """
@@ -188,61 +211,57 @@ class ConnectionManager:
             logging.warning("Cannot send message: WebSocket is None")
             return
         
-        # Skip if websocket is not in our maps (likely already closed)
-        if websocket not in self.socket_player_map:
-            logging.warning("Cannot send message: WebSocket not found in player map")
-            return
+        # Check if the websocket is properly registered
+        websocket_valid = False
+        player_id = 'unknown'
+        
+        # Use the lock to check connection state atomically
+        async with self.lock:
+            # Skip if websocket is not in our maps (likely already closed)
+            if websocket not in self.socket_player_map:
+                logging.warning(f"Cannot send message: WebSocket {id(websocket)} not found in player map")
+                return
+                
+            player_id = self.socket_player_map.get(websocket, 'unknown')
             
-        player_id = self.socket_player_map.get(websocket, 'unknown')
+            # Check if websocket is in any active connection before sending
+            # This is critical for detecting inconsistency issues
+            websocket_valid = False
+            found_game_id = None
+            
+            # Check if we have a valid game_id in the socket_game_map
+            if websocket in self.socket_game_map:
+                found_game_id = self.socket_game_map[websocket]
+                if found_game_id in self.active_connections:
+                    if websocket in self.active_connections[found_game_id]:
+                        websocket_valid = True
+                        logging.debug(f"Found valid connection for player {player_id} in game {found_game_id}")
+            
+            # If websocket isn't valid, this indicates a data consistency issue that should be logged
+            # We no longer attempt to "fix" it by re-adding, as this masked the underlying problem
+            if not websocket_valid:
+                logging.error(f"DATA CONSISTENCY ERROR: WebSocket {id(websocket)} for player {player_id} "
+                              f"present in socket_player_map but not in active_connections for game {found_game_id}. "
+                              f"This indicates a state inconsistency.")
+                
+                # Log more details about the connection maps to help diagnose
+                active_games = list(self.active_connections.keys())
+                player_map_size = len(self.socket_player_map)
+                game_map_size = len(self.socket_game_map)
+                
+                logging.error(f"Connection maps state: active games: {active_games}, "
+                              f"player map size: {player_map_size}, game map size: {game_map_size}")
+                
+                # Instead of attempting to "fix" with a re-add, we abort sending the message
+                # This forces the issues to be addressed at their root cause
+                return
+        
+        # Get message type for logging
         msg_type = message.get('type', 'unknown')
         
         # Only log non-routine messages
         if msg_type not in ['pong']:
             logging.warning(f"Sending personal message of type '{msg_type}' to player {player_id}")
-        
-        # Check if websocket is in any active connection before sending
-        # But don't disconnect if it's not in active_connections
-        # This fixes the race condition where we might consider a connection inactive
-        # but it's still physically open
-        is_active = False
-        for game_id, game_connections in self.active_connections.items():
-            if websocket in game_connections:
-                is_active = True
-                logging.debug(f"Found active connection for player {player_id} in game {game_id}")
-                break
-                
-        if not is_active:
-            # Add connection back to the maps instead of disconnecting it
-            # This recovers from the race condition
-            logging.warning(f"WebSocket for player {player_id} not in active connections, but connection is still open. Re-adding to maps.")
-            
-            # First try to get game_id from our socket_game_map
-            found_game_id = self.socket_game_map.get(websocket)
-            
-            # If not found in map, try to find from other connections
-            if not found_game_id:
-                for _websocket, _player_id in self.socket_player_map.items():
-                    if _player_id == player_id:
-                        # Found another socket for this player, use that game
-                        for _game_id, _connections in self.active_connections.items():
-                            if _websocket in _connections:
-                                found_game_id = _game_id
-                                break
-                        if found_game_id:
-                            break
-                            
-            # If we found a game_id, re-add to active connections
-            if found_game_id:
-                # Re-add to active connections for this game
-                if found_game_id not in self.active_connections:
-                    self.active_connections[found_game_id] = set()
-                self.active_connections[found_game_id].add(websocket)
-                # Ensure it's in both socket maps
-                self.socket_player_map[websocket] = player_id
-                self.socket_game_map[websocket] = found_game_id
-                logging.warning(f"Successfully re-added WebSocket for player {player_id} to game {found_game_id}")
-            else:
-                logging.warning(f"Could not re-add WebSocket for player {player_id} - unable to determine game_id")
         
         # Serialize message
         try:
@@ -266,7 +285,7 @@ class ConnectionManager:
             # Check state before sending to avoid cryptic errors
             if hasattr(websocket, "client_state") and websocket.client_state.name == "DISCONNECTED":
                 logging.warning(f"WebSocket for player {player_id} is in DISCONNECTED state, cannot send")
-                self.disconnect(websocket)
+                await self.disconnect(websocket)
                 return
                 
             await websocket.send_text(json_message)
@@ -279,14 +298,14 @@ class ConnectionManager:
                 logging.error(f"Runtime error sending message to {player_id}: {str(e)}")
                 logging.error(traceback.format_exc())
             # Connection is closed, clean up
-            self.disconnect(websocket)
+            await self.disconnect(websocket)
         except ConnectionResetError as e:
             logging.warning(f"Connection reset sending to {player_id}: {str(e)}")
-            self.disconnect(websocket)
+            await self.disconnect(websocket)
         except Exception as e:
             logging.error(f"Unexpected error sending message to {player_id}: {str(e)}")
             logging.error(traceback.format_exc())
-            self.disconnect(websocket)
+            await self.disconnect(websocket)
     
     async def send_to_player(self, game_id: str, player_id: str, message: dict, max_retries: int = 2) -> bool:
         """
@@ -304,82 +323,90 @@ class ConnectionManager:
         import logging
         import asyncio
         
-        if game_id not in self.active_connections:
-            logging.warning(f"Cannot send to player {player_id} in game {game_id}: game not found")
-            return False
+        # Check game exists with lock
+        player_connections = []
+        
+        async with self.lock:
+            if game_id not in self.active_connections:
+                logging.warning(f"Cannot send to player {player_id} in game {game_id}: game not found")
+                return False
+            
+            # Find all connections for this player atomically
+            for connection in self.active_connections[game_id]:
+                mapped_player = self.socket_player_map.get(connection)
+                if mapped_player == player_id:
+                    player_connections.append(connection)
+        
+        # If no connections found initially, no need to go further
+        if not player_connections:
+            logging.warning(f"No connections found for player {player_id} in game {game_id}")
+            # We'll retry later if needed
+        else:
+            logging.warning(f"Found {len(player_connections)} connection(s) for player {player_id}")
             
         json_message = json.dumps(message)
         message_sent = False
         
         # Attempt to find and send to the player
         for retry in range(max_retries + 1):  # +1 for initial attempt
-            # Find the player's connection and send
+            # If we don't have player connections yet, try to get them again
+            if not player_connections and retry > 0:
+                async with self.lock:
+                    logging.warning(f"Retry {retry}/{max_retries}: Refreshing connection map for player {player_id}")
+                    logging.warning(f"Connection map state: game_id={game_id}, player_id={player_id}")
+                    
+                    if game_id in self.active_connections:
+                        logging.warning(f"  - connections count for game: {len(self.active_connections[game_id])}")
+                        for conn in self.active_connections[game_id]:
+                            mapped_player = self.socket_player_map.get(conn, 'unknown')
+                            logging.warning(f"    - connection {id(conn)} maps to player {mapped_player}")
+                            if mapped_player == player_id:
+                                player_connections.append(conn)
+                                logging.warning(f"    - added connection {id(conn)} to player_connections")
+            
+            # Now try to send to all player connections
             disconnected = []
-            found_player = False
             
-            # First, let's log some debug info about the connection state
-            if retry > 0:
-                logging.warning(f"Connection map state: game_id={game_id}, player_id={player_id}")
-                logging.warning(f"  - active_connections has game: {game_id in self.active_connections}")
-                if game_id in self.active_connections:
-                    logging.warning(f"  - connections count for game: {len(self.active_connections[game_id])}")
-                    for conn in self.active_connections[game_id]:
-                        logging.warning(f"    - connection {id(conn)} maps to player {self.socket_player_map.get(conn, 'unknown')}")
-            
-            for connection in self.active_connections[game_id]:
-                mapped_player = self.socket_player_map.get(connection)
-                if mapped_player == player_id:
-                    found_player = True
+            for connection in player_connections:
+                try:
                     if retry == 0:
                         logging.warning(f"Sending message of type '{message.get('type')}' to player {player_id}")
                     else:
                         logging.warning(f"Retry {retry}/{max_retries}: Sending message of type '{message.get('type')}' to player {player_id}")
                         
-                    try:
-                        await connection.send_text(json_message)
-                        # Message sent successfully
-                        message_sent = True
-                        break
-                    except RuntimeError as e:
-                        logging.error(f"Error sending to player {player_id}: {str(e)}")
-                        # Connection is closed
-                        disconnected.append(connection)
-                    except Exception as e:
-                        logging.error(f"Unexpected error sending to player {player_id}: {str(e)}")
-                        disconnected.append(connection)
+                    await connection.send_text(json_message)
+                    # Message sent successfully
+                    message_sent = True
+                    break
+                except RuntimeError as e:
+                    logging.error(f"Error sending to player {player_id}: {str(e)}")
+                    # Connection is closed
+                    disconnected.append(connection)
+                except Exception as e:
+                    logging.error(f"Unexpected error sending to player {player_id}: {str(e)}")
+                    disconnected.append(connection)
             
-            # Clean up disconnected connections
+            # Clean up disconnected connections - remove from our local list first
             for connection in disconnected:
-                self.disconnect(connection)
+                if connection in player_connections:
+                    player_connections.remove(connection)
+                await self.disconnect(connection)
                 
             # If message was sent successfully, exit the loop
             if message_sent:
                 break
                 
-            # If player wasn't found or message failed, try again
-            if not found_player:
-                if retry < max_retries:
-                    logging.warning(f"Retry {retry+1}/{max_retries}: No active connection found for player {player_id} in game {game_id}")
-                    
-                    # Try to recover connection information from socket_game_map
-                    recovered_connection = None
-                    for sock, mapped_game_id in self.socket_game_map.items():
-                        if mapped_game_id == game_id and self.socket_player_map.get(sock) == player_id:
-                            recovered_connection = sock
-                            logging.warning(f"Found connection in socket_game_map that wasn't in active_connections! Re-adding.")
-                            if game_id not in self.active_connections:
-                                self.active_connections[game_id] = set()
-                            self.active_connections[game_id].add(sock)
-                            break
-                    
-                    # Wait a bit before retrying
-                    await asyncio.sleep(1.0)
-                else:
-                    logging.warning(f"Failed to find connection for player {player_id} in game {game_id} after {max_retries} retries")
+            # If we still haven't found the player or sending failed, wait a bit and retry
+            if not message_sent and retry < max_retries:
+                logging.warning(f"Retry {retry+1}/{max_retries}: Message not sent to player {player_id}, waiting before retry")
+                # Wait a bit before retrying
+                await asyncio.sleep(1.0)
+            elif not message_sent:
+                logging.warning(f"Failed to send message to player {player_id} in game {game_id} after {max_retries} retries")
             
         return message_sent  # Return True if message was sent, False otherwise
     
-    def get_player_connections(self, game_id: str) -> Dict[str, List[WebSocket]]:
+    async def get_player_connections(self, game_id: str) -> Dict[str, List[WebSocket]]:
         """
         Get a mapping of player_id -> WebSockets for a game.
         A player might have multiple connections (e.g., multiple tabs).
@@ -391,19 +418,21 @@ class ConnectionManager:
             A dictionary mapping player IDs to lists of WebSocket connections
         """
         result: Dict[str, List[WebSocket]] = {}
-        if game_id not in self.active_connections:
-            return result
-            
-        for connection in self.active_connections[game_id]:
-            player_id = self.socket_player_map.get(connection)
-            if player_id:
-                if player_id not in result:
-                    result[player_id] = []
-                result[player_id].append(connection)
+        
+        async with self.lock:
+            if game_id not in self.active_connections:
+                return result
                 
+            for connection in self.active_connections[game_id]:
+                player_id = self.socket_player_map.get(connection)
+                if player_id:
+                    if player_id not in result:
+                        result[player_id] = []
+                    result[player_id].append(connection)
+                    
         return result
         
-    def get_connections_for_game(self, game_id: str) -> Set[WebSocket]:
+    async def get_connections_for_game(self, game_id: str) -> Set[WebSocket]:
         """
         Get all connections for a game.
         
@@ -413,7 +442,8 @@ class ConnectionManager:
         Returns:
             A set of WebSocket connections
         """
-        return self.active_connections.get(game_id, set())
+        async with self.lock:
+            return set(self.active_connections.get(game_id, set()))
 
 
 # Create global connection manager instance
@@ -451,13 +481,13 @@ class GameStateNotifier:
             return
             
         # Get all connections for this game
-        connections = self.connection_manager.get_connections_for_game(game_id)
+        connections = await self.connection_manager.get_connections_for_game(game_id)
         if not connections:
             logging.warning(f"No connections found for game {game_id}")
             return
             
         # Get player connections
-        player_connections = self.connection_manager.get_player_connections(game_id)
+        player_connections = await self.connection_manager.get_player_connections(game_id)
         logging.warning(f"Found {len(player_connections)} player connections")
         
         # Use the function provided or the default imported function
