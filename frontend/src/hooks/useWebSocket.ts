@@ -342,25 +342,42 @@ export const useWebSocket = (
     // Connect explicitly
     connect();
 
-    // Cleanup on unmount
+    // Cleanup on unmount or URL change
     return () => {
-      console.log('useWebSocket unmounting, closing connection to:', url);
+      console.log(`Running WebSocket cleanup for URL: ${url}`);
+      
+      // First ensure all timers are cleared
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+        console.log('Cleared reconnect timer during cleanup.');
       }
       
-      // Only close if we still have a reference (might be null if already closed)
-      if (websocketRef.current) {
-        console.log('Explicitly closing WebSocket on cleanup');
+      // Capture the ref before nullifying
+      const ws = websocketRef.current;
+      
+      // Nullify the ref immediately to prevent any new usage
+      websocketRef.current = null;
+      
+      // Then handle the WebSocket close if it exists
+      if (ws) {
+        console.log(`Closing WebSocket instance ${ws.url ? ws.url.split('/').pop()?.split('?')[0] : 'unknown'}...`);
+        
         try {
-          // Set a flag to prevent auto-reconnect on this deliberate close
-          websocketRef.current.onclose = null; // Remove onclose handler to prevent reconnect
-          websocketRef.current.close(1000, "Component unmounting");
+          // First remove ALL handlers to prevent any callbacks during/after close
+          ws.onopen = null;
+          ws.onmessage = null;
+          ws.onerror = null;
+          ws.onclose = null;
+          
+          // Then close with a normal closure code
+          ws.close(1000, "Component unmounting or URL change");
+          console.log('WebSocket closed successfully during cleanup');
         } catch (e) {
-          console.error('Error closing WebSocket:', e);
+          console.error('Error closing WebSocket during cleanup:', e);
         }
-        websocketRef.current = null;
+      } else {
+        console.log('No WebSocket instance to close during cleanup.');
       }
     };
   }, [url]); // Removed 'connect' from the dependency array to prevent reconnection cycles

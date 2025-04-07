@@ -171,46 +171,57 @@ interface LocationState {
 const GamePage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { gameId, playerId, gameMode } = (location.state as LocationState) || {};
   
-  // Redirect back to lobby if no game info is provided
+  // Use state to ensure stable initialization before creating websocket
+  const [initData, setInitData] = useState<{ gameId: string; playerId: string; gameMode: 'cash' | 'tournament' } | null>(null);
+  
+  // Extract required data from location state, only after mounting
   useEffect(() => {
-    if (!gameId || !playerId) {
-      navigate('/lobby');
-    } else {
-      // Clear any old game state in localStorage if it's not for the current game
-      try {
-        // Get all keys in localStorage
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('gameState_') && !key.includes(gameId)) {
-            console.log(`Clearing old game state: ${key}`);
-            localStorage.removeItem(key);
+    if (location.state) {
+      const { gameId, playerId, gameMode } = location.state as LocationState;
+      if (gameId && playerId) {
+        console.log(`GamePage initializing with gameId=${gameId}, playerId=${playerId}, gameMode=${gameMode}`);
+        setInitData({ gameId, playerId, gameMode });
+        
+        // Clear any old game state in localStorage if it's not for the current game
+        try {
+          // Get all keys in localStorage
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('gameState_') && !key.includes(gameId)) {
+              console.log(`Clearing old game state: ${key}`);
+              localStorage.removeItem(key);
+            }
           }
+        } catch (e) {
+          console.error('Error clearing localStorage:', e);
         }
-      } catch (e) {
-        console.error('Error clearing localStorage:', e);
+      } else {
+        console.error("Game ID or Player ID missing in location state.");
+        navigate('/lobby');
       }
+    } else {
+      console.error("No location state found for GamePage.");
+      navigate('/lobby');
     }
-  }, [gameId, playerId, navigate]);
+  }, [location.state, navigate]);
   
-  // Create websocket URL using useMemo, as it needs to be available at first render
+  // Create websocket URL using useMemo, but only when initData is ready
   const wsUrl = React.useMemo(() => {
-    if (!gameId || !playerId) {
-      return ''; // Don't create URL if we don't have required params
-    }
+    if (!initData) return ''; // Don't create URL before initData is set
     
+    const { gameId, playerId } = initData;
     const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsBaseUrl = API_URL.replace(/^https?:\/\//, `${wsProtocol}://`);
     const url = `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
     
-    // Only log on initial creation, not on every render
+    console.log(`Creating WebSocket URL: ${url}`);
     return url;
-  }, [gameId, playerId]);
+  }, [initData]);
   
-  // Always use the hook (to follow React Hooks rules) but pass an empty 
-  // string if we don't have a valid URL - the hook will handle this internally
+  // Always use the hook (to follow React Hooks rules)
+  // The hook will only actually connect when wsUrl is non-empty
   const {
     status,
     gameState,
@@ -221,7 +232,7 @@ const GamePage: React.FC = () => {
     errors,
     reconnect,
     getConnectionHealth
-  } = useGameWebSocket(wsUrl || '');
+  } = useGameWebSocket(wsUrl);
   
   // Store game state in local state when received
   const [localGameState, setLocalGameState] = React.useState<typeof gameState | null>(null);
@@ -231,17 +242,17 @@ const GamePage: React.FC = () => {
   
   // Update local game state when WebSocket state changes
   React.useEffect(() => {
-    if (gameState) {
+    if (gameState && initData) {
       console.log('Saving new game state to local state');
       setLocalGameState(gameState);
       // Also save to localStorage as backup
       try {
-        localStorage.setItem(`gameState_${gameId}`, JSON.stringify(gameState));
+        localStorage.setItem(`gameState_${initData.gameId}`, JSON.stringify(gameState));
       } catch (e) {
         console.error('Failed to save game state to localStorage:', e);
       }
     }
-  }, [gameState, gameId]);
+  }, [gameState, initData]);
   
   // Handle connection status and errors
   React.useEffect(() => {
@@ -254,11 +265,11 @@ const GamePage: React.FC = () => {
       err.message?.includes('not found')
     );
     
-    if (hasGameNotFoundError) {
+    if (hasGameNotFoundError && initData) {
       console.error('Game not found on server. Redirecting to lobby...');
       // Clear any saved state for this game to prevent reconnection loops
       try {
-        localStorage.removeItem(`gameState_${gameId}`);
+        localStorage.removeItem(`gameState_${initData.gameId}`);
       } catch (e) {
         console.error('Failed to clear localStorage:', e);
       }
@@ -274,7 +285,7 @@ const GamePage: React.FC = () => {
       // We can still update the UI to show reconnection status
       setConnectionHealth(getConnectionHealth());
     }
-  }, [status, errors, gameId, navigate, getConnectionHealth]);
+  }, [status, errors, initData, navigate, getConnectionHealth]);
   
   // Use refs to track state changes and only log when they actually change
   const prevStatusRef = React.useRef(status);
@@ -322,7 +333,7 @@ const GamePage: React.FC = () => {
   
   // Function to get the human player's data
   const getHumanPlayer = () => {
-    if (!effectiveGameState) return null;
+    if (!effectiveGameState || !initData) return null;
     
     try {
       // Add validation for players array
@@ -331,16 +342,16 @@ const GamePage: React.FC = () => {
         return null;
       }
       
-      const player = effectiveGameState.players.find(p => p && p.player_id === playerId);
+      const player = effectiveGameState.players.find(p => p && p.player_id === initData.playerId);
       
       // If we can't find the player, log an error and return default values
       if (!player) {
-        console.warn(`Could not find human player with ID ${playerId}`);
+        console.warn(`Could not find human player with ID ${initData.playerId}`);
         console.log('Available players:', effectiveGameState.players.map(p => p?.player_id || 'undefined'));
         
         // Return a default player object as fallback
         return {
-          player_id: playerId,
+          player_id: initData.playerId,
           name: "You",
           chips: 1000,
           position: 0,
@@ -479,7 +490,7 @@ const GamePage: React.FC = () => {
   };
   
   // Render loading screen if needed
-  if (isLoading || !wsUrl || status === 'connecting' || status === 'error') {
+  if (isLoading || !initData || !wsUrl || status === 'connecting' || status === 'error') {
     // Get connection health metrics even during loading/connecting
     const metrics = connectionHealth || (getConnectionHealth && getConnectionHealth());
     
@@ -488,13 +499,15 @@ const GamePage: React.FC = () => {
         <StatusOverlay>
           <LoadingSpinner />
           <StatusText>
-            {!wsUrl 
-              ? 'Initializing game connection...' 
-              : status === 'error' 
-                ? 'Connection error. Reconnecting...'
-                : status === 'connecting' 
-                  ? 'Connecting to game...' 
-                  : 'Loading game state...'}
+            {!initData
+              ? 'Initializing game...'
+              : !wsUrl 
+                ? 'Initializing game connection...' 
+                : status === 'error' 
+                  ? 'Connection error. Reconnecting...'
+                  : status === 'connecting' 
+                    ? 'Connecting to game...' 
+                    : 'Loading game state...'}
           </StatusText>
           
           {/* Show connection metrics if available */}
@@ -515,7 +528,8 @@ const GamePage: React.FC = () => {
           )}
           
           <div style={{ color: '#f39c12', marginBottom: '1rem', fontSize: '0.9rem' }}>
-            {!wsUrl && 'Game ID not found. Please try again.'}
+            {!initData && 'Game information not found. Please try again.'}
+            {initData && !wsUrl && 'Game connection initialization failed. Please try again.'}
           </div>
           
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -592,6 +606,11 @@ const connectionIndicator = (
   
   // Function to manually trigger AI move - FOR DEBUGGING ONLY
   const triggerAIMove = async () => {
+    if (!initData) {
+      console.error("Cannot trigger AI move - game data not initialized");
+      return;
+    }
+
     try {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       
@@ -602,12 +621,12 @@ const connectionIndicator = (
         "This may disrupt the natural flow of the game."
       );
       
-      console.log(`Triggering AI move for game ${gameId}`);
+      console.log(`Triggering AI move for game ${initData.gameId}`);
       
       // CRITICAL: Delay first to allow any in-flight WebSocket operations to complete
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const response = await fetch(`${API_URL}/game/ai-move/${gameId}`, {
+      const response = await fetch(`${API_URL}/game/ai-move/${initData.gameId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -680,7 +699,7 @@ const connectionIndicator = (
       <ChipCount>Your Chips: ${chips}</ChipCount>
 
       {/* Only show cash game controls for cash games - now positioned at bottom */}
-      {gameMode === 'cash' && effectiveGameState && (
+      {initData?.gameMode === 'cash' && effectiveGameState && (
         <div style={{
           position: 'absolute',
           bottom: '80px',
@@ -688,8 +707,8 @@ const connectionIndicator = (
           zIndex: 10
         }}>
           <CashGameControls
-            gameId={gameId}
-            playerId={playerId}
+            gameId={initData.gameId}
+            playerId={initData.playerId}
             chips={chips}
             maxBuyIn={effectiveGameState.max_buy_in ?? 2000}
             onPlayerUpdate={handlePlayerUpdate}

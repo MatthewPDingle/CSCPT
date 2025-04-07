@@ -168,8 +168,10 @@ export const useGameWebSocket = (wsUrl: string) => {
         return;
       }
       
-      // Validate data exists
-      if (!message.data && message.type !== 'pong') {
+      // Validate data exists for message types that require it
+      // Define types that don't require data
+      const typesWithoutData = ['pong', 'keepalive']; 
+      if (!message.data && !typesWithoutData.includes(message.type)) {
         console.warn(`Message of type ${message.type} has no data`);
         // Continue processing anyway
       }
