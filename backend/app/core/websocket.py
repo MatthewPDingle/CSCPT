@@ -7,6 +7,7 @@ import json
 import copy
 import asyncio
 from datetime import datetime
+from app.services.game_service import GameService
 
 from app.core.poker_game import PokerGame, PlayerStatus
 from app.core.utils import game_to_model
@@ -613,7 +614,7 @@ class GameStateNotifier:
     
     async def notify_player_action(self, game_id: str, player_id: str, action: str, amount: Optional[int] = None):
         """
-        Notify all clients about a player action.
+        Notify all clients about a player action and log it.
         
         Args:
             game_id: The ID of the game
@@ -621,7 +622,24 @@ class GameStateNotifier:
             action: The action taken
             amount: The amount (for bet/raise/call)
         """
-        message = {
+        # Find player name
+        player_name = "Unknown Player"
+        try:
+            service = GameService.get_instance() # Need GameService here
+            game = service.get_game(game_id)
+            if game:
+                 player = next((p for p in game.players if p.id == player_id), None)
+                 if player:
+                     player_name = player.name
+        except Exception:
+             pass # Ignore errors finding name for log
+
+        # Create descriptive log message
+        log_text = f"{player_name} {action.lower()}"
+        if amount is not None and action.upper() in ["BET", "RAISE", "CALL", "ALL_IN"]:
+             log_text += f" {amount}"
+
+        action_message = {
             "type": "player_action",
             "data": {
                 "player_id": player_id,
@@ -630,8 +648,17 @@ class GameStateNotifier:
                 "timestamp": datetime.now().isoformat()
             }
         }
-        
-        await self.connection_manager.broadcast_to_game(game_id, message)
+
+        log_message = {
+            "type": "action_log",
+            "data": {
+                 "text": log_text,
+                 "timestamp": datetime.now().isoformat()
+            }
+        }
+
+        await self.connection_manager.broadcast_to_game(game_id, action_message)
+        await self.connection_manager.broadcast_to_game(game_id, log_message) # Broadcast log message
     
     async def notify_hand_result(self, game_id: str, game: PokerGame):
         """

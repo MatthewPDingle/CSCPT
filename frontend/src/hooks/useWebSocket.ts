@@ -279,6 +279,20 @@ export const useWebSocket = (
         
         if (onClose) onClose(event);
 
+        // Check for "not found" scenarios (which come back as close code 1000 or 1005)
+        // These indicate a game ID that no longer exists, so don't aggressively reconnect
+        const isNotFoundCase = (
+          (event.code === 1000 || event.code === 1005) && 
+          // Only consider it a "not found" if we never had a successful connection
+          connectionMetrics.current.connectionCount === 0
+        );
+
+        if (isNotFoundCase) {
+          console.warn('Game ID appears to be invalid (clean close without successful connection). Reducing reconnect attempts.');
+          // Limit reconnect attempts for invalid game IDs
+          reconnectCountRef.current = Math.max(reconnectAttempts - 2, reconnectCountRef.current);
+        }
+
         // Setup reconnection logic with exponential backoff
         if (shouldReconnect && reconnectCountRef.current < reconnectAttempts) {
           // Calculate exponential backoff delay

@@ -372,6 +372,38 @@ class GameService:
         # Initialize the first hand
         self._start_new_hand(game)
         
+        # --- BEGIN FIXED CODE ---
+        # Check if the first player to act is an AI and trigger their turn
+        import logging
+        import asyncio
+        
+        poker_game = self.poker_games.get(game.id)
+        if poker_game and hasattr(poker_game, 'players') and hasattr(poker_game, 'current_player_idx'):
+            # Access the current player directly using the index
+            if 0 <= poker_game.current_player_idx < len(poker_game.players):
+                current_player_poker = poker_game.players[poker_game.current_player_idx]
+                # Ensure player is active before proceeding
+                if hasattr(current_player_poker, 'status') and current_player_poker.status == PlayerStatus.ACTIVE:
+                    # Find the domain player that matches this poker player
+                    current_player_domain = next((p for p in game.players if p.id == current_player_poker.player_id), None)
+                    
+                    if current_player_domain:
+                        if not current_player_domain.is_human:
+                            logging.info(f"Game started. First player is AI ({current_player_domain.name}). Triggering initial AI action.")
+                            # Use asyncio.create_task to run the AI action concurrently
+                            asyncio.create_task(self._request_and_process_ai_action(game.id, current_player_domain.id))
+                        else:
+                            logging.info(f"Game started. First player is Human ({current_player_domain.name}). Waiting for action via WebSocket.")
+                    else:
+                        logging.warning(f"Game started, but domain player for poker player {current_player_poker.player_id} not found.")
+                else:
+                    logging.warning(f"Game started, but current player index {poker_game.current_player_idx} points to inactive player.")
+            else:
+                logging.warning(f"Game started, but current player index {poker_game.current_player_idx} is out of bounds. Players: {len(poker_game.players)}")
+        else:
+            logging.warning("Game started, but poker game object is missing required attributes.")
+        # --- END FIXED CODE ---
+
         # Update the game
         self.game_repo.update(game)
         

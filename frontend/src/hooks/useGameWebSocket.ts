@@ -131,6 +131,7 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
   const [handResult, setHandResult] = useState<HandResult | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
   
   // Handle WebSocket messages
@@ -208,6 +209,13 @@ export const useGameWebSocket = (wsUrl: string) => {
               return;
             }
             setLastAction(message.data);
+            break;
+            
+          case 'action_log':
+            console.log('Action log received:', message.data);
+            if (message.data?.text) {
+              setActionLog(prev => [...prev.slice(-50), message.data.text]); // Keep last 50 logs
+            }
             break;
             
           case 'action_request':
@@ -527,6 +535,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     actionRequest,
     handResult,
     chatMessages,
+    actionLog,
     errors,
     sendAction,
     sendChat,

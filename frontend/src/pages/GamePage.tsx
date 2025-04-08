@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import PokerTable from '../components/poker/PokerTable';
 import ActionControls from '../components/poker/ActionControls';
@@ -162,6 +162,43 @@ const ConnectionStats = styled.div`
   line-height: 1.4;
 `;
 
+const ActionLogDisplay = styled.div`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 250px;
+  height: 150px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 10px;
+  overflow-y: scroll;
+  color: white;
+  font-size: 0.8rem;
+  z-index: 20;
+
+  /* Styling for scrollbar */
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+`;
+
+const ActionLogItem = styled.p`
+   margin: 0 0 5px 0;
+   line-height: 1.3;
+`;
+
 interface LocationState {
   gameId: string;
   playerId: string;
@@ -234,7 +271,8 @@ const GamePage: React.FC = () => {
     isPlayerTurn,
     errors,
     reconnect,
-    getConnectionHealth
+    getConnectionHealth,
+    actionLog
   } = useGameWebSocket(wsUrl);
   
   // Store game state in local state when received
@@ -272,7 +310,13 @@ const GamePage: React.FC = () => {
       console.error('Game not found on server. Redirecting to lobby...');
       // Clear any saved state for this game to prevent reconnection loops
       try {
-        localStorage.removeItem(`gameState_${initData.gameId}`);
+        // Remove ALL game-related localStorage items 
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('gameState_')) {
+            console.log(`Clearing game state from localStorage: ${key}`);
+            localStorage.removeItem(key);
+          }
+        });
       } catch (e) {
         console.error('Failed to clear localStorage:', e);
       }
@@ -287,6 +331,20 @@ const GamePage: React.FC = () => {
       console.log('Connection closed or errored. The WebSocket hook will handle reconnection with exponential backoff.');
       // We can still update the UI to show reconnection status
       setConnectionHealth(getConnectionHealth());
+      
+      // If we get multiple connection errors, clear all saved game states to prevent connection loops
+      if (errors.length > 3) {
+        console.log('Multiple connection errors detected. Clearing all saved game states.');
+        try {
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('gameState_')) {
+              localStorage.removeItem(key);
+            }
+          });
+        } catch (e) {
+          console.error('Failed to clear localStorage:', e);
+        }
+      }
     }
   }, [status, errors, initData, navigate, getConnectionHealth]);
   
@@ -719,6 +777,20 @@ const connectionIndicator = (
             onPlayerUpdate={handlePlayerUpdate}
           />
         </div>
+      )}
+      
+      {/* Action Log Display */}
+      {actionLog && actionLog.length > 0 && (
+        <ActionLogDisplay ref={(el) => {
+          // Auto-scroll to bottom whenever action log changes
+          if (el) {
+            el.scrollTop = el.scrollHeight;
+          }
+        }}>
+          {actionLog.map((log, index) => (
+            <ActionLogItem key={index}>{log}</ActionLogItem>
+          ))}
+        </ActionLogDisplay>
       )}
       
       {/* Debug button to trigger AI moves */}
