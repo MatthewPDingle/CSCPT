@@ -9,10 +9,18 @@ interface GameWebSocketProps {
 const GameWebSocket: React.FC<GameWebSocketProps> = ({ gameId, playerId }) => {
   // Create websocket URL as we did in GamePage
   const wsUrl = React.useMemo(() => {
+    if (!gameId) {
+      console.log("GameWebSocket: gameId not provided for WebSocket URL.");
+      return '';
+    }
+    
     const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsBaseUrl = API_URL.replace(/^https?:\/\//, `${wsProtocol}://`);
-    return `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
+    const url = `${wsBaseUrl}/ws/game/${gameId}${playerId ? `?player_id=${playerId}` : ''}`;
+    
+    console.log(`GameWebSocket: Generated WebSocket URL: ${url}`);
+    return url;
   }, [gameId, playerId]);
   
   const {

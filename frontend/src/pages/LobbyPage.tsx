@@ -44,21 +44,21 @@ const TabContainer = styled.div`
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const Tab = styled.div<{ active: boolean }>`
+const Tab = styled.div<{ $active: boolean }>`
   padding: 0.8rem 1.5rem;
   margin-right: 0.5rem;
   cursor: pointer;
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
-  background-color: ${props => props.active ? '#2a5e45' : 'transparent'};
-  color: ${props => props.active ? 'white' : 'rgba(255, 255, 255, 0.6)'};
-  border: 1px solid ${props => props.active ? '#2a5e45' : 'transparent'};
+  background-color: ${props => props.$active ? '#2a5e45' : 'transparent'};
+  color: ${props => props.$active ? 'white' : 'rgba(255, 255, 255, 0.6)'};
+  border: 1px solid ${props => props.$active ? '#2a5e45' : 'transparent'};
   border-bottom: none;
-  font-weight: ${props => props.active ? 'bold' : 'normal'};
+  font-weight: ${props => props.$active ? 'bold' : 'normal'};
   transition: all 0.2s ease;
   
   &:hover {
-    background-color: ${props => props.active ? '#2a5e45' : 'rgba(255, 255, 255, 0.1)'};
+    background-color: ${props => props.$active ? '#2a5e45' : 'rgba(255, 255, 255, 0.1)'};
   }
 `;
 
@@ -233,7 +233,7 @@ const LobbyContent: React.FC = () => {
         {[TabIndex.GAME_MODE, TabIndex.GAME_SETUP, TabIndex.PLAYER_SETUP].map((tab) => (
           <Tab 
             key={tab} 
-            active={activeTab === tab}
+            $active={activeTab === tab}
             onClick={() => setActiveTab(tab)}
           >
             {getTabName(tab)}
