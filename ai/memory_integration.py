@@ -27,41 +27,7 @@ try:
 except ImportError:
     AGENTS_AVAILABLE = False
 
-class AgentFactory:
-    """Factory for creating poker agents."""
-    
-    @staticmethod
-    def create_agent(archetype, use_memory=True, intelligence_level="expert"):
-        """Create an agent with the specified archetype and settings."""
-        if not AGENTS_AVAILABLE:
-            print("Agent implementations not available")
-            return None
-            
-        # Initialize LLM service
-        llm_service = LLMService()
-        
-        # Create agent based on archetype
-        if archetype == "TAG":
-            return TAGAgent(
-                llm_service=llm_service,
-                intelligence_level=intelligence_level,
-                use_persistent_memory=use_memory
-            )
-        elif archetype == "LAG":
-            return LAGAgent(
-                llm_service=llm_service,
-                intelligence_level=intelligence_level,
-                use_persistent_memory=use_memory
-            )
-        elif archetype == "Adaptable":
-            return AdaptableAgent(
-                llm_service=llm_service,
-                intelligence_level=intelligence_level,
-                use_persistent_memory=use_memory
-            )
-        else:
-            print(f"Unsupported archetype: {archetype}")
-            return None
+# AgentFactory has been removed - agents are now created directly in game_service.py
 
 class MemoryIntegration:
     """
@@ -148,45 +114,7 @@ class MemoryIntegration:
             return profile.to_dict()
         return None
     
-    @classmethod
-    async def get_agent_decision(cls, archetype, game_state, context, player_id, 
-                               use_memory=True, intelligence_level="expert", connector=None):
-        """
-        Get a decision from an agent using the memory system.
-        
-        Args:
-            archetype: The type of agent to use (e.g., "TAG", "LAG")
-            game_state: The current state of the game
-            context: Additional context information
-            player_id: The ID of the player making the decision
-            use_memory: Whether to use memory for this decision
-            intelligence_level: The agent's intelligence level (e.g., "beginner", "expert")
-            connector: Optional memory connector to use
-            
-        Returns:
-            A dictionary containing the agent's decision
-        """
-        # Create an agent with specified parameters
-        agent = AgentFactory.create_agent(
-            archetype=archetype,
-            use_memory=use_memory,
-            intelligence_level=intelligence_level
-        )
-        
-        if not agent:
-            return {"action": "fold", "reason": "Agent creation failed"}
-            
-        # If connector specified, use its memory service
-        if connector:
-            # Get the memory service from the connector
-            agent.memory_service = connector.memory_service
-        
-        # Add player_id to game state if not already there
-        if isinstance(game_state, dict) and "player_id" not in game_state:
-            game_state["player_id"] = player_id
-        
-        # Make decision
-        return await agent.make_decision(game_state, context)
+    # get_agent_decision has been removed - agent decisions are now handled directly in game_service.py
     
     @classmethod
     def process_hand_history(cls, hand_data, connector=None):

@@ -12,12 +12,16 @@ from app.models.domain_models import (
 )
 from app.repositories.in_memory import HandHistoryRepository, RepositoryFactory
 
-# Import memory integration if available
-try:
-    from ai.memory_integration import MemoryIntegration
-    MEMORY_SYSTEM_AVAILABLE = True
-except ImportError:
-    MEMORY_SYSTEM_AVAILABLE = False
+# Import memory integration using the global flag from config
+from app.core.config import MEMORY_SYSTEM_AVAILABLE
+
+# Try to import MemoryIntegration if available
+if MEMORY_SYSTEM_AVAILABLE:
+    try:
+        from ai.memory_integration import MemoryIntegration
+    except ImportError:
+        import logging
+        logging.warning("Failed to import MemoryIntegration in hand_history_service.py")
 
 
 class HandHistoryRecorder:

@@ -16,13 +16,31 @@ from app.repositories.in_memory import (
     HandHistoryRepository
 )
 
-# Import memory integration
+# Import and update system configuration
+import sys
+from app.core.config import MEMORY_SYSTEM_AVAILABLE
+import app.core.config as app_config
+
+print(f"PYTHONPATH: {os.environ.get('PYTHONPATH')}")
+print(f"sys.path: {sys.path}")
+
+# Add parent directory to path if running from backend directory
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+if parent_dir not in sys.path:
+    print(f"Adding parent directory to sys.path: {parent_dir}")
+    sys.path.insert(0, parent_dir)
+
 try:
     from ai.memory_integration import MemoryIntegration
-    MEMORY_SYSTEM_AVAILABLE = True
-except ImportError:
-    MEMORY_SYSTEM_AVAILABLE = False
-    print("AI memory system not available, continuing without player memory features")
+    print("Successfully imported MemoryIntegration")
+    # Update global flag for memory system availability in config
+    app_config.MEMORY_SYSTEM_AVAILABLE = True
+except ImportError as e:
+    app_config.MEMORY_SYSTEM_AVAILABLE = False
+    print(f"AI memory system not available: {e}")
+    print("Continuing without player memory features")
+    import traceback
+    print(traceback.format_exc())
 
 # Repository persistence setup
 data_dir = os.environ.get("DATA_DIR", "./data")
@@ -49,7 +67,7 @@ async def lifespan(app: FastAPI):
     print("Starting Chip Swinger Championship Poker Trainer API...")
     
     # Initialize memory system if available
-    if MEMORY_SYSTEM_AVAILABLE:
+    if app_config.MEMORY_SYSTEM_AVAILABLE:
         try:
             # Enable memory by default, can be controlled through settings later
             memory_enabled = os.environ.get("ENABLE_PLAYER_MEMORY", "true").lower() == "true"
@@ -57,6 +75,8 @@ async def lifespan(app: FastAPI):
             print(f"Player memory system initialized (enabled={memory_enabled})")
         except Exception as e:
             print(f"Error initializing memory system: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
     
     # Create data directory if it doesn't exist
     if not os.path.exists(data_dir):

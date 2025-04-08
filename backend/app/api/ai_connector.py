@@ -9,13 +9,18 @@ from datetime import datetime
 import logging
 from pydantic import BaseModel, Field
 
-# Try to import memory integration
-try:
-    from ai.memory_integration import MemoryIntegration
-    from ai.agents.response_parser import AgentResponseParser
-    MEMORY_SYSTEM_AVAILABLE = True
-except ImportError:
-    MEMORY_SYSTEM_AVAILABLE = False
+# Import memory integration using the global flag from config
+from app.core.config import MEMORY_SYSTEM_AVAILABLE
+
+if MEMORY_SYSTEM_AVAILABLE:
+    try:
+        from ai.memory_integration import MemoryIntegration
+        from ai.agents.response_parser import AgentResponseParser
+    except ImportError as e:
+        logging.error(f"Failed to import AI modules in ai_connector.py: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+else:
     logging.warning("AI memory system not available. AI memory features will be disabled.")
 
 router = APIRouter(prefix="/ai", tags=["ai"])

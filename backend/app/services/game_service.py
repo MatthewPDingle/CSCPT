@@ -908,15 +908,39 @@ class GameService:
             logging.info(f"AI action chain depth: {len(call_stack)} - This is a recursive call")
         else:
             logging.info("AI action chain depth: 1 - This is the first call in the chain")
-        # Import AI memory integration (done here to avoid circular imports)
-        try:
-            from ai.memory_integration import MemoryIntegration
-            from ai.agents.response_parser import AgentResponseParser
-            MEMORY_SYSTEM_AVAILABLE = True
-        except ImportError:
-            MEMORY_SYSTEM_AVAILABLE = False
-            import logging
-            logging.warning("AI memory system not available. AI decision will default to fold.")
+        # Import AI modules (using the global flag from config)
+        import logging
+        from app.core.config import MEMORY_SYSTEM_AVAILABLE
+        
+        # Log the current memory system availability
+        logging.info(f"Checking MEMORY_SYSTEM_AVAILABLE inside _request_and_process_ai_action: {MEMORY_SYSTEM_AVAILABLE}")
+        
+        if MEMORY_SYSTEM_AVAILABLE:
+            try:
+                # Import necessary agent classes directly
+                from ai.agents.response_parser import AgentResponseParser
+                from ai.agents.tag_agent import TAGAgent
+                from ai.agents.lag_agent import LAGAgent
+                from ai.agents.tight_passive_agent import TightPassiveAgent
+                from ai.agents.calling_station_agent import CallingStationAgent
+                from ai.agents.loose_passive_agent import LoosePassiveAgent
+                from ai.agents.maniac_agent import ManiacAgent
+                from ai.agents.beginner_agent import BeginnerAgent
+                from ai.agents.adaptable_agent import AdaptableAgent
+                from ai.agents.gto_agent import GTOAgent
+                from ai.agents.short_stack_agent import ShortStackAgent
+                from ai.agents.trappy_agent import TrappyAgent
+                from ai.llm_service import LLMService
+                from ai.memory_integration import MemoryIntegration
+                
+                # Log success
+                logging.info("Successfully imported all required AI modules in game_service.py")
+            except ImportError as import_err:
+                MEMORY_SYSTEM_AVAILABLE = False
+                logging.error(f"AI module import failed in game_service.py: {import_err}")
+                import traceback
+                logging.error(traceback.format_exc())
+                logging.warning("AI memory system not available. AI decision will default to fold.")
         
         # Import for utility function
         from app.core.utils import game_to_model
@@ -979,34 +1003,67 @@ class GameService:
             action_amount = None
             
             if MEMORY_SYSTEM_AVAILABLE:
-                # Request decision from AI via MemoryIntegration
-                ai_decision = await MemoryIntegration.get_agent_decision(
-                    archetype=archetype,
-                    game_state=game_state_dict,
-                    context=context,
-                    player_id=player_id,
-                    use_memory=True,
-                    intelligence_level=intelligence_level
-                )
-                
-                # Parse and validate the response
-                action, amount, metadata = AgentResponseParser.parse_response(ai_decision)
-                
-                # Apply game rules to ensure the action is valid
-                action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state_dict)
-                
-                # Map AI response to poker game actions
-                action_map = {
-                    "fold": "FOLD",
-                    "check": "CHECK",
-                    "call": "CALL",
-                    "bet": "BET",
-                    "raise": "RAISE",
-                    "all-in": "ALL_IN"
-                }
-                
-                action_type = action_map.get(action, "FOLD")
-                action_amount = amount
+                try:
+                    # Create an instance of LLMService
+                    llm_service = LLMService()
+                    
+                    # Map archetype string to agent class
+                    agent_class_map = {
+                        'TAG': TAGAgent, 
+                        'LAG': LAGAgent, 
+                        'TightPassive': TightPassiveAgent,
+                        'CallingStation': CallingStationAgent, 
+                        'LoosePassive': LoosePassiveAgent,
+                        'Maniac': ManiacAgent, 
+                        'Beginner': BeginnerAgent, 
+                        'Adaptable': AdaptableAgent,
+                        'GTO': GTOAgent, 
+                        'ShortStack': ShortStackAgent, 
+                        'Trappy': TrappyAgent
+                    }
+                    
+                    # Get the appropriate agent class
+                    AgentClass = agent_class_map.get(archetype, TAGAgent)  # Default to TAG
+                    
+                    logging.info(f"Creating agent of type: {AgentClass.__name__} for player {player_id}")
+                    
+                    # Instantiate the agent
+                    agent = AgentClass(
+                        llm_service=llm_service, 
+                        intelligence_level=intelligence_level,
+                        use_persistent_memory=True
+                    )
+                    
+                    # Get decision directly from the agent
+                    ai_decision = await agent.make_decision(game_state_dict, context)
+                    
+                    # Parse and validate the response
+                    action, amount, metadata = AgentResponseParser.parse_response(ai_decision)
+                    
+                    # Apply game rules to ensure the action is valid
+                    action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state_dict)
+                    
+                    # Map AI response to poker game actions
+                    action_map = {
+                        "fold": "FOLD",
+                        "check": "CHECK",
+                        "call": "CALL",
+                        "bet": "BET",
+                        "raise": "RAISE",
+                        "all-in": "ALL_IN"
+                    }
+                    
+                    action_type = action_map.get(action, "FOLD")
+                    action_amount = amount
+                    
+                    # Log the decision
+                    logging.info(f"AI agent decision: {action_type} with amount {action_amount}")
+                    
+                except Exception as ai_error:
+                    logging.error(f"Error in AI decision making process: {ai_error}")
+                    logging.error(traceback.format_exc())
+                    action_type = "FOLD"
+                    action_amount = None
                 
             # Convert the action type string to the poker game action enum
             from app.core.poker_game import PlayerAction as PokerPlayerAction
@@ -1103,9 +1160,11 @@ class GameService:
                             next_player_domain):
                             
                             if not next_player_domain.is_human:
-                                # If next player is also AI, trigger their action asynchronously
-                                logging.info(f"Triggering AI action for next player: {next_player.name}")
+                                # If next player is also AI, add a delay and trigger their action asynchronously
+                                logging.info(f"Waiting 1 second before triggering AI action for next player: {next_player.name}")
                                 import asyncio
+                                # Add a 1-second delay between consecutive AI actions
+                                await asyncio.sleep(1)
                                 asyncio.create_task(self._request_and_process_ai_action(
                                     game_id, next_player.player_id
                                 ))
@@ -1133,9 +1192,11 @@ class GameService:
                                                               if p.id == next_active_player.player_id), None)
                                     
                                     if next_player_domain and not next_player_domain.is_human:
-                                        # If next player is AI, trigger their action
-                                        logging.info(f"Triggering AI action for alternate next player: {next_active_player.name}")
+                                        # If next player is AI, add a delay and trigger their action
+                                        logging.info(f"Waiting 1 second before triggering AI action for alternate next player: {next_active_player.name}")
                                         import asyncio
+                                        # Add a 1-second delay between consecutive AI actions
+                                        await asyncio.sleep(1)
                                         asyncio.create_task(self._request_and_process_ai_action(
                                             game_id, next_active_player.player_id
                                         ))
@@ -1196,9 +1257,11 @@ class GameService:
                     next_player_domain):
                     
                     if not next_player_domain.is_human:
-                        # If next player is also AI, trigger their action asynchronously
-                        logging.info(f"Triggering AI action for next player after error: {next_player.name}")
+                        # If next player is also AI, add a delay and trigger their action asynchronously
+                        logging.info(f"Waiting 1 second before triggering AI action for next player after error: {next_player.name}")
                         import asyncio
+                        # Add a 1-second delay between consecutive AI actions
+                        await asyncio.sleep(1)
                         asyncio.create_task(self._request_and_process_ai_action(
                             game_id, next_player.player_id
                         ))
@@ -1220,9 +1283,11 @@ class GameService:
                                                       if p.id == next_active_player.player_id), None)
                             
                             if next_player_domain and not next_player_domain.is_human:
-                                # If next player is AI, trigger their action
-                                logging.info(f"Triggering AI action for alternate next player after error: {next_active_player.name}")
+                                # If next player is AI, add a delay and trigger their action
+                                logging.info(f"Waiting 1 second before triggering AI action for alternate next player after error: {next_active_player.name}")
                                 import asyncio
+                                # Add a 1-second delay between consecutive AI actions
+                                await asyncio.sleep(1)
                                 asyncio.create_task(self._request_and_process_ai_action(
                                     game_id, next_active_player.player_id
                                 ))
