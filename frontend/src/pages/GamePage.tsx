@@ -165,7 +165,7 @@ const ConnectionStats = styled.div`
 const ActionLogDisplay = styled.div`
   position: absolute;
   bottom: 20px;
-  right: 20px;
+  left: 20px;
   width: 250px;
   height: 150px;
   background-color: rgba(0, 0, 0, 0.7);

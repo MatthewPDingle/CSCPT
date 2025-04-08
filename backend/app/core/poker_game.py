@@ -256,10 +256,17 @@ class PokerGame:
         # Post blinds
         self._post_blinds()
         
-        # Set current player (player after big blind)
-        self.current_player_idx = (self.button_position + 3) % len(active_players)
+        # Set current player - UTG (Under the Gun) - player after big blind
         if len(active_players) == 2:  # Heads-up
             self.current_player_idx = self.button_position  # Small blind acts first
+        else:
+            # Find the actual array index of the UTG player (3 positions after button)
+            utg_pos = (self.button_position + 3) % len(active_players)
+            # Find the player with this position
+            for idx, player in enumerate(self.players):
+                if player.status != PlayerStatus.OUT and player.position == utg_pos:
+                    self.current_player_idx = idx
+                    break
         
         # Initialize all players as eligible for main pot
         for player in active_players:
@@ -404,7 +411,7 @@ class PokerGame:
         for player in self.players:
             player.current_bet = 0
             
-        # Set first player to act (first active player after button)
+        # Set first player to act
         active_players = [p for p in self.players 
                           if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
         
@@ -412,7 +419,19 @@ class PokerGame:
             return
             
         # After preflop, first active player after button acts first
-        self.current_player_idx = (self.button_position + 1) % len(active_players)
+        first_position = (self.button_position + 1) % len(active_players)
+        
+        # Find player index with this position
+        found = False
+        for idx, player in enumerate(self.players):
+            if player.status == PlayerStatus.ACTIVE and player.position == first_position:
+                self.current_player_idx = idx
+                found = True
+                break
+                
+        # If not found, just use the first active player
+        if not found and active_players:
+            self.current_player_idx = self.players.index(active_players[0])
         
         # Reset last aggressor
         self.last_aggressor_idx = self.current_player_idx
@@ -786,37 +805,54 @@ class PokerGame:
             self.players.index(p): p for p in active_players
         }
         
-        # Find next active player
-        initial_idx = self.current_player_idx
-        while True:
-            # Move to the next player index
-            self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
-            
-            # Get the player at this index
-            if self.current_player_idx >= len(self.players):
-                # Safety check in case of index error
-                self.current_player_idx = 0
+        # We need to find next player based on position, not just array index
+        # First, get the current position (seat number)
+        current_player = self.players[self.current_player_idx]
+        current_position = current_player.position
+        
+        # Get all active players who still need to act, sorted by position
+        players_to_act = []
+        for player in self.players:
+            if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
+                players_to_act.append(player)
                 
-            player = self.players[self.current_player_idx]
+        # No more players to act, end the round
+        if not players_to_act:
+            return self._end_betting_round()
             
-            # If the player is active and still needs to act, we found our next player
-            if (player.status == PlayerStatus.ACTIVE and 
-                player.player_id in self.to_act):
-                print(f"Next player to act: {player.name} (index {self.current_player_idx})")
-                break
-                
-            # If we've gone through all players and back to the start,
+        # Sort players by position (clockwise from current position)
+        player_count = len(self.players)
+        
+        # Function to calculate "distance" clockwise from current position
+        def position_distance(pos):
+            return (pos - current_position) % player_count
+            
+        # Sort by clockwise distance
+        players_to_act.sort(key=lambda p: position_distance(p.position))
+        
+        # If we have players to act, get the next one (clockwise)
+        if players_to_act:
+            # Get next player clockwise (smallest positive distance)
+            next_player = players_to_act[0]
+            
+            # Find this player's index in the main players array
+            for idx, player in enumerate(self.players):
+                if player.player_id == next_player.player_id:
+                    self.current_player_idx = idx
+                    print(f"Next player to act: {player.name} (index {idx})")
+                    break
+        else:
+            # If we've gone through all players and can't find anyone who needs to act,
             # check if there are still players who need to act
-            if self.current_player_idx == initial_idx:
-                if self.to_act:
-                    # There are still players who need to act but we couldn't find them
-                    # This might be due to inconsistency in the to_act set
-                    print("Warning: Found players who need to act, but couldn't locate them")
-                    # Clear to_act to avoid infinite loops and end the round
-                    self.to_act.clear()
-                
-                print("Completed full circle through players, ending betting round")
-                return self._end_betting_round()
+            if self.to_act:
+                # There are still players who need to act but we couldn't find them
+                # This might be due to inconsistency in the to_act set
+                print("Warning: Found players who need to act, but couldn't locate them")
+                # Clear to_act to avoid infinite loops and end the round
+                self.to_act.clear()
+            
+            print("Completed full circle through players, ending betting round")
+            return self._end_betting_round()
                 
         return False
     

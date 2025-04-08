@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple, Any, Set
 from app.core.cards import Deck
 from app.core.hand_evaluator import HandEvaluator
 from app.core.poker_game import PokerGame
+from app.core.poker_game import PlayerStatus as PokerPlayerStatus
 from app.models.domain_models import (
     Game, Player, Hand, ActionHistory, GameType, GameStatus, 
     BettingRound, PlayerAction, PlayerStatus, TournamentInfo, CashGameInfo,
@@ -383,7 +384,7 @@ class GameService:
             if 0 <= poker_game.current_player_idx < len(poker_game.players):
                 current_player_poker = poker_game.players[poker_game.current_player_idx]
                 # Ensure player is active before proceeding
-                if hasattr(current_player_poker, 'status') and current_player_poker.status == PlayerStatus.ACTIVE:
+                if hasattr(current_player_poker, 'status') and current_player_poker.status == PokerPlayerStatus.ACTIVE:
                     # Find the domain player that matches this poker player
                     current_player_domain = next((p for p in game.players if p.id == current_player_poker.player_id), None)
                     
@@ -397,7 +398,9 @@ class GameService:
                     else:
                         logging.warning(f"Game started, but domain player for poker player {current_player_poker.player_id} not found.")
                 else:
-                    logging.warning(f"Game started, but current player index {poker_game.current_player_idx} points to inactive player.")
+                    # Log the actual status for debugging
+                    actual_status = getattr(current_player_poker, 'status', 'Unknown')
+                    logging.warning(f"Game started, but current player index {poker_game.current_player_idx} points to inactive player (status: {actual_status}). Expected status: {PokerPlayerStatus.ACTIVE.name}")
             else:
                 logging.warning(f"Game started, but current player index {poker_game.current_player_idx} is out of bounds. Players: {len(poker_game.players)}")
         else:
@@ -582,6 +585,61 @@ class GameService:
             
         # Start a hand in the poker game
         poker_game.start_hand()
+        
+        # Log player positions for this hand
+        import logging
+        logging.info(f"=== NEW HAND STARTED, HAND #{hand.hand_number} ===")
+        logging.info(f"Button position: {poker_game.button_position}")
+        active_players = [p for p in poker_game.players if p.status != PokerPlayerStatus.OUT]
+        player_count = len(active_players)
+        
+        # Log each player's position
+        position_info = []
+        for player in game.players:
+            if player.status == PlayerStatus.OUT:
+                continue
+                
+            poker_pos = ""
+            if player.position == poker_game.button_position:
+                poker_pos = "BTN (Dealer)"
+            elif player.position == (poker_game.button_position + 1) % player_count:
+                poker_pos = "SB (Small Blind)"
+            elif player.position == (poker_game.button_position + 2) % player_count:
+                poker_pos = "BB (Big Blind)"
+            elif player.position == (poker_game.button_position + 3) % player_count:
+                poker_pos = "UTG (Under the Gun)"
+            elif player.position == (poker_game.button_position + 4) % player_count:
+                poker_pos = "UTG+1"
+            elif player.position == (poker_game.button_position + 5) % player_count:
+                poker_pos = "UTG+2"
+            elif player.position == (poker_game.button_position + 6) % player_count:
+                poker_pos = "LJ (Lojack)"
+            elif player.position == (poker_game.button_position + 7) % player_count:
+                poker_pos = "HJ (Hijack)"
+            elif player.position == (poker_game.button_position + 8) % player_count:
+                poker_pos = "CO (Cutoff)"
+                
+            position_info.append(f"Seat {player.position}: {player.name} - {poker_pos}")
+            
+        # Log all players and their positions
+        for info in position_info:
+            logging.info(info)
+            
+        # Log the expected action order (after blinds)
+        logging.info("Expected action order (preflop):")
+        utg_pos = (poker_game.button_position + 3) % player_count  # UTG is 3 positions after button
+        
+        # Go around the table in order
+        for i in range(player_count):
+            pos = (utg_pos + i) % player_count
+            player = next((p for p in game.players if p.position == pos), None)
+            if player:
+                logging.info(f"{i+1}. {player.name} (position {player.position})")
+                
+        # Log the current player
+        if 0 <= poker_game.current_player_idx < len(poker_game.players):
+            current_player = poker_game.players[poker_game.current_player_idx]
+            logging.info(f"First to act: {current_player.name} (index {poker_game.current_player_idx})")
         
         return hand
     
@@ -789,6 +847,46 @@ class GameService:
         
         if not player:
             raise KeyError(f"Player {player_id} not found in game {game_id}")
+            
+        # Log the current action with position information
+        import logging
+        poker_game = self.poker_games.get(game_id)
+        if poker_game:
+            # Get the player position name
+            player_count = len(game.players)
+            position_name = ""
+            
+            if player.position == poker_game.button_position:
+                position_name = "BTN (Dealer)"
+            elif player.position == (poker_game.button_position + 1) % player_count:
+                position_name = "SB (Small Blind)"
+            elif player.position == (poker_game.button_position + 2) % player_count:
+                position_name = "BB (Big Blind)"
+            elif player.position == (poker_game.button_position + 3) % player_count:
+                position_name = "UTG (Under the Gun)"
+            elif player.position == (poker_game.button_position + 4) % player_count:
+                position_name = "UTG+1"
+            elif player.position == (poker_game.button_position + 5) % player_count:
+                position_name = "UTG+2"
+            elif player.position == (poker_game.button_position + 6) % player_count:
+                position_name = "LJ (Lojack)"
+            elif player.position == (poker_game.button_position + 7) % player_count:
+                position_name = "HJ (Hijack)"
+            elif player.position == (poker_game.button_position + 8) % player_count:
+                position_name = "CO (Cutoff)"
+                
+            logging.info(f"Processing action: {player.name} [{position_name} - Seat {player.position}] {action} {amount if amount else ''}")
+            logging.info(f"Current round: {game.current_hand.current_round}")
+            
+            # Log who's next to act
+            if 0 <= poker_game.current_player_idx < len(poker_game.players):
+                current_player = poker_game.players[poker_game.current_player_idx]
+                active_players = [p for p in poker_game.players if p.status == PokerPlayerStatus.ACTIVE]
+                to_act_players = [p.name for p in active_players if p.player_id in poker_game.to_act]
+                
+                logging.info(f"Active players: {[p.name for p in active_players]}")
+                logging.info(f"Players still to act: {to_act_players}")
+                logging.info(f"Next player to act: {current_player.name} (index {poker_game.current_player_idx})")
         
         # Create action history record
         action_history = ActionHistory(

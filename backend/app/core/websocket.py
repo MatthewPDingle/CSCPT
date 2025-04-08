@@ -622,22 +622,60 @@ class GameStateNotifier:
             action: The action taken
             amount: The amount (for bet/raise/call)
         """
-        # Find player name
+        # Find player name and position information
         player_name = "Unknown Player"
+        position_name = ""
         try:
             service = GameService.get_instance() # Need GameService here
             game = service.get_game(game_id)
             if game:
-                 player = next((p for p in game.players if p.id == player_id), None)
-                 if player:
-                     player_name = player.name
-        except Exception:
-             pass # Ignore errors finding name for log
+                # Get the game's poker game instance to access button position
+                poker_game = service.poker_games.get(game_id)
+                player = next((p for p in game.players if p.id == player_id), None)
+                
+                if player and poker_game:
+                    player_name = player.name
+                    button_pos = poker_game.button_position
+                    player_pos = player.position
+                    
+                    # Number of players for calculating positions
+                    player_count = len(game.players)
+                    
+                    # Calculate position names based on button position
+                    if player_pos == button_pos:
+                        position_name = "BTN"  # Button/Dealer
+                    elif player_pos == (button_pos + 1) % player_count:
+                        position_name = "SB"   # Small Blind
+                    elif player_pos == (button_pos + 2) % player_count:
+                        position_name = "BB"   # Big Blind
+                    elif player_pos == (button_pos + 3) % player_count:
+                        position_name = "UTG"  # Under the Gun
+                    elif player_pos == (button_pos + 4) % player_count:
+                        position_name = "UTG+1"
+                    elif player_pos == (button_pos + 5) % player_count:
+                        position_name = "UTG+2"
+                    elif player_pos == (button_pos + 6) % player_count:
+                        position_name = "LJ"   # Lojack
+                    elif player_pos == (button_pos + 7) % player_count:
+                        position_name = "HJ"   # Hijack
+                    elif player_pos == (button_pos + 8) % player_count:
+                        position_name = "CO"   # Cutoff
+                    
+                    # Add seat number for clarity
+                    position_name = f"{position_name} (Seat {player_pos})"
+        except Exception as e:
+            import logging
+            logging.error(f"Error getting player position: {str(e)}")
+            import traceback
+            logging.error(traceback.format_exc())
 
         # Create descriptive log message
-        log_text = f"{player_name} {action.lower()}"
+        log_text = f"{player_name}"
+        if position_name:
+            log_text += f" [{position_name}]"
+        log_text += f" {action.lower()}"
         if amount is not None and action.upper() in ["BET", "RAISE", "CALL", "ALL_IN"]:
-             log_text += f" {amount}"
+            log_text += f" {amount}"
 
         action_message = {
             "type": "player_action",
