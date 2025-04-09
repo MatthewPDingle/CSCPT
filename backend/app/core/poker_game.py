@@ -267,39 +267,74 @@ class PokerGame:
         # Post blinds - this function now returns SB/BB players
         sb_player, bb_player = self._post_blinds()
         
-        # --- FIXED INITIAL PLAYER INDEX LOGIC ---
+        # --- COMPLETELY REWRITTEN INITIAL PLAYER DETERMINATION ---
+        logging.info(f"=== DETERMINING FIRST PLAYER TO ACT ===")
+        logging.info(f"Button position: {self.button_position}")
+        logging.info(f"Active players: {len(active_players)}")
+        
+        # Generate position order for this hand
+        num_positions = len(self.players)
+        
+        # Create relative position to player mapping
+        rel_pos_to_player = {}
+        for player in active_players:
+            rel_pos = (player.position - self.button_position) % num_positions
+            rel_pos_to_player[rel_pos] = player
+            
+            # Log each player's relative position
+            pos_name = self._get_position_name(rel_pos)
+            logging.info(f"Player {player.name} is in seat {player.position}, relative pos {rel_pos} [{pos_name}]")
+            
+        # Determine the first player to act based on number of players
         if len(active_players) == 2:  # Heads-up
-            # Button/SB acts first preflop
-            # Find the index of the SB player in the main self.players list
-            self.current_player_idx = self.players.index(sb_player)
-            logging.info(f"Heads Up: First player to act is SB: {sb_player.name} (index {self.current_player_idx})")
+            # In heads-up, SB/BTN acts first preflop
+            first_rel_pos = 0  # Button
+            first_player = rel_pos_to_player.get(first_rel_pos)
+            
+            if first_player:
+                self.current_player_idx = self.players.index(first_player)
+                logging.info(f"Heads-up: First player to act is {first_player.name} [BTN] (seat {first_player.position}, index {self.current_player_idx})")
+            else:
+                # Fallback
+                logging.warning("Could not find button player in heads-up. Using fallback.")
+                self.current_player_idx = self.players.index(active_players[0])
+                logging.info(f"Heads-up fallback: First player to act is {active_players[0].name}")
         else:
-            # Normal play: UTG acts first (player after BB)
-            # Find the index of the BB player in the main self.players list
-            try:
-                bb_player_main_index = self.players.index(bb_player)
-            except ValueError:
-                 logging.error(f"Could not find BB player {bb_player.name} in main players list!")
-                 # Fallback: Start after the highest index player (likely incorrect but avoids crash)
-                 bb_player_main_index = len(self.players) - 1
-
-            # Find the next *active* player after the BB player in the main list
-            next_idx = (bb_player_main_index + 1) % len(self.players)
-            utg_player_found = False
-            for _ in range(len(self.players)): # Max iterations = number of players
-                player_at_idx = self.players[next_idx]
-                if player_at_idx.status == PlayerStatus.ACTIVE:
-                    self.current_player_idx = next_idx
-                    utg_player_found = True
-                    logging.info(f"First player to act is UTG: {player_at_idx.name} (index {self.current_player_idx})")
-                    break
-                next_idx = (next_idx + 1) % len(self.players)
-
-            if not utg_player_found:
-                 logging.error("Could not find an active player to act first (UTG)! Setting to 0.")
-                 # Fallback if no active player found (shouldn't happen if game started)
-                 self.current_player_idx = 0 # Default to first player if something went wrong
-        # --- END FIXED LOGIC ---
+            # Normal play (3+ players) - UTG acts first preflop
+            # UTG is the player 3 positions after the button
+            first_rel_pos = 3  # UTG
+            
+            # If there are fewer than 4 players, adjust UTG position
+            if len(active_players) < 4:
+                first_rel_pos = 0  # Start from button with small tables
+                
+            # Find the player who should act first (UTG)
+            first_player = rel_pos_to_player.get(first_rel_pos)
+            
+            if first_player:
+                self.current_player_idx = self.players.index(first_player)
+                logging.info(f"First player to act is {first_player.name} [UTG] (seat {first_player.position}, index {self.current_player_idx})")
+            else:
+                # If UTG position doesn't exist or player isn't active, find the next position
+                found = False
+                for rel_pos in range(first_rel_pos, first_rel_pos + num_positions):
+                    adjusted_rel_pos = rel_pos % num_positions
+                    if adjusted_rel_pos in rel_pos_to_player:
+                        first_player = rel_pos_to_player[adjusted_rel_pos]
+                        self.current_player_idx = self.players.index(first_player)
+                        pos_name = self._get_position_name(adjusted_rel_pos)
+                        logging.info(f"First available player is {first_player.name} [{pos_name}] (seat {first_player.position}, index {self.current_player_idx})")
+                        found = True
+                        break
+                        
+                if not found:
+                    logging.error("Could not find any active player in the correct position! Using first active player.")
+                    self.current_player_idx = self.players.index(active_players[0])
+                    logging.info(f"Emergency fallback: First player to act is {active_players[0].name}")
+        
+        # Log the expected action order for the hand
+        self._log_expected_action_order()
+        # --- END REWRITTEN LOGIC ---
         
         # Initialize all players who contributed to the pot as eligible for main pot
         for player in active_players:
@@ -309,12 +344,48 @@ class PokerGame:
         self.to_act = {p.player_id for p in active_players if p.status == PlayerStatus.ACTIVE}
     
     def _set_positions(self):
-        """Assign positions to players based on the button position."""
-        active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        """Assign positions to players based on the button position.
+        IMPORTANT: This does NOT change the player.position (seat number) property.
+        Poker positions (BTN, SB, BB, UTG, etc.) are determined by relative position to button.
+        """
+        # We do NOT reassign player.position here, as that's their fixed seat at the table
+        # The player's position at the table is already assigned when they join the game
+        # Player positions SHOULD NOT change unless they physically move seats
         
+        # Log all player positions relative to the button for clarity
+        active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        num_active = len(active_players)
+        
+        # Create a mapping of positional names for logging
+        position_names = {}
         for i, player in enumerate(active_players):
-            position = (i - self.button_position) % len(active_players)
-            player.position = position
+            rel_pos = (player.position - self.button_position) % num_active
+            if rel_pos == 0:
+                poker_pos = "BTN (Dealer)"
+            elif rel_pos == 1:
+                poker_pos = "SB (Small Blind)"
+            elif rel_pos == 2:
+                poker_pos = "BB (Big Blind)"
+            elif rel_pos == 3:
+                poker_pos = "UTG (Under the Gun)"
+            elif rel_pos == 4:
+                poker_pos = "UTG+1"
+            elif rel_pos == 5:
+                poker_pos = "UTG+2"
+            elif rel_pos == 6:
+                poker_pos = "LJ (Lojack)"
+            elif rel_pos == 7:
+                poker_pos = "HJ (Hijack)"
+            elif rel_pos == 8:
+                poker_pos = "CO (Cutoff)"
+            else:
+                poker_pos = f"Pos {rel_pos}"
+                
+            position_names[player.player_id] = poker_pos
+            logging.info(f"Player {player.name} (seat {player.position}) is in position: {poker_pos}")
+        
+        # Store position names for future reference
+        self.position_names = position_names
     
     def _post_blinds(self) -> Tuple[Player, Player]:
         """Post the small and big blinds. Returns the SB and BB player objects."""
@@ -862,20 +933,63 @@ class PokerGame:
                     
                     return True
         
-        # Advance to next player *before* checking round end? NO, check round end first based on current state.
+        # Log the state of to_act before checking round completion
+        active_players_before = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+        logging.info(f"to_act before round completion check: {self.to_act}")
+        logging.info(f"Active players: {[p.name for p in active_players_before]}")
+        
+        # Check round completion first based on current state
         round_over = self._check_betting_round_completion()
         logging.info(f"Betting round completion check result: {round_over}")
 
         if round_over:
             if not self._end_betting_round(): # end_betting_round returns True if hand is over
                 # Betting round ended, but hand continues. Next player already set in _reset_betting_round.
-                logging.info(f"Betting round ended. New round: {self.current_round.name}. Next player: {self.players[self.current_player_idx].name} (idx {self.current_player_idx})")
+                current_player = self.players[self.current_player_idx]
+                
+                # Get poker position name
+                position_name = "Unknown"
+                if self.button_position == current_player.position:
+                    position_name = "BTN (Dealer)"
+                elif (self.button_position + 1) % len(self.players) == current_player.position:
+                    position_name = "SB (Small Blind)"
+                elif (self.button_position + 2) % len(self.players) == current_player.position:
+                    position_name = "BB (Big Blind)"
+                elif (self.button_position + 3) % len(self.players) == current_player.position:
+                    position_name = "UTG (Under the Gun)"
+                
+                logging.info(f"Betting round ended. New round: {self.current_round.name}. Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
+                logging.info(f"to_act after round transition: {self.to_act}")
             else:
                 # Hand ended.
                 logging.info("Hand ended after this action.")
         else:
-            self._advance_to_next_player() # Find the next player if the round isn't over
-            logging.info(f"Betting round continues. Next player: {self.players[self.current_player_idx].name} (idx {self.current_player_idx})")
+            # Log to_act before advancing
+            logging.info(f"Round continues. to_act before advancing: {self.to_act}")
+            
+            # Find the next player if the round isn't over
+            self._advance_to_next_player()
+            
+            # Detailed next player logging
+            if 0 <= self.current_player_idx < len(self.players):
+                current_player = self.players[self.current_player_idx]
+                
+                # Get poker position name
+                position_name = "Unknown"
+                if self.button_position == current_player.position:
+                    position_name = "BTN (Dealer)"
+                elif (self.button_position + 1) % len(self.players) == current_player.position:
+                    position_name = "SB (Small Blind)"
+                elif (self.button_position + 2) % len(self.players) == current_player.position:
+                    position_name = "BB (Big Blind)"
+                elif (self.button_position + 3) % len(self.players) == current_player.position:
+                    position_name = "UTG (Under the Gun)"
+                
+                logging.info(f"Betting round continues. Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
+                logging.info(f"Next player status: {current_player.status.name}")
+                logging.info(f"Is in to_act set: {current_player.player_id in self.to_act}")
+            else:
+                logging.error(f"Invalid current_player_idx after advancing: {self.current_player_idx}")
                     
         return True
     
@@ -904,29 +1018,158 @@ class PokerGame:
         return False
 
     def _advance_to_next_player(self) -> None:
-        """Advance to the next player who is ACTIVE and needs to act."""
-        num_players = len(self.players)
-        if num_players == 0:
-            logging.error("Advance to next player called with no players.")
-            return
-
-        start_idx = self.current_player_idx
-        logging.debug(f"Advancing from player index {start_idx}. 'to_act': {self.to_act}")
-
-        for i in range(1, num_players + 1):
-            next_idx = (start_idx + i) % num_players
-            player = self.players[next_idx]
-            logging.debug(f"Checking next player at index {next_idx}: {player.name}, Status: {player.status}, In 'to_act': {player.player_id in self.to_act}")
-
+        """Advance to the next player who is ACTIVE and needs to act.
+        
+        This is one of the most critical methods for poker position handling.
+        The method must find the next player to act based on proper poker positions,
+        taking into account the current round (preflop vs postflop) and position relative
+        to the button.
+        """
+        # Log current state
+        logging.info(f"=== ADVANCING TO NEXT PLAYER ===")
+        logging.info(f"Current round: {self.current_round.name}")
+        logging.info(f"Button position: {self.button_position}")
+        
+        # Find active players who still need to act
+        active_players = []
+        for player in self.players:
             if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
-                self.current_player_idx = next_idx
-                logging.info(f"_advance_to_next_player: Found next player: {player.name} (index {next_idx})")
-                return # Found the next player
-
-        # If loop completes, it means no one active is left in 'to_act'.
-        # This state should have been caught by _check_betting_round_completion.
+                rel_pos = (player.position - self.button_position) % len(self.players)
+                active_players.append((player, rel_pos))
+                logging.info(f"Active player: {player.name} (seat {player.position}, rel pos {rel_pos})")
+                
+        if not active_players:
+            logging.warning("No active players to act - round might be complete")
+            return
+            
+        # Get current player and their relative position
+        current_idx = self.current_player_idx
+        current_player = None
+        current_rel_pos = -1
+        if 0 <= current_idx < len(self.players):
+            current_player = self.players[current_idx]
+            current_rel_pos = (current_player.position - self.button_position) % len(self.players)
+            logging.info(f"Current player: {current_player.name} (seat {current_player.position}, rel pos {current_rel_pos})")
+        
+        # We need different orderings for preflop vs. postflop
+        preflop_order = None
+        postflop_order = None
+        
+        # Generate the correct order of positions for this number of players
+        num_positions = len(self.players)
+        
+        # Preflop order in full ring game:
+        # UTG(3) → UTG+1(4) → UTG+2(5) → LJ(6) → HJ(7) → CO(8) → BTN(0) → SB(1) → BB(2)
+        # Start from UTG (3 after button) and go clockwise around the table
+        if num_positions >= 9:  # Full ring game
+            preflop_order = [(i % num_positions) for i in range(3, 3 + num_positions)]
+        elif num_positions >= 6:  # 6-max game
+            # With 6 players: UTG(3) → HJ(4) → CO(5) → BTN(0) → SB(1) → BB(2)
+            preflop_order = [(i % num_positions) for i in range(3, 3 + num_positions)]
+        elif num_positions >= 3:  # 3-6 players
+            # With 3-6 players: adjust indexes as needed but still start from UTG
+            preflop_order = [(i % num_positions) for i in range(3, 3 + num_positions)]
+        else:  # Heads-up
+            # In heads-up, SB (button) acts first preflop, then BB
+            preflop_order = [0, 1]  # Button, then other player
+        
+        # Postflop order is always:
+        # SB(1) → BB(2) → UTG(3) → UTG+1(4) → ... → BTN(0)
+        # Start from SB and go clockwise around the table
+        postflop_order = [(i % num_positions) for i in range(1, 1 + num_positions)]
+        
+        logging.info(f"Preflop order: {preflop_order}")
+        logging.info(f"Postflop order: {postflop_order}")
+        
+        # Choose the correct order based on the current round
+        position_order = preflop_order if self.current_round == BettingRound.PREFLOP else postflop_order
+        
+        # Find where we are in the order
+        current_order_idx = -1
+        if current_player:
+            # Find current player's index in the order
+            try:
+                current_order_idx = position_order.index(current_rel_pos)
+                logging.info(f"Current player is at position {current_order_idx} in the order")
+            except ValueError:
+                logging.warning(f"Current relative position {current_rel_pos} not found in position order")
+        
+        # Find the next player to act based on the position ordering
+        next_player = None
+        next_rel_pos = None
+        
+        # First try to find someone after the current player
+        if current_order_idx >= 0:
+            for order_idx in range(current_order_idx + 1, len(position_order)):
+                rel_pos = position_order[order_idx]
+                for player, player_rel_pos in active_players:
+                    if player_rel_pos == rel_pos:
+                        next_player = player
+                        next_rel_pos = rel_pos
+                        logging.info(f"Found next player at position {order_idx} in the order")
+                        break
+                if next_player:
+                    break
+        
+        # If not found, wrap around to the beginning
+        if not next_player:
+            for order_idx in range(len(position_order)):
+                if order_idx == current_order_idx:
+                    continue  # Skip current player
+                rel_pos = position_order[order_idx]
+                for player, player_rel_pos in active_players:
+                    if player_rel_pos == rel_pos:
+                        next_player = player
+                        next_rel_pos = rel_pos
+                        logging.info(f"Found next player (wrap-around) at position {order_idx} in the order")
+                        break
+                if next_player:
+                    break
+        
+        # If we found a next player, set it
+        if next_player:
+            self.current_player_idx = self.players.index(next_player)
+            
+            # Get position name for logging
+            pos_name = self._get_position_name(next_rel_pos)
+            
+            logging.info(f"Next player is {next_player.name} [{pos_name}] (seat {next_player.position}, index {self.current_player_idx})")
+            return
+        
+        # Final fallback - scan through all players
+        logging.warning("Could not find next player with position-based ordering. Using fallback.")
+        for player, rel_pos in sorted(active_players, key=lambda p: p[1]):
+            next_player = player
+            pos_name = self._get_position_name(rel_pos)
+            logging.info(f"Fallback: Next player is {next_player.name} [{pos_name}]")
+            self.current_player_idx = self.players.index(next_player)
+            return
+            
         logging.warning(f"Advance to next player completed loop, but 'to_act' was {self.to_act}. This might indicate an issue.")
         # Do not automatically end the round here; let _check_betting_round_completion handle it.
+        
+    def _get_position_name(self, rel_pos: int) -> str:
+        """Get the poker position name for a relative position."""
+        if rel_pos == 0:
+            return "BTN (Dealer)"
+        elif rel_pos == 1:
+            return "SB (Small Blind)"
+        elif rel_pos == 2:
+            return "BB (Big Blind)"
+        elif rel_pos == 3:
+            return "UTG (Under the Gun)"
+        elif rel_pos == 4:
+            return "UTG+1"
+        elif rel_pos == 5:
+            return "UTG+2"
+        elif rel_pos == 6:
+            return "LJ (Lojack)"
+        elif rel_pos == 7:
+            return "HJ (Hijack)"
+        elif rel_pos == 8:
+            return "CO (Cutoff)"
+        else:
+            return f"Position {rel_pos}"
     
     def _end_betting_round(self) -> bool:
         """
@@ -1342,6 +1585,68 @@ class PokerGame:
         # Log the final pot structure
         for pot in self.pots:
             print(f"{pot.name}: ${pot.amount} with {len(pot.eligible_players)} eligible players")
+    
+    def _log_expected_action_order(self):
+        """Log the expected order of action for the current round."""
+        active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        if not active_players:
+            logging.warning("No active players to log expected action order")
+            return
+        
+        # Determine starting position based on the current round
+        if self.current_round == BettingRound.PREFLOP:
+            # Preflop: action starts with UTG (3 positions after button in full ring)
+            start_relative_pos = 3 if len(active_players) > 2 else 0  # UTG or SB in heads-up
+        else:
+            # Postflop: action starts with first active player after the button
+            start_relative_pos = 1  # SB position
+        
+        # Log the action order
+        logging.info(f"Expected action order for {self.current_round.name}:")
+        
+        # Sort active players by their absolute position
+        sorted_by_position = sorted(active_players, key=lambda p: p.position)
+        
+        # Find the player at the starting position
+        start_player_idx = None
+        for i, player in enumerate(sorted_by_position):
+            rel_pos = (player.position - self.button_position) % len(active_players)
+            if rel_pos == start_relative_pos:
+                start_player_idx = i
+                break
+        
+        if start_player_idx is None:
+            logging.warning(f"Could not find starting player at relative position {start_relative_pos}")
+            return
+        
+        # Log the action order starting from the appropriate position
+        for i in range(len(active_players)):
+            player_idx = (start_player_idx + i) % len(active_players)
+            player = sorted_by_position[player_idx]
+            rel_pos = (player.position - self.button_position) % len(active_players)
+            
+            # Get position name
+            pos_name = "Unknown"
+            if rel_pos == 0:
+                pos_name = "BTN"
+            elif rel_pos == 1:
+                pos_name = "SB"
+            elif rel_pos == 2:
+                pos_name = "BB"
+            elif rel_pos == 3:
+                pos_name = "UTG"
+            elif rel_pos == 4:
+                pos_name = "UTG+1"
+            elif rel_pos == 5:
+                pos_name = "UTG+2"
+            elif rel_pos == 6:
+                pos_name = "LJ"
+            elif rel_pos == 7:
+                pos_name = "HJ"
+            elif rel_pos == 8:
+                pos_name = "CO"
+            
+            logging.info(f"  {i+1}. {player.name} - {pos_name} (seat {player.position})")
     
     def move_button(self):
         """Move the button to the next active player for the next hand."""
