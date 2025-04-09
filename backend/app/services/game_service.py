@@ -1359,11 +1359,9 @@ class GameService:
                             next_player_domain):
 
                             if not next_player_domain.is_human:
-                                logging.info(f"[AI-ACTION-{execution_id}] Next player is AI ({next_player.name}). Triggering action chain.")
-                                # Don't add delay here - the delay is at the beginning of the next _request_and_process_ai_action call
-                                asyncio.create_task(self._request_and_process_ai_action(
-                                    game_id, next_player.player_id
-                                ))
+                                logging.info(f"[AI-ACTION-{execution_id}] Next player is AI ({next_player.name}). AWAITING next action (sequential execution).")
+                                # CRITICAL CHANGE: await instead of create_task to ensure sequential execution
+                                await self._request_and_process_ai_action(game_id, next_player.player_id)
                             else:
                                 logging.info(f"[AI-ACTION-{execution_id}] Next player is Human ({next_player.name}). Sending action request.")
                                 await game_notifier.notify_action_request(game_id, poker_game)

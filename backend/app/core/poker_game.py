@@ -672,7 +672,15 @@ class PokerGame:
         Returns:
             True if the action was successful, False otherwise
         """
+        import uuid
+        # Assign a unique execution ID for tracing this action through logs
+        execution_id = str(uuid.uuid4())[:8]
+        
+        logging.info(f"[ACTION-{execution_id}] Processing action: {player.name} -> {action.name} " 
+                    f"(amount: {amount}, current player idx: {self.current_player_idx})")
+        
         if player.status != PlayerStatus.ACTIVE:
+            logging.warning(f"[ACTION-{execution_id}] Player {player.name} is not active (status: {player.status.name})")
             return False
             
         active_players = [p for p in self.players 
@@ -680,10 +688,12 @@ class PokerGame:
         
         # Validate it's the player's turn - FOR TEST ONLY: DISABLE PLAYER ORDER VALIDATION
         if not active_players:
+            logging.warning(f"[ACTION-{execution_id}] No active players found")
             return False
             
         if self.current_player_idx >= len(active_players):
             # Reset to first active player if index is out of range
+            logging.warning(f"[ACTION-{execution_id}] Current player index {self.current_player_idx} is out of range. Resetting to 0.")
             self.current_player_idx = 0
             
         # DISABLED FOR TESTING to allow out-of-order actions in tests
@@ -691,25 +701,34 @@ class PokerGame:
         # if active_players[self.current_player_idx].player_id != player.player_id:
         #     return False
         
+        # Check if the player is allowed to act
+        if player.player_id not in self.to_act:
+            logging.warning(f"[ACTION-{execution_id}] Player {player.name} is not in the to_act set: {self.to_act}")
+            return False
+            
         # Record the pot size before the action
         pot_before = self.pot
         bet_facing = self.current_bet - player.current_bet
         
-        logging.info(f"Processing action for {player.name}: {action.name} {amount if amount is not None else ''}")
-        logging.info(f"State before action: current_bet={self.current_bet}, player_bet={player.current_bet}")
-        logging.info(f"to_act BEFORE action: {self.to_act}")
+        # Debugging: Log player status before action
+        logging.info(f"[ACTION-{execution_id}] Player status before: {player.status.name}")
+        logging.info(f"[ACTION-{execution_id}] to_act before: {self.to_act}")
+        logging.info(f"[ACTION-{execution_id}] State before action: current_bet={self.current_bet}, player_bet={player.current_bet}")
             
         # Process the action
+        success = False
+        
         if action == PlayerAction.FOLD:
             player.status = PlayerStatus.FOLDED
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
-                logging.debug(f"Removed {player.name} from 'to_act'. Remaining: {self.to_act}")
+                logging.info(f"[ACTION-{execution_id}] Player {player.name} FOLDED. Removed from to_act. Remaining: {self.to_act}")
             
             # Check if only one active player remains
             active_count = sum(1 for p in self.players if p.status == PlayerStatus.ACTIVE)
             if active_count <= 1:
+                logging.info(f"[ACTION-{execution_id}] Only {active_count} active player(s) remain after fold. Handling early showdown.")
                 # Record the action before handling showdown
                 if self.hand_history_recorder and self.current_hand_id:
                     self.hand_history_recorder.record_action(
@@ -726,16 +745,21 @@ class PokerGame:
                 self._handle_early_showdown()
                 return True
                 
+            success = True
+            
         elif action == PlayerAction.CHECK:
             # Verify player can check
             if player.current_bet < self.current_bet:
+                logging.warning(f"[ACTION-{execution_id}] Player {player.name} cannot check (current bet: {player.current_bet}, table bet: {self.current_bet})")
                 return False
                 
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
-                logging.debug(f"Removed {player.name} from 'to_act'. Remaining: {self.to_act}")
+                logging.info(f"[ACTION-{execution_id}] Player {player.name} CHECKED. Removed from to_act. Remaining: {self.to_act}")
                 
+            success = True
+            
         elif action == PlayerAction.CALL:
             # Calculate call amount
             call_amount = self.current_bet - player.current_bet
@@ -745,32 +769,39 @@ class PokerGame:
                 # Place the bet
                 actual_bet = player.bet(call_amount)
                 self.pots[0].add(actual_bet, player.player_id)
-                # Debug output to help diagnose test issues
-                print(f"Player {player.name} calls with {actual_bet} chips. Current bet: {self.current_bet}")
+                logging.info(f"[ACTION-{execution_id}] Player {player.name} CALLED with {actual_bet} chips. Current bet: {self.current_bet}")
                 
                 # If this call made the player all-in, update status
                 if player.chips == 0:
                     player.status = PlayerStatus.ALL_IN
+                    logging.info(f"[ACTION-{execution_id}] Player {player.name} is now ALL-IN after calling")
                     # Don't create side pots yet for backward compatibility
                     # Side pots will be created at the end of the betting round
+            else:
+                logging.info(f"[ACTION-{execution_id}] Player {player.name} CALLED for 0 chips (checking)")
             
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
-                logging.debug(f"Removed {player.name} from 'to_act'. Remaining: {self.to_act}")
+                logging.info(f"[ACTION-{execution_id}] Removed {player.name} from 'to_act' after call. Remaining: {self.to_act}")
                 
+            success = True
+            
         elif action == PlayerAction.BET:
             # Verify no previous bet this round
-            if self.current_bet > 0 or not amount:
+            if self.current_bet > 0 or amount is None:
+                logging.warning(f"[ACTION-{execution_id}] Invalid bet: current_bet={self.current_bet}, bet_amount={amount}")
                 return False
                 
             # Verify amount is at least the minimum bet
             min_bet = self.big_blind
             if amount < min_bet:
+                logging.warning(f"[ACTION-{execution_id}] Bet amount {amount} is less than minimum {min_bet}")
                 return False
                 
             # Validate against betting structure
             if not self.validate_bet_for_betting_structure(action, amount, player):
+                logging.warning(f"[ACTION-{execution_id}] Bet doesn't conform to betting structure")
                 return False
                 
             # Place the bet
@@ -781,13 +812,18 @@ class PokerGame:
             self.last_aggressor_idx = self.current_player_idx
             
             # Reset to_act - everyone except bettor needs to act
+            old_to_act = self.to_act.copy()
             self.to_act = {p.player_id for p in self.players 
                           if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
-            logging.debug(f"Reset 'to_act' after bet: {self.to_act}")
+            logging.info(f"[ACTION-{execution_id}] Player {player.name} BET {amount}. New current bet: {self.current_bet}")
+            logging.info(f"[ACTION-{execution_id}] Reset to_act after bet from {old_to_act} to {self.to_act}")
+            
+            success = True
             
         elif action == PlayerAction.RAISE:
             # Verify there is a bet to raise
-            if self.current_bet == 0 or not amount:
+            if self.current_bet == 0 or amount is None:
+                logging.warning(f"[ACTION-{execution_id}] Invalid raise: current_bet={self.current_bet}, bet_amount={amount}")
                 return False
                 
             # Calculate minimum raise amount
@@ -797,21 +833,21 @@ class PokerGame:
             
             # Verify amount is at least the minimum raise
             if amount < min_total:
+                logging.warning(f"[ACTION-{execution_id}] Raise amount {amount} is less than minimum {min_total}")
                 return False
                 
             # Validate against betting structure
             if not self.validate_bet_for_betting_structure(action, amount, player):
+                logging.warning(f"[ACTION-{execution_id}] Raise doesn't conform to betting structure")
                 return False
-                
-            # IMPORTANT DEBUG - for test_preflop_betting_round
-            print(f"RAISE: Player {player.name} raising to {amount}. Current chips: {player.chips}")
+            
+            logging.info(f"[ACTION-{execution_id}] RAISE: Player {player.name} raising to {amount}. Current chips: {player.chips}")
             
             # Place the bet - amount is total to bet, not the raise increment
             actual_bet = player.bet(amount)
             self.pots[0].add(actual_bet, player.player_id)
             
-            # IMPORTANT DEBUG
-            print(f"After raise: Player {player.name} now has {player.chips} chips. Bet {actual_bet}")
+            logging.info(f"[ACTION-{execution_id}] After raise: Player {player.name} now has {player.chips} chips. Bet {actual_bet}")
             
             raise_amount = actual_bet - call_amount
             self.current_bet = player.current_bet
@@ -819,13 +855,22 @@ class PokerGame:
             self.last_aggressor_idx = self.current_player_idx
             
             # Reset to_act - everyone except raiser needs to act
+            old_to_act = self.to_act.copy()
             self.to_act = {p.player_id for p in self.players 
                           if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
-            logging.debug(f"Reset 'to_act' after raise: {self.to_act}")
+            logging.info(f"[ACTION-{execution_id}] Reset to_act after raise from {old_to_act} to {self.to_act}")
+            
+            success = True
             
         elif action == PlayerAction.ALL_IN:
             # Go all-in
             all_in_amount = player.chips
+            if all_in_amount <= 0:
+                logging.warning(f"[ACTION-{execution_id}] Player {player.name} has no chips to go all-in")
+                return False
+                
+            logging.info(f"[ACTION-{execution_id}] Player {player.name} going ALL-IN for {all_in_amount}")
+            
             actual_bet = player.bet(all_in_amount)
             player.status = PlayerStatus.ALL_IN
             
@@ -838,16 +883,19 @@ class PokerGame:
                 self.last_aggressor_idx = self.current_player_idx
                 
                 # Reset to_act - everyone except all-in player needs to act
+                old_to_act = self.to_act.copy()
                 self.to_act = {p.player_id for p in self.players 
                              if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
-                logging.debug(f"Reset 'to_act' after all-in raise: {self.to_act}")
+                logging.info(f"[ACTION-{execution_id}] All-in as RAISE, to_act reset from {old_to_act} to {self.to_act}")
             else:
                 # Remove player from to_act set if not raising
                 if player.player_id in self.to_act:
                     self.to_act.remove(player.player_id)
-                    logging.debug(f"Removed {player.name} from 'to_act' after all-in. Remaining: {self.to_act}")
+                    logging.info(f"[ACTION-{execution_id}] All-in as CALL, player removed from to_act: {self.to_act}")
             
             self.pots[0].add(actual_bet, player.player_id)
+            
+            success = True
             
             # In existing tests, side pot creation is expected at the end of betting round
             # For compatibility, don't create side pots immediately during the action
@@ -934,39 +982,63 @@ class PokerGame:
                     
                     return True
         
+        # Log state after action
+        logging.info(f"[ACTION-{execution_id}] Player status after: {player.status.name}")
+        logging.info(f"[ACTION-{execution_id}] to_act after: {self.to_act}")
+        
+        # Record the action in hand history
+        if self.hand_history_recorder and self.current_hand_id:
+            self.hand_history_recorder.record_action(
+                player_id=player.player_id,
+                action_type=action,
+                amount=amount,
+                betting_round=self.current_round,
+                player=player,
+                pot_before=pot_before,
+                pot_after=self.pot,
+                bet_facing=bet_facing
+            )
+
         # Log the state of to_act before checking round completion
         active_players_before = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
-        logging.info(f"to_act before round completion check: {self.to_act}")
-        logging.info(f"Active players: {[p.name for p in active_players_before]}")
+        logging.info(f"[ACTION-{execution_id}] to_act before round completion check: {self.to_act}")
+        logging.info(f"[ACTION-{execution_id}] Active players: {[p.name for p in active_players_before]}")
         
         # Check round completion first based on current state
         round_over = self._check_betting_round_completion()
-        logging.info(f"Betting round completion check result: {round_over}")
+        logging.info(f"[ACTION-{execution_id}] Betting round completion check result: {round_over}")
 
         if round_over:
+            logging.info(f"[ACTION-{execution_id}] Betting round is complete, advancing to next round")
             if not self._end_betting_round(): # end_betting_round returns True if hand is over
                 # Betting round ended, but hand continues. Next player already set in _reset_betting_round.
-                current_player = self.players[self.current_player_idx]
+                current_player = None
+                if 0 <= self.current_player_idx < len(self.players):
+                    current_player = self.players[self.current_player_idx]
+                    
+                    # Get poker position name
+                    position_name = "Unknown"
+                    if self.button_position == current_player.position:
+                        position_name = "BTN (Dealer)"
+                    elif (self.button_position + 1) % len(self.players) == current_player.position:
+                        position_name = "SB (Small Blind)"
+                    elif (self.button_position + 2) % len(self.players) == current_player.position:
+                        position_name = "BB (Big Blind)"
+                    elif (self.button_position + 3) % len(self.players) == current_player.position:
+                        position_name = "UTG (Under the Gun)"
+                    
+                    logging.info(f"[ACTION-{execution_id}] Betting round ended. New round: {self.current_round.name}. Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
+                else:
+                    logging.error(f"[ACTION-{execution_id}] Invalid current_player_idx after round transition: {self.current_player_idx}")
                 
-                # Get poker position name
-                position_name = "Unknown"
-                if self.button_position == current_player.position:
-                    position_name = "BTN (Dealer)"
-                elif (self.button_position + 1) % len(self.players) == current_player.position:
-                    position_name = "SB (Small Blind)"
-                elif (self.button_position + 2) % len(self.players) == current_player.position:
-                    position_name = "BB (Big Blind)"
-                elif (self.button_position + 3) % len(self.players) == current_player.position:
-                    position_name = "UTG (Under the Gun)"
-                
-                logging.info(f"Betting round ended. New round: {self.current_round.name}. Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
-                logging.info(f"to_act after round transition: {self.to_act}")
+                logging.info(f"[ACTION-{execution_id}] to_act after round transition: {self.to_act}")
             else:
                 # Hand ended.
-                logging.info("Hand ended after this action.")
+                logging.info(f"[ACTION-{execution_id}] Hand ended after this action.")
         else:
             # Log to_act before advancing
-            logging.info(f"Round continues. to_act before advancing: {self.to_act}")
+            logging.info(f"[ACTION-{execution_id}] Betting round continues, advancing to next player")
+            logging.info(f"[ACTION-{execution_id}] to_act before advancing: {self.to_act}")
             
             # Find the next player if the round isn't over
             self._advance_to_next_player()
@@ -986,13 +1058,19 @@ class PokerGame:
                 elif (self.button_position + 3) % len(self.players) == current_player.position:
                     position_name = "UTG (Under the Gun)"
                 
-                logging.info(f"Betting round continues. Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
-                logging.info(f"Next player status: {current_player.status.name}")
-                logging.info(f"Is in to_act set: {current_player.player_id in self.to_act}")
+                logging.info(f"[ACTION-{execution_id}] Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
+                logging.info(f"[ACTION-{execution_id}] Next player status: {current_player.status.name}")
+                logging.info(f"[ACTION-{execution_id}] Next player in to_act set: {current_player.player_id in self.to_act}")
+                
+                # Final validation - make sure the next player is actually eligible to act
+                if current_player.status != PlayerStatus.ACTIVE or current_player.player_id not in self.to_act:
+                    logging.error(f"[ACTION-{execution_id}] CRITICAL ERROR: Selected next player {current_player.name} cannot act!")
+                    logging.error(f"[ACTION-{execution_id}] Status: {current_player.status.name}, In to_act: {current_player.player_id in self.to_act}")
             else:
-                logging.error(f"Invalid current_player_idx after advancing: {self.current_player_idx}")
+                logging.error(f"[ACTION-{execution_id}] Invalid current_player_idx after advancing: {self.current_player_idx}")
                     
-        return True
+        logging.info(f"[ACTION-{execution_id}] Action processing complete for {player.name} {action.name}")
+        return success
     
     def _check_betting_round_completion(self) -> bool:
         """Checks if the current betting round is complete."""
@@ -1025,32 +1103,38 @@ class PokerGame:
         This is a completely rewritten, simplified implementation that follows
         clockwise table position more reliably, especially with many players.
         """
-        # Log current state
-        logging.info(f"=== ADVANCING TO NEXT PLAYER ===")
+        import uuid
+        # Generate a unique ID for tracking this specific execution through logs
+        execution_id = str(uuid.uuid4())[:8]
+        
+        # Log current state BEFORE any modifications
+        logging.info(f"=== ADVANCING TO NEXT PLAYER - START {execution_id} ===")
+        logging.info(f"Current player index BEFORE: {self.current_player_idx}")
         logging.info(f"Current round: {self.current_round.name}")
         logging.info(f"Button position: {self.button_position}")
-        logging.info(f"Current player index: {self.current_player_idx}")
-        logging.info(f"Players who need to act: {self.to_act}")
+        logging.info(f"Players who need to act (full to_act set): {self.to_act}")
         
-        # Early exit if no players need to act
-        if not self.to_act:
-            logging.warning("No active players to act - round might be complete")
-            return
-            
-        # Get all active players who need to act
-        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act]
-        logging.info(f"Active players who need to act: {[p.name for p in active_players]}")
-        
-        if not active_players:
-            logging.warning("No active players found who need to act.")
-            return
-            
         # Get current player for reference
         current_player = None
         if 0 <= self.current_player_idx < len(self.players):
             current_player = self.players[self.current_player_idx]
-            logging.info(f"Current player is {current_player.name} (position {current_player.position})")
+            logging.info(f"Current player is {current_player.name} (position {current_player.position}, id {current_player.player_id})")
+        else:
+            logging.warning(f"Current player index {self.current_player_idx} is out of bounds!")
+        
+        # Early exit if no players need to act
+        if not self.to_act:
+            logging.warning(f"[{execution_id}] No active players to act - round might be complete")
+            return
             
+        # Get all active players who need to act
+        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act]
+        logging.info(f"[{execution_id}] Active players who need to act: {[p.name for p in active_players]}")
+        
+        if not active_players:
+            logging.warning(f"[{execution_id}] No active players found who need to act.")
+            return
+        
         # Simple direct approach:
         # 1. Arrange players by absolute position around the table
         # 2. Find current player's position in this order
@@ -1058,6 +1142,7 @@ class PokerGame:
         
         # Sort all players by their seat positions (clockwise around table)
         players_by_position = sorted(self.players, key=lambda p: p.position)
+        logging.info(f"[{execution_id}] Players sorted by position: {[(p.name, p.position) for p in players_by_position]}")
         
         # Find current player's index in the position order
         current_pos_idx = -1
@@ -1067,10 +1152,14 @@ class PokerGame:
                     current_pos_idx = i
                     break
         
-        logging.info(f"Current player position index in sorted order: {current_pos_idx}")
+        logging.info(f"[{execution_id}] Current player position index in sorted order: {current_pos_idx}")
         
         # Starting from the position after the current player, find next active player who needs to act
         next_player = None
+        
+        # Detailed logging of all player statuses before loop
+        for p in self.players:
+            logging.info(f"[{execution_id}] Player status check: {p.name} - Status: {p.status.name}, In to_act: {p.player_id in self.to_act}, Position: {p.position}")
         
         # If we have a valid current player, start search from the player after them
         if current_pos_idx >= 0:
@@ -1079,13 +1168,16 @@ class PokerGame:
                 check_idx = (current_pos_idx + i) % len(players_by_position)
                 check_player = players_by_position[check_idx]
                 
+                # Log each player being considered
+                logging.info(f"[{execution_id}] Checking player: {check_player.name}, Status: {check_player.status.name}, " 
+                           f"In to_act: {check_player.player_id in self.to_act}, Position: {check_player.position}, "
+                           f"Check index: {check_idx}")
+                
                 # This player is active and needs to act
                 if check_player.status == PlayerStatus.ACTIVE and check_player.player_id in self.to_act:
                     next_player = check_player
-                    logging.info(f"Found next player: {next_player.name} (position {next_player.position})")
+                    logging.info(f"[{execution_id}] Found next player: {next_player.name} (position {next_player.position}, id {next_player.player_id})")
                     break
-                else:
-                    logging.info(f"Skipping player {check_player.name} - active:{check_player.status == PlayerStatus.ACTIVE}, needs to act:{check_player.player_id in self.to_act}")
         
         # If we didn't find a player or didn't have a current player for reference,
         # fall back to taking the first active player who needs to act
@@ -1093,17 +1185,27 @@ class PokerGame:
             # Sort eligible players by position order
             sorted_active = sorted(active_players, key=lambda p: p.position)
             next_player = sorted_active[0]
-            logging.info(f"Falling back to first eligible player: {next_player.name} (position {next_player.position})")
+            logging.info(f"[{execution_id}] Falling back to first eligible player: {next_player.name} (position {next_player.position}, id {next_player.player_id})")
         
         # Update current player index if we found a next player
         if next_player:
+            old_idx = self.current_player_idx
             self.current_player_idx = self.players.index(next_player)
             rel_pos = (next_player.position - self.button_position) % len(self.players)
             pos_name = self._get_position_name(rel_pos)
-            logging.info(f"Next player is {next_player.name} [{pos_name}] (position {next_player.position}, index {self.current_player_idx})")
+            logging.info(f"[{execution_id}] Next player is {next_player.name} [{pos_name}] (position {next_player.position}, index was {old_idx} now {self.current_player_idx}, id {next_player.player_id})")
+            logging.info(f"[{execution_id}] Player status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
         else:
-            logging.warning(f"Could not find any eligible player to act next. This might indicate an issue.")
+            logging.warning(f"[{execution_id}] Could not find any eligible player to act next. This might indicate an issue.")
             # We don't modify current_player_idx here, letting _check_betting_round_completion handle it
+        
+        logging.info(f"=== ADVANCING TO NEXT PLAYER - END {execution_id} ===")
+        
+        # Final verification
+        if next_player and (next_player.status != PlayerStatus.ACTIVE or next_player.player_id not in self.to_act):
+            logging.error(f"[{execution_id}] CRITICAL ERROR: Selected next player {next_player.name} is either not active or not in to_act!")
+            logging.error(f"[{execution_id}] Status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
+            # This would indicate a bug in the selection logic
         
     def _get_position_name(self, rel_pos: int) -> str:
         """Get the poker position name for a relative position."""
