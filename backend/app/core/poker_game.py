@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import defaultdict
 import random
+import logging
 
 from app.core.cards import Card, Deck, Hand
 from app.core.hand_evaluator import HandEvaluator, HandRank
@@ -58,6 +59,8 @@ class Player:
         self.status = PlayerStatus.ACTIVE
         self.current_bet = 0
         self.total_bet = 0
+        self.is_small_blind = False
+        self.is_big_blind = False
     
     def bet(self, amount: int) -> int:
         """
@@ -88,6 +91,8 @@ class Player:
             self.status = PlayerStatus.OUT
         self.current_bet = 0
         self.total_bet = 0
+        self.is_small_blind = False
+        self.is_big_blind = False
     
     def __str__(self) -> str:
         """Return string representation of player."""
@@ -210,12 +215,13 @@ class PokerGame:
         
         # Increment hand number
         self.hand_number += 1
+        logging.info(f"Starting Hand #{self.hand_number}")
             
         # Reset game state
         self.deck.reset()
         self.deck.shuffle()
         self.community_cards = []
-        self.pots = [Pot()]  # Reset to single main pot
+        self.pots = [Pot(name="Main Pot")]  # Reset to single main pot with name
         self.current_round = BettingRound.PREFLOP
         self.current_bet = 0
         self.min_raise = self.big_blind
@@ -227,21 +233,26 @@ class PokerGame:
             
         # Deal two cards to each active player
         active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        if len(active_players) < 2:
+             raise ValueError("Need at least 2 active players to start a hand")
+             
         for _ in range(2):
             for player in active_players:
                 card = self.deck.draw()
                 if card:
                     player.hand.add_card(card)
         
-        # Set positions
+        # Set positions relative to the button for active players
         self._set_positions()
         
         # Start recording hand history
         if self.hand_history_recorder and self.game_id:
+            # Filter players for snapshot to only include active ones for this hand
+            snapshot_players = [p for p in self.players if p.status != PlayerStatus.OUT]
             self.current_hand_id = self.hand_history_recorder.start_hand(
                 game_id=self.game_id,
                 hand_number=self.hand_number,
-                players=self.players,
+                players=snapshot_players, # Pass only active players for snapshot
                 dealer_pos=self.button_position,
                 sb=self.small_blind,
                 bb=self.big_blind,
@@ -253,22 +264,44 @@ class PokerGame:
         if self.ante > 0:
             self._collect_antes()
         
-        # Post blinds
-        self._post_blinds()
+        # Post blinds - this function now returns SB/BB players
+        sb_player, bb_player = self._post_blinds()
         
-        # Set current player - UTG (Under the Gun) - player after big blind
+        # --- FIXED INITIAL PLAYER INDEX LOGIC ---
         if len(active_players) == 2:  # Heads-up
-            self.current_player_idx = self.button_position  # Small blind acts first
+            # Button/SB acts first preflop
+            # Find the index of the SB player in the main self.players list
+            self.current_player_idx = self.players.index(sb_player)
+            logging.info(f"Heads Up: First player to act is SB: {sb_player.name} (index {self.current_player_idx})")
         else:
-            # Find the actual array index of the UTG player (3 positions after button)
-            utg_pos = (self.button_position + 3) % len(active_players)
-            # Find the player with this position
-            for idx, player in enumerate(self.players):
-                if player.status != PlayerStatus.OUT and player.position == utg_pos:
-                    self.current_player_idx = idx
+            # Normal play: UTG acts first (player after BB)
+            # Find the index of the BB player in the main self.players list
+            try:
+                bb_player_main_index = self.players.index(bb_player)
+            except ValueError:
+                 logging.error(f"Could not find BB player {bb_player.name} in main players list!")
+                 # Fallback: Start after the highest index player (likely incorrect but avoids crash)
+                 bb_player_main_index = len(self.players) - 1
+
+            # Find the next *active* player after the BB player in the main list
+            next_idx = (bb_player_main_index + 1) % len(self.players)
+            utg_player_found = False
+            for _ in range(len(self.players)): # Max iterations = number of players
+                player_at_idx = self.players[next_idx]
+                if player_at_idx.status == PlayerStatus.ACTIVE:
+                    self.current_player_idx = next_idx
+                    utg_player_found = True
+                    logging.info(f"First player to act is UTG: {player_at_idx.name} (index {self.current_player_idx})")
                     break
+                next_idx = (next_idx + 1) % len(self.players)
+
+            if not utg_player_found:
+                 logging.error("Could not find an active player to act first (UTG)! Setting to 0.")
+                 # Fallback if no active player found (shouldn't happen if game started)
+                 self.current_player_idx = 0 # Default to first player if something went wrong
+        # --- END FIXED LOGIC ---
         
-        # Initialize all players as eligible for main pot
+        # Initialize all players who contributed to the pot as eligible for main pot
         for player in active_players:
             self.pots[0].eligible_players.add(player.player_id)
             
@@ -283,31 +316,81 @@ class PokerGame:
             position = (i - self.button_position) % len(active_players)
             player.position = position
     
-    def _post_blinds(self):
-        """Post the small and big blinds."""
+    def _post_blinds(self) -> Tuple[Player, Player]:
+        """Post the small and big blinds. Returns the SB and BB player objects."""
         active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        num_active = len(active_players)
         
-        if len(active_players) == 2:  # Heads-up play
-            # In heads-up, button posts SB and opponent posts BB
-            sb_pos = self.button_position
-            bb_pos = (self.button_position + 1) % 2
-        else:
-            # Normal play
-            sb_pos = (self.button_position + 1) % len(active_players)
-            bb_pos = (self.button_position + 2) % len(active_players)
+        if num_active < 2:
+            # Should not happen if start_hand checks correctly, but handle defensively
+            return None, None
         
-        # Small blind
-        sb_player = active_players[sb_pos]
+        sb_player = None
+        bb_player = None
+        
+        if num_active == 2:  # Heads-up play
+            # Button posts SB and opponent posts BB
+            button_idx_in_active = -1
+            for i, p in enumerate(active_players):
+                if p.position == self.button_position:
+                    button_idx_in_active = i
+                    break
+            
+            if button_idx_in_active != -1:
+                sb_player = active_players[button_idx_in_active]
+                bb_player = active_players[(button_idx_in_active + 1) % num_active]
+            else:
+                 logging.error("Could not find button player in active players (Heads Up)")
+                 # Fallback: Assume first is SB, second is BB
+                 sb_player = active_players[0]
+                 bb_player = active_players[1]
+        
+        else: # 3+ players
+            # Find SB (player after button)
+            current_idx = (self.button_position + 1) % len(self.players)
+            for _ in range(len(self.players)):
+                player = self.players[current_idx]
+                if player.status != PlayerStatus.OUT:
+                    sb_player = player
+                    break
+                current_idx = (current_idx + 1) % len(self.players)
+            
+            # Find BB (player after SB)
+            current_idx = (self.players.index(sb_player) + 1) % len(self.players)
+            for _ in range(len(self.players)):
+                 player = self.players[current_idx]
+                 if player.status != PlayerStatus.OUT:
+                      bb_player = player
+                      break
+                 current_idx = (current_idx + 1) % len(self.players)
+        
+        if not sb_player or not bb_player:
+             logging.error("Failed to determine SB or BB players!")
+             # Assign defaults to prevent crashes, though game state will be wrong
+             sb_player = active_players[0]
+             bb_player = active_players[1] if len(active_players) > 1 else active_players[0]
+        
+        # Post Small Blind
         sb_amount = sb_player.bet(self.small_blind)
         self.pots[0].add(sb_amount, sb_player.player_id)
+        sb_player.is_small_blind = True
+        logging.info(f"Player {sb_player.name} posts Small Blind: {sb_amount}")
         
-        # Big blind
-        bb_player = active_players[bb_pos]
+        # Post Big Blind
         bb_amount = bb_player.bet(self.big_blind)
         self.pots[0].add(bb_amount, bb_player.player_id)
+        bb_player.is_big_blind = True
+        logging.info(f"Player {bb_player.name} posts Big Blind: {bb_amount}")
         
         self.current_bet = self.big_blind
-        self.last_aggressor_idx = bb_pos  # Big blind is the last aggressor
+        # Find index of BB player in the main list for last_aggressor_idx
+        try:
+            self.last_aggressor_idx = self.players.index(bb_player)
+        except ValueError:
+             logging.error(f"Could not find BB player {bb_player.name} in main players list for last_aggressor_idx!")
+             self.last_aggressor_idx = 0 # Fallback
+        
+        return sb_player, bb_player
         
     def _collect_antes(self):
         """Collect antes from all active players."""
@@ -775,86 +858,42 @@ class PokerGame:
     
     def _advance_to_next_player(self) -> bool:
         """
-        Advance to the next player in the betting order.
-        
+        Advance to the next player in the betting order using simplified logic.
+
         Returns:
             True if the betting round is complete, False otherwise
         """
-        # Only consider ACTIVE players (not FOLDED or ALL_IN)
-        active_players = [p for p in self.players 
-                         if p.status == PlayerStatus.ACTIVE]
-        
-        # Log the state for debugging
-        active_player_names = [p.name for p in active_players]
-        print(f"Active players: {active_player_names}")
-        to_act_players = [p.name for p in self.players if p.player_id in self.to_act]
-        print(f"Players still to act: {to_act_players}")
-        
-        if not active_players:
-            # No active players (all folded or all-in), end the betting round
-            print("No active players remaining, ending betting round")
-            return self._end_betting_round()
-            
-        # Check if all players have acted - if to_act is empty, betting round is complete
+
+        # Check if betting round is over first
         if not self.to_act:
-            print("All players have acted. Ending betting round.")
+            logging.info("No players left in to_act set. Ending betting round.")
             return self._end_betting_round()
-            
-        # Create a mapping from player indexes to active players
-        active_player_map = {
-            self.players.index(p): p for p in active_players
-        }
-        
-        # We need to find next player based on position, not just array index
-        # First, get the current position (seat number)
-        current_player = self.players[self.current_player_idx]
-        current_position = current_player.position
-        
-        # Get all active players who still need to act, sorted by position
-        players_to_act = []
-        for player in self.players:
+
+        start_idx = self.current_player_idx
+        num_players = len(self.players)
+
+        # Loop to find the next player who needs to act
+        for i in range(1, num_players + 1): # Iterate up to num_players times
+            next_idx = (start_idx + i) % num_players
+            player = self.players[next_idx]
+
+            # Check if this player is active and needs to act
             if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
-                players_to_act.append(player)
-                
-        # No more players to act, end the round
-        if not players_to_act:
+                self.current_player_idx = next_idx
+                logging.info(f"Advanced to next player: {player.name} (index {next_idx})")
+                return False # Betting round continues
+
+        # If we completed the loop and didn't find anyone, but to_act is still populated,
+        # it implies an inconsistent state or that the round should have ended earlier.
+        if self.to_act:
+            logging.warning(f"Looped through all players but 'to_act' is still not empty: {self.to_act}. Ending round to prevent loop.")
+            # Clear to_act to ensure the round ends
+            self.to_act.clear()
             return self._end_betting_round()
-            
-        # Sort players by position (clockwise from current position)
-        player_count = len(self.players)
-        
-        # Function to calculate "distance" clockwise from current position
-        def position_distance(pos):
-            return (pos - current_position) % player_count
-            
-        # Sort by clockwise distance
-        players_to_act.sort(key=lambda p: position_distance(p.position))
-        
-        # If we have players to act, get the next one (clockwise)
-        if players_to_act:
-            # Get next player clockwise (smallest positive distance)
-            next_player = players_to_act[0]
-            
-            # Find this player's index in the main players array
-            for idx, player in enumerate(self.players):
-                if player.player_id == next_player.player_id:
-                    self.current_player_idx = idx
-                    print(f"Next player to act: {player.name} (index {idx})")
-                    break
-        else:
-            # If we've gone through all players and can't find anyone who needs to act,
-            # check if there are still players who need to act
-            if self.to_act:
-                # There are still players who need to act but we couldn't find them
-                # This might be due to inconsistency in the to_act set
-                print("Warning: Found players who need to act, but couldn't locate them")
-                # Clear to_act to avoid infinite loops and end the round
-                self.to_act.clear()
-            
-            print("Completed full circle through players, ending betting round")
-            return self._end_betting_round()
-                
-        return False
+
+        # If to_act became empty during the loop (e.g., last player folded), the round ends.
+        logging.info("Completed loop through players, to_act is empty. Ending betting round.")
+        return self._end_betting_round()
     
     def _end_betting_round(self) -> bool:
         """
