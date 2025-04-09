@@ -225,8 +225,8 @@ class TestCashGameService:
             buy_in=1000
         )
         
-        # Start the game
-        self.game_service.start_game(game_id)
+        # Start the game (use synchronous version for tests)
+        self.game_service.start_game_sync(game_id)
         
         # Verify game is active
         game = self.game_service.get_game(game_id)

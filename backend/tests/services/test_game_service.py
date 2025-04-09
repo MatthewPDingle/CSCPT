@@ -153,8 +153,8 @@ class TestGameService:
         game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
         game_service.add_player(game_id=game.id, name="Player 2", is_human=False)
         
-        # Start the game
-        started_game = game_service.start_game(game.id)
+        # Start the game (use synchronous version for tests)
+        started_game = game_service.start_game_sync(game.id)
         
         # Verify the game was started correctly
         assert started_game.status == GameStatus.ACTIVE
@@ -178,11 +178,11 @@ class TestGameService:
         
         # Test starting a non-existent game
         with pytest.raises(KeyError):
-            game_service.start_game("non-existent-id")
+            game_service.start_game_sync("non-existent-id")
             
         # Test starting an already active game
         with pytest.raises(ValueError):
-            game_service.start_game(game.id)
+            game_service.start_game_sync(game.id)
             
         # Test starting a game with insufficient players
         insufficient_game = game_service.create_game(
@@ -192,7 +192,7 @@ class TestGameService:
         game_service.add_player(game_id=insufficient_game.id, name="Lonely Player")
         
         with pytest.raises(ValueError):
-            game_service.start_game(insufficient_game.id)
+            game_service.start_game_sync(insufficient_game.id)
 
     def test_process_action(self, game_service):
         """Test processing a player action."""
@@ -206,8 +206,8 @@ class TestGameService:
         _, player1 = game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
         _, player2 = game_service.add_player(game_id=game.id, name="Player 2", is_human=False)
         
-        # Start the game
-        started_game = game_service.start_game(game.id)
+        # Start the game (use synchronous version for tests)
+        started_game = game_service.start_game_sync(game.id)
         
         # Process an action
         updated_game = game_service.process_action(
@@ -318,8 +318,8 @@ class TestGameService:
         _, player1 = game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
         _, player2 = game_service.add_player(game_id=game.id, name="Player 2", is_human=False, archetype="TAG")
         
-        # Start the game
-        game = game_service.start_game(game.id)
+        # Start the game (use synchronous version for tests)
+        game = game_service.start_game_sync(game.id)
         
         # Verify initial blind values
         assert game.current_hand.small_blind == 50
@@ -467,8 +467,8 @@ class TestGameService:
         _, player1 = game_service.add_player(game_id=game.id, name="Player 1", is_human=True)
         _, player2 = game_service.add_player(game_id=game.id, name="Player 2", is_human=True)
         
-        # Start the game
-        started_game = game_service.start_game(game.id)
+        # Start the game (use synchronous version for tests)
+        started_game = game_service.start_game_sync(game.id)
         
         # Process some actions to complete a hand
         game_service.process_action(

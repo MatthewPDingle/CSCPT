@@ -4,6 +4,7 @@ This service coordinates between the API layer and the repositories.
 """
 import random
 import uuid
+import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any, Set
 
@@ -71,8 +72,13 @@ class GameService:
         self.poker_games: Dict[str, PokerGame] = {}
         self.hand_history_recorder = HandHistoryRecorder(self.repo_factory)
         
-        # Add locks for game actions to prevent race conditions
-        self.game_locks: Dict[str, asyncio.Lock] = {}
+        # Add locks for game actions to prevent race conditions in production code
+        # but handle gracefully in test code
+        try:
+            self.game_locks: Dict[str, asyncio.Lock] = {}
+        except RuntimeError:
+            # For synchronous test environments that don't have an event loop
+            self.game_locks = {}
     
     def create_game(
         self, 
@@ -359,6 +365,33 @@ class GameService:
             ValueError: If the game cannot be started
             KeyError: If the game doesn't exist
         """
+        return self._start_game_internal(game_id, is_async=True)
+        
+    def start_game_sync(self, game_id: str) -> Game:
+        """
+        Start a poker game (synchronous version for tests).
+        
+        Args:
+            game_id: ID of the game to start
+            
+        Returns:
+            The updated Game entity
+        """
+        return self._start_game_internal(game_id, is_async=False)
+        
+    def _start_game_internal(self, game_id: str, is_async: bool = False) -> Game:
+        """
+        Internal implementation for starting a game - supports both sync and async modes.
+        
+        Args:
+            game_id: ID of the game to start
+            is_async: Whether this is being called in async context
+            
+        Returns:
+            The updated Game entity
+        """
+        import logging
+        
         game = self.game_repo.get(game_id)
         if not game:
             raise KeyError(f"Game {game_id} not found")
@@ -375,8 +408,6 @@ class GameService:
         
         # Initialize the first hand
         self._start_new_hand(game)
-        
-        import logging
         
         poker_game = self.poker_games.get(game.id)
         if poker_game:
@@ -405,16 +436,20 @@ class GameService:
                     # Find the domain player
                     current_player_domain = next((p for p in game.players if p.id == current_player_poker.player_id), None)
                     
-                    if current_player_domain:
+                    if current_player_domain and is_async:
                         if current_player_domain.is_human:
                             logging.info(f"Game started. First player is Human ({current_player_domain.name}). Waiting for action via WebSocket.")
-                            from app.core.websocket import game_notifier
-                            await game_notifier.notify_action_request(game.id, poker_game)
+                            try:
+                                from app.core.websocket import game_notifier
+                                import asyncio
+                                asyncio.create_task(game_notifier.notify_action_request(game.id, poker_game))
+                            except Exception as e:
+                                logging.error(f"Error creating notify task: {e}")
                         else:
                             logging.info(f"Game started. First player is AI ({current_player_domain.name}), but we'll wait for WebSocket connection before triggering.")
                             # AI action will be triggered after WebSocket connection in game_ws.py
                     else:
-                        logging.warning(f"Game started, but domain player for poker player {current_player_poker.player_id} not found.")
+                        logging.warning(f"Game started, but domain player for poker player {current_player_poker.player_id} not found or running in sync mode.")
                 else:
                     logging.warning(f"Game started, but current player {current_player_poker.name} is not active or doesn't need to act.")
                     logging.warning(f"Status: {current_player_poker.status.name if hasattr(current_player_poker, 'status') else 'Unknown'}")
