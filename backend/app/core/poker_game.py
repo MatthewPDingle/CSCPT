@@ -696,7 +696,8 @@ class PokerGame:
         bet_facing = self.current_bet - player.current_bet
         
         logging.info(f"Processing action for {player.name}: {action.name} {amount if amount is not None else ''}")
-        logging.debug(f"State before action: current_bet={self.current_bet}, player_bet={player.current_bet}, to_act={self.to_act}")
+        logging.info(f"State before action: current_bet={self.current_bet}, player_bet={player.current_bet}")
+        logging.info(f"to_act BEFORE action: {self.to_act}")
             
         # Process the action
         if action == PlayerAction.FOLD:
@@ -1021,132 +1022,109 @@ class PokerGame:
         """Advance to the next player who is ACTIVE and needs to act.
         
         This is one of the most critical methods for poker position handling.
-        The method must find the next player to act based on proper poker positions,
-        taking into account the current round (preflop vs postflop) and position relative
-        to the button.
+        This method has been completely rewritten to fix ordering issues.
         """
         # Log current state
         logging.info(f"=== ADVANCING TO NEXT PLAYER ===")
         logging.info(f"Current round: {self.current_round.name}")
         logging.info(f"Button position: {self.button_position}")
+        logging.info(f"Players who need to act: {self.to_act}")
         
-        # Find active players who still need to act
-        active_players = []
-        for player in self.players:
-            if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
-                rel_pos = (player.position - self.button_position) % len(self.players)
-                active_players.append((player, rel_pos))
-                logging.info(f"Active player: {player.name} (seat {player.position}, rel pos {rel_pos})")
-                
-        if not active_players:
+        # Early exit if no players need to act
+        if not self.to_act:
             logging.warning("No active players to act - round might be complete")
             return
             
-        # Get current player and their relative position
-        current_idx = self.current_player_idx
-        current_player = None
-        current_rel_pos = -1
-        if 0 <= current_idx < len(self.players):
-            current_player = self.players[current_idx]
-            current_rel_pos = (current_player.position - self.button_position) % len(self.players)
-            logging.info(f"Current player: {current_player.name} (seat {current_player.position}, rel pos {current_rel_pos})")
+        # Get the player positions in the correct betting order for this round 
+        # (clockwise around the table, starting from UTG preflop or SB postflop)
+        num_players = len(self.players)
         
-        # We need different orderings for preflop vs. postflop
-        preflop_order = None
-        postflop_order = None
+        # Create position map for all players (position to player_id)
+        position_map = {}
+        for player in self.players:
+            position_map[player.position] = player
+            
+        # Determine the reference position where action starts
+        if self.current_round == BettingRound.PREFLOP:
+            # Preflop: UTG is 3 positions after button 
+            start_pos = (self.button_position + 3) % num_players
+            logging.info(f"Preflop action starts at UTG (3 seats after button): position {start_pos}")
+        else:
+            # Postflop: Action starts with SB (1 after button)
+            start_pos = (self.button_position + 1) % num_players
+            logging.info(f"Postflop action starts at SB (1 seat after button): position {start_pos}")
+            
+        # Build the ordered list of positions (clockwise around table, starting from reference position)
+        position_order = []
+        for i in range(num_players):
+            pos = (start_pos + i) % num_players
+            position_order.append(pos)
+            
+        logging.info(f"Position order for this round: {position_order}")
         
-        # Generate the correct order of positions for this number of players
-        num_positions = len(self.players)
-        
-        # Preflop order in full ring game:
-        # UTG(3) → UTG+1(4) → UTG+2(5) → LJ(6) → HJ(7) → CO(8) → BTN(0) → SB(1) → BB(2)
-        # Start from UTG (3 after button) and go clockwise around the table
-        if num_positions >= 9:  # Full ring game
-            preflop_order = [(i % num_positions) for i in range(3, 3 + num_positions)]
-        elif num_positions >= 6:  # 6-max game
-            # With 6 players: UTG(3) → HJ(4) → CO(5) → BTN(0) → SB(1) → BB(2)
-            preflop_order = [(i % num_positions) for i in range(3, 3 + num_positions)]
-        elif num_positions >= 3:  # 3-6 players
-            # With 3-6 players: adjust indexes as needed but still start from UTG
-            preflop_order = [(i % num_positions) for i in range(3, 3 + num_positions)]
-        else:  # Heads-up
-            # In heads-up, SB (button) acts first preflop, then BB
-            preflop_order = [0, 1]  # Button, then other player
-        
-        # Postflop order is always:
-        # SB(1) → BB(2) → UTG(3) → UTG+1(4) → ... → BTN(0)
-        # Start from SB and go clockwise around the table
-        postflop_order = [(i % num_positions) for i in range(1, 1 + num_positions)]
-        
-        logging.info(f"Preflop order: {preflop_order}")
-        logging.info(f"Postflop order: {postflop_order}")
-        
-        # Choose the correct order based on the current round
-        position_order = preflop_order if self.current_round == BettingRound.PREFLOP else postflop_order
-        
-        # Find where we are in the order
+        # Find the current player's position index in the order
         current_order_idx = -1
-        if current_player:
-            # Find current player's index in the order
-            try:
-                current_order_idx = position_order.index(current_rel_pos)
-                logging.info(f"Current player is at position {current_order_idx} in the order")
-            except ValueError:
-                logging.warning(f"Current relative position {current_rel_pos} not found in position order")
-        
-        # Find the next player to act based on the position ordering
+        if 0 <= self.current_player_idx < len(self.players):
+            current_player = self.players[self.current_player_idx]
+            current_pos = current_player.position
+            
+            if current_pos in position_order:
+                current_order_idx = position_order.index(current_pos)
+                logging.info(f"Current player {current_player.name} is at order index {current_order_idx}, position {current_pos}")
+            else:
+                logging.warning(f"Current player position {current_pos} not found in position order")
+                
+        # Build a list of eligible players and their positions who still need to act
+        eligible_positions = []
+        for player in self.players:
+            if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
+                eligible_positions.append(player.position)
+                logging.info(f"Eligible player: {player.name} at position {player.position}")
+                
+        if not eligible_positions:
+            logging.warning("No eligible players found among those who need to act.")
+            return
+            
+        # Find the next eligible player in position order
         next_player = None
-        next_rel_pos = None
+        next_position = None
         
-        # First try to find someone after the current player
+        # First check positions after current player
         if current_order_idx >= 0:
-            for order_idx in range(current_order_idx + 1, len(position_order)):
-                rel_pos = position_order[order_idx]
-                for player, player_rel_pos in active_players:
-                    if player_rel_pos == rel_pos:
-                        next_player = player
-                        next_rel_pos = rel_pos
-                        logging.info(f"Found next player at position {order_idx} in the order")
-                        break
-                if next_player:
+            for pos_idx in range(current_order_idx + 1, len(position_order)):
+                pos = position_order[pos_idx]
+                if pos in eligible_positions and pos in position_map:
+                    next_position = pos
+                    next_player = position_map[pos]
+                    logging.info(f"Found next player {next_player.name} at position {next_position} (order index {pos_idx})")
                     break
-        
-        # If not found, wrap around to the beginning
+                else:
+                    logging.info(f"Position {pos} (order idx {pos_idx}) not eligible or not in position map")
+                    
+        # If not found, wrap around to beginning 
         if not next_player:
-            for order_idx in range(len(position_order)):
-                if order_idx == current_order_idx:
+            for pos_idx in range(len(position_order)):
+                if pos_idx == current_order_idx:
                     continue  # Skip current player
-                rel_pos = position_order[order_idx]
-                for player, player_rel_pos in active_players:
-                    if player_rel_pos == rel_pos:
-                        next_player = player
-                        next_rel_pos = rel_pos
-                        logging.info(f"Found next player (wrap-around) at position {order_idx} in the order")
-                        break
-                if next_player:
+                    
+                pos = position_order[pos_idx]
+                if pos in eligible_positions and pos in position_map:
+                    next_position = pos
+                    next_player = position_map[pos]
+                    logging.info(f"Found next player {next_player.name} at position {next_position} (wrapped, order index {pos_idx})")
                     break
-        
-        # If we found a next player, set it
+                else:
+                    logging.info(f"Position {pos} (wrap order idx {pos_idx}) not eligible or not in position map")
+                    
+        # Update current player index if we found a next player
         if next_player:
             self.current_player_idx = self.players.index(next_player)
-            
-            # Get position name for logging
-            pos_name = self._get_position_name(next_rel_pos)
-            
-            logging.info(f"Next player is {next_player.name} [{pos_name}] (seat {next_player.position}, index {self.current_player_idx})")
-            return
-        
-        # Final fallback - scan through all players
-        logging.warning("Could not find next player with position-based ordering. Using fallback.")
-        for player, rel_pos in sorted(active_players, key=lambda p: p[1]):
-            next_player = player
+            rel_pos = (next_position - self.button_position) % num_players
             pos_name = self._get_position_name(rel_pos)
-            logging.info(f"Fallback: Next player is {next_player.name} [{pos_name}]")
-            self.current_player_idx = self.players.index(next_player)
-            return
-            
-        logging.warning(f"Advance to next player completed loop, but 'to_act' was {self.to_act}. This might indicate an issue.")
-        # Do not automatically end the round here; let _check_betting_round_completion handle it.
+            logging.info(f"Next player is {next_player.name} [{pos_name}] (position {next_position}, index {self.current_player_idx})")
+        else:
+            logging.warning(f"Could not find any eligible player to act next. This might indicate an issue.")
+            # We don't modify current_player_idx here, letting _check_betting_round_completion handle it
         
     def _get_position_name(self, rel_pos: int) -> str:
         """Get the poker position name for a relative position."""
