@@ -342,7 +342,7 @@ class GameService:
             chips=buy_in
         )
         
-    def start_game(self, game_id: str) -> Game:
+    async def start_game(self, game_id: str) -> Game:
         """
         Start a poker game.
         
@@ -373,39 +373,81 @@ class GameService:
         # Initialize the first hand
         self._start_new_hand(game)
         
-        # --- BEGIN FIXED CODE ---
         # Check if the first player to act is an AI and trigger their turn
         import logging
         import asyncio
         
         poker_game = self.poker_games.get(game.id)
-        if poker_game and hasattr(poker_game, 'players') and hasattr(poker_game, 'current_player_idx'):
-            # Access the current player directly using the index
+        if poker_game:
+            logging.info(f"Game {game_id} started. Adding detailed logging for player positions.")
+            
+            # Log the current state of the game
+            active_players = [p for p in poker_game.players if p.status != PokerPlayerStatus.OUT]
+            logging.info(f"Button position: {poker_game.button_position}")
+            logging.info(f"Current player index: {poker_game.current_player_idx}")
+            logging.info(f"Active players: {len(active_players)}")
+            logging.info(f"Players who need to act: {poker_game.to_act}")
+            
+            # Check if the current player index is valid
             if 0 <= poker_game.current_player_idx < len(poker_game.players):
                 current_player_poker = poker_game.players[poker_game.current_player_idx]
-                # Ensure player is active before proceeding
-                if hasattr(current_player_poker, 'status') and current_player_poker.status == PokerPlayerStatus.ACTIVE:
-                    # Find the domain player that matches this poker player
+                
+                # Log the current player's info
+                logging.info(f"First player to act: {current_player_poker.name} (index {poker_game.current_player_idx})")
+                logging.info(f"Player status: {current_player_poker.status.name if hasattr(current_player_poker, 'status') else 'Unknown'}")
+                logging.info(f"Is in to_act set: {current_player_poker.player_id in poker_game.to_act}")
+                
+                # Ensure player is active and needs to act before proceeding
+                if (current_player_poker.status == PokerPlayerStatus.ACTIVE and 
+                    current_player_poker.player_id in poker_game.to_act):
+                    
+                    # Find the domain player
                     current_player_domain = next((p for p in game.players if p.id == current_player_poker.player_id), None)
                     
                     if current_player_domain:
                         if not current_player_domain.is_human:
                             logging.info(f"Game started. First player is AI ({current_player_domain.name}). Triggering initial AI action.")
+                            # Wait a moment to ensure everything is set up before triggering AI
+                            await asyncio.sleep(0.5)  
                             # Use asyncio.create_task to run the AI action concurrently
                             asyncio.create_task(self._request_and_process_ai_action(game.id, current_player_domain.id))
                         else:
                             logging.info(f"Game started. First player is Human ({current_player_domain.name}). Waiting for action via WebSocket.")
+                            from app.core.websocket import game_notifier
+                            await game_notifier.notify_action_request(game.id, poker_game)
                     else:
                         logging.warning(f"Game started, but domain player for poker player {current_player_poker.player_id} not found.")
                 else:
-                    # Log the actual status for debugging
-                    actual_status = getattr(current_player_poker, 'status', 'Unknown')
-                    logging.warning(f"Game started, but current player index {poker_game.current_player_idx} points to inactive player (status: {actual_status}). Expected status: {PokerPlayerStatus.ACTIVE.name}")
+                    logging.warning(f"Game started, but current player {current_player_poker.name} is not active or doesn't need to act.")
+                    logging.warning(f"Status: {current_player_poker.status.name if hasattr(current_player_poker, 'status') else 'Unknown'}")
+                    logging.warning(f"In to_act: {current_player_poker.player_id in poker_game.to_act}")
+                    
+                    # Try to find the first active player who needs to act
+                    for idx, player in enumerate(poker_game.players):
+                        if player.status == PokerPlayerStatus.ACTIVE and player.player_id in poker_game.to_act:
+                            logging.info(f"Found alternative first player to act: {player.name} (index {idx})")
+                            poker_game.current_player_idx = idx
+                            
+                            # Find domain player
+                            domain_player = next((p for p in game.players if p.id == player.player_id), None)
+                            if domain_player:
+                                if not domain_player.is_human:
+                                    logging.info(f"Triggering AI action for alternate first player: {domain_player.name}")
+                                    await asyncio.sleep(0.5)
+                                    asyncio.create_task(self._request_and_process_ai_action(game.id, domain_player.id))
+                                else:
+                                    logging.info(f"Requesting action from human alternate first player: {domain_player.name}")
+                                    from app.core.websocket import game_notifier
+                                    await game_notifier.notify_action_request(game.id, poker_game)
+                            break
             else:
-                logging.warning(f"Game started, but current player index {poker_game.current_player_idx} is out of bounds. Players: {len(poker_game.players)}")
+                logging.error(f"Game started, but current player index {poker_game.current_player_idx} is out of bounds. Players: {len(poker_game.players)}")
+                # Try to recover by setting to a valid index
+                if len(poker_game.players) > 0:
+                    poker_game.current_player_idx = 0
+                    logging.info(f"Reset current_player_idx to 0 as a fallback.")
         else:
-            logging.warning("Game started, but poker game object is missing required attributes.")
-        # --- END FIXED CODE ---
+            logging.error(f"Game started, but poker game instance for game {game_id} not found.")
 
         # Update the game
         self.game_repo.update(game)
@@ -1027,8 +1069,8 @@ class GameService:
             None
         """
         import logging
-        logging.info(f"=== AI ACTION CHAIN: START for player {player_id} in game {game_id} ===")
-        logging.info(f"This is a critical method that should handle the chain of AI actions")
+        logging.info(f"--- Starting AI Action for Player {player_id} in Game {game_id} ---")
+        
         call_stack = []
         import traceback
         for frame in traceback.extract_stack():
@@ -1038,82 +1080,69 @@ class GameService:
             logging.info(f"AI action chain depth: {len(call_stack)} - This is a recursive call")
         else:
             logging.info("AI action chain depth: 1 - This is the first call in the chain")
+            
         # Import AI modules (using the global flag from config)
-        import logging
+        import asyncio
         from app.core.config import MEMORY_SYSTEM_AVAILABLE
-        
-        # Log the current memory system availability
-        logging.info(f"Checking MEMORY_SYSTEM_AVAILABLE inside _request_and_process_ai_action: {MEMORY_SYSTEM_AVAILABLE}")
-        
-        if MEMORY_SYSTEM_AVAILABLE:
-            try:
-                # Import necessary agent classes directly
-                from ai.agents.response_parser import AgentResponseParser
-                from ai.agents.tag_agent import TAGAgent
-                from ai.agents.lag_agent import LAGAgent
-                from ai.agents.tight_passive_agent import TightPassiveAgent
-                from ai.agents.calling_station_agent import CallingStationAgent
-                from ai.agents.loose_passive_agent import LoosePassiveAgent
-                from ai.agents.maniac_agent import ManiacAgent
-                from ai.agents.beginner_agent import BeginnerAgent
-                from ai.agents.adaptable_agent import AdaptableAgent
-                from ai.agents.gto_agent import GTOAgent
-                from ai.agents.short_stack_agent import ShortStackAgent
-                from ai.agents.trappy_agent import TrappyAgent
-                from ai.llm_service import LLMService
-                from ai.memory_integration import MemoryIntegration
-                
-                # Log success
-                logging.info("Successfully imported all required AI modules in game_service.py")
-            except ImportError as import_err:
-                MEMORY_SYSTEM_AVAILABLE = False
-                logging.error(f"AI module import failed in game_service.py: {import_err}")
-                import traceback
-                logging.error(traceback.format_exc())
-                logging.warning("AI memory system not available. AI decision will default to fold.")
-        
-        # Import for utility function
-        from app.core.utils import game_to_model
         
         # Retrieve the game and poker game
         game = self.game_repo.get(game_id)
         if not game:
+            logging.error(f"AI Action Aborted: Game {game_id} not found.")
             return
             
         poker_game = self.poker_games.get(game_id)
         if not poker_game:
+            logging.error(f"AI Action Aborted: PokerGame instance for {game_id} not found.")
             return
         
         # Find the player in the domain model
         domain_player = next((p for p in game.players if p.id == player_id), None)
         if not domain_player:
+            logging.error(f"AI Action Aborted: Domain player {player_id} not found.")
             return
             
         # Verify this is an AI player
         if domain_player.is_human:
+            logging.warning(f"AI Action Aborted: Player {player_id} is human.")
             return
             
         # Find the player in the poker game
         poker_player = next((p for p in poker_game.players if p.player_id == player_id), None)
         if not poker_player:
+            logging.error(f"AI Action Aborted: Poker player {player_id} not found.")
             return
+        
+        # *** CRITICAL CHECK: Verify it's actually this player's turn ***
+        active_poker_players = [p for p in poker_game.players if p.status == PokerPlayerStatus.ACTIVE]
+        if not active_poker_players or poker_game.current_player_idx >= len(poker_game.players) or poker_game.players[poker_game.current_player_idx].player_id != player_id:
+            current_turn_player_id = "None"
+            if poker_game.current_player_idx < len(poker_game.players):
+                current_turn_player_id = poker_game.players[poker_game.current_player_idx].player_id
+            logging.error(f"AI Action Aborted: It's not player {player_id}'s turn. Current turn is index {poker_game.current_player_idx} (Player ID: {current_turn_player_id})")
+            return
+        # *** END CRITICAL CHECK ***
+        
+        logging.info(f"AI Action: Player {domain_player.name} ({player_id}), Archetype: {domain_player.archetype or 'Default'}")
+        logging.debug(f"AI Action: Current Round: {poker_game.current_round.name}, Current Bet: {poker_game.current_bet}, To Act: {poker_game.to_act}")
         
         # Get archetype and intelligence level (with defaults)
         archetype = domain_player.archetype or "TAG"  # Default to TAG if not specified
         intelligence_level = "expert"  # Default intelligence level
         
         # Prepare game state for AI consumption (using utility function)
+        from app.core.utils import game_to_model
         game_state = game_to_model(game_id, poker_game)
         
         # Create context with additional information
         context = {
-            "game_type": "tournament" if game.type == "tournament" else "cash",
+            "game_type": "tournament" if game.type == GameType.TOURNAMENT else "cash",
             "blinds": [game_state.small_blind, game_state.big_blind],
             "ante": game_state.ante
         }
         
         # Add tournament-specific context if applicable
-        if game.type == "tournament" and game.tournament_info:
+        if game.type == GameType.TOURNAMENT and game.tournament_info:
             context["stage"] = game.tournament_info.stage.value
             context["level"] = game.tournament_info.current_level
             context["players_remaining"] = game.tournament_info.players_remaining
@@ -1128,93 +1157,78 @@ class GameService:
                 player_model["cards"] = None
         
         try:
-            # Default action in case of error
-            action_type = "FOLD"
+            action_type = "FOLD" # Default action
             action_amount = None
-            
+
             if MEMORY_SYSTEM_AVAILABLE:
+                logging.info(f"AI Action: Requesting decision from MemoryIntegration for {archetype}")
                 try:
-                    # Create an instance of LLMService
-                    llm_service = LLMService()
-                    
-                    # Map archetype string to agent class
-                    agent_class_map = {
-                        'TAG': TAGAgent, 
-                        'LAG': LAGAgent, 
-                        'TightPassive': TightPassiveAgent,
-                        'CallingStation': CallingStationAgent, 
-                        'LoosePassive': LoosePassiveAgent,
-                        'Maniac': ManiacAgent, 
-                        'Beginner': BeginnerAgent, 
-                        'Adaptable': AdaptableAgent,
-                        'GTO': GTOAgent, 
-                        'ShortStack': ShortStackAgent, 
-                        'Trappy': TrappyAgent
-                    }
-                    
-                    # Get the appropriate agent class
-                    AgentClass = agent_class_map.get(archetype, TAGAgent)  # Default to TAG
-                    
-                    logging.info(f"Creating agent of type: {AgentClass.__name__} for player {player_id}")
-                    
-                    # Instantiate the agent
-                    agent = AgentClass(
-                        llm_service=llm_service, 
-                        intelligence_level=intelligence_level,
-                        use_persistent_memory=True
+                    # Import necessary modules
+                    from ai.memory_integration import MemoryIntegration
+                    from ai.agents.response_parser import AgentResponseParser
+
+                    # Request decision from AI
+                    ai_decision = await MemoryIntegration.get_agent_decision(
+                        archetype=archetype,
+                        game_state=game_state_dict,
+                        context=context,
+                        player_id=player_id,
+                        use_memory=True,
+                        intelligence_level=intelligence_level
                     )
-                    
-                    # Get decision directly from the agent
-                    ai_decision = await agent.make_decision(game_state_dict, context)
-                    
+                    logging.info(f"AI Action: Received decision: {ai_decision}")
+
                     # Parse and validate the response
                     action, amount, metadata = AgentResponseParser.parse_response(ai_decision)
-                    
+
                     # Apply game rules to ensure the action is valid
+                    # **Important:** Use game_state_dict which has filtered cards
                     action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state_dict)
-                    
+
                     # Map AI response to poker game actions
                     action_map = {
-                        "fold": "FOLD",
-                        "check": "CHECK",
-                        "call": "CALL",
-                        "bet": "BET",
-                        "raise": "RAISE",
-                        "all-in": "ALL_IN"
+                        "fold": "FOLD", "check": "CHECK", "call": "CALL",
+                        "bet": "BET", "raise": "RAISE", "all-in": "ALL_IN"
                     }
-                    
-                    action_type = action_map.get(action, "FOLD")
+                    action_type = action_map.get(action, "FOLD") # Default to FOLD if unknown
                     action_amount = amount
-                    
-                    # Log the decision
-                    logging.info(f"AI agent decision: {action_type} with amount {action_amount}")
+
+                    logging.info(f"AI Action: Parsed and validated decision: {action_type} {action_amount if action_amount is not None else ''}")
                     
                 except Exception as ai_error:
                     logging.error(f"Error in AI decision making process: {ai_error}")
                     logging.error(traceback.format_exc())
-                    action_type = "FOLD"
-                    action_amount = None
-                
+                    # Keep default action as FOLD
+            else:
+                 logging.warning("AI Action: Memory system not available, defaulting to FOLD.")
+            
             # Convert the action type string to the poker game action enum
             from app.core.poker_game import PlayerAction as PokerPlayerAction
-            poker_action = getattr(PokerPlayerAction, action_type)
+            try:
+                poker_action = getattr(PokerPlayerAction, action_type)
+            except AttributeError:
+                logging.error(f"Invalid action type '{action_type}' received from AI or mapping. Defaulting to FOLD.")
+                poker_action = PokerPlayerAction.FOLD
+                action_amount = None
             
             # Process the action in the poker game
+            logging.info(f"AI Action: Processing {poker_action.name} {action_amount if action_amount is not None else ''} in PokerGame")
             success = poker_game.process_action(poker_player, poker_action, action_amount)
+            logging.info(f"AI Action: PokerGame process_action result: {success}")
             
             if success:
                 # Update domain player
                 domain_player.has_acted = True
                 
                 # Create action history record for the AI action
-                from app.models.domain_models import PlayerAction, ActionHistory
+                from app.models.domain_models import PlayerAction as DomainPlayerAction, ActionHistory
                 action_history = ActionHistory(
                     game_id=game_id,
                     hand_id=game.current_hand.id if game.current_hand else "",
                     player_id=player_id,
-                    action=getattr(PlayerAction, action_type),
+                    action=getattr(DomainPlayerAction, action_type),
                     amount=action_amount,
-                    round=game.current_hand.current_round if game.current_hand else "preflop"
+                    round=game.current_hand.current_round if game.current_hand else BettingRound.PREFLOP
                 )
                 
                 # Save the action
@@ -1239,208 +1253,95 @@ class GameService:
                 # Check if hand is complete and handle accordingly
                 from app.core.poker_game import BettingRound
                 if poker_game.current_round == BettingRound.SHOWDOWN:
+                    logging.info("AI Action: Hand ended, handling showdown.")
                     # Record end of hand in domain model
                     if game.current_hand:
                         game.current_hand.ended_at = datetime.now()
-                        
                         # Add to hand history
                         game.hand_history.append(game.current_hand)
-                        
                         # Update hand history IDs list if we have a hand history ID
                         if poker_game.current_hand_id:
-                            game.hand_history_ids.append(poker_game.current_hand_id)
-                    
+                             game.hand_history_ids.append(poker_game.current_hand_id)
+
                     # Notify about hand result
                     await game_notifier.notify_hand_result(game_id, poker_game)
-                    
+
                     # Start a new hand
+                    logging.info("AI Action: Starting new hand.")
                     self._start_new_hand(game)
-                    
+
                     # Update game in repository again after starting new hand
                     self.game_repo.update(game)
+
+                    # --- ADDED: Trigger first AI action of new hand ---
+                    new_poker_game = self.poker_games.get(game.id)
+                    if new_poker_game and new_poker_game.current_player_idx < len(new_poker_game.players):
+                         first_player_poker = new_poker_game.players[new_poker_game.current_player_idx]
+                         first_player_domain = next((p for p in game.players if p.id == first_player_poker.player_id), None)
+                         if first_player_domain and not first_player_domain.is_human:
+                              logging.info(f"AI Action: Triggering first AI action of new hand for {first_player_domain.name}")
+                              asyncio.create_task(self._request_and_process_ai_action(game.id, first_player_domain.id))
                 else:
-                    # Get the next player - we need to find the ACTUAL next player
-                    # who needs to act, not just use the current_player_idx
+                    # Hand continues, check next player
+                    logging.info("AI Action: Hand continues, checking next player.")
                     from app.core.poker_game import PlayerStatus
-                    import logging
-                    
-                    # Log current state for debugging
-                    logging.info(f"After AI action, finding next player. Current index: {poker_game.current_player_idx}")
-                    
-                    # Get active players and players who still need to act
-                    active_players = [p for p in poker_game.players 
-                                     if p.status == PlayerStatus.ACTIVE]
-                    to_act_players = [p for p in active_players 
-                                     if p.player_id in poker_game.to_act]
-                    
-                    logging.info(f"Active players: {len(active_players)}, Players to act: {len(to_act_players)}")
-                    
-                    # The current_player_idx should already be updated to the next player by process_action
-                    # We just need to get that player
+
+                    # Get the next player - use the index already updated by process_action
                     if poker_game.current_player_idx < len(poker_game.players):
                         next_player = poker_game.players[poker_game.current_player_idx]
                         next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
-                        
-                        logging.info(f"Next player is {next_player.name} (index {poker_game.current_player_idx})")
-                        logging.info(f"Next player status: {next_player.status}, in to_act: {next_player.player_id in poker_game.to_act}")
-                        
+
+                        logging.info(f"AI Action: Next player determined: {next_player.name} (index {poker_game.current_player_idx})")
+                        logging.debug(f"AI Action: Next player status: {next_player.status}, in to_act: {next_player.player_id in poker_game.to_act}")
+
                         # Verify this player is active and needs to act
-                        if (next_player.status == PlayerStatus.ACTIVE and 
+                        if (next_player.status == PlayerStatus.ACTIVE and
                             next_player.player_id in poker_game.to_act and
                             next_player_domain):
-                            
+
                             if not next_player_domain.is_human:
-                                # If next player is also AI, add a delay and trigger their action asynchronously
-                                logging.info(f"Waiting 1 second before triggering AI action for next player: {next_player.name}")
-                                import asyncio
-                                # Add a 1-second delay between consecutive AI actions
-                                await asyncio.sleep(1)
+                                logging.info(f"AI Action: Next player is AI ({next_player.name}). Triggering action after 1.5s delay.")
+                                await asyncio.sleep(1.5) # Slightly longer delay
                                 asyncio.create_task(self._request_and_process_ai_action(
                                     game_id, next_player.player_id
                                 ))
                             else:
-                                # If next player is human, notify them it's their turn
-                                logging.info(f"Requesting action from human player: {next_player.name}")
+                                logging.info(f"AI Action: Next player is Human ({next_player.name}). Sending action request.")
                                 await game_notifier.notify_action_request(game_id, poker_game)
                         else:
-                            # If the next player can't act (not active or already acted),
-                            # check if we need to end the round or continue to another player
-                            if poker_game.to_act:
-                                # There are still players who need to act, but process_action
-                                # might not have found the next one correctly
-                                logging.warning(f"Next player {next_player.name} cannot act, but to_act is not empty")
-                                
-                                # Find the first player who still needs to act
-                                next_active_player = next((p for p in poker_game.players 
-                                                          if p.player_id in poker_game.to_act and 
-                                                          p.status == PlayerStatus.ACTIVE), None)
-                                                          
-                                if next_active_player:
-                                    # Update current_player_idx to point to this player
-                                    poker_game.current_player_idx = poker_game.players.index(next_active_player)
-                                    next_player_domain = next((p for p in game.players 
-                                                              if p.id == next_active_player.player_id), None)
-                                    
-                                    if next_player_domain and not next_player_domain.is_human:
-                                        # If next player is AI, add a delay and trigger their action
-                                        logging.info(f"Waiting 1 second before triggering AI action for alternate next player: {next_active_player.name}")
-                                        import asyncio
-                                        # Add a 1-second delay between consecutive AI actions
-                                        await asyncio.sleep(1)
-                                        asyncio.create_task(self._request_and_process_ai_action(
-                                            game_id, next_active_player.player_id
-                                        ))
-                                    else:
-                                        # If next player is human, notify them
-                                        logging.info(f"Requesting action from alternate human player: {next_active_player.name}")
-                                        await game_notifier.notify_action_request(game_id, poker_game)
-                            else:
-                                # If to_act is empty, we should already be moving to the next round
-                                # Let the game state update handle this 
-                                logging.info("No more players need to act in this round")
+                             logging.warning(f"AI Action: Determined next player {next_player.name} cannot act (Status: {next_player.status}, Needs to act: {next_player.player_id in poker_game.to_act}). Checking if round ended or another player needs to act.")
                     else:
-                        # This shouldn't happen, but handle it safely
-                        logging.error(f"Invalid current_player_idx: {poker_game.current_player_idx}, players: {len(poker_game.players)}")
-                        # Reset to a valid index
-                        poker_game.current_player_idx = 0
-        
+                        logging.error(f"AI Action: Invalid current_player_idx after action: {poker_game.current_player_idx}")
+                        
+            else: # process_action failed
+                logging.error(f"AI Action Failed: PokerGame.process_action returned False for player {player_id} action {poker_action.name}")
+            
         except Exception as e:
-            # Log the error
-            import logging
-            logging.error(f"Error processing AI action: {str(e)}")
-            
+            logging.error(f"AI Action Error: Exception during processing for player {player_id}: {str(e)}")
+            import traceback
+            logging.error(traceback.format_exc())
+
             # Default to fold on error
-            from app.core.poker_game import PlayerAction
-            poker_action = PlayerAction.FOLD
-            
-            # Process the fold action
-            poker_game.process_action(poker_player, poker_action, None)
-            
-            # Notify clients
-            from app.core.websocket import game_notifier
-            await game_notifier.notify_player_action(game_id, player_id, "FOLD", None)
-            await game_notifier.notify_game_update(game_id, poker_game)
-            
-            # Continue game flow for next player - use similar approach as the success path
-            from app.core.poker_game import PlayerStatus
-            import logging
-            
-            # Log current state for debugging
-            logging.info(f"After AI action error, finding next player. Current index: {poker_game.current_player_idx}")
-            
-            # Get active players and players who still need to act
-            active_players = [p for p in poker_game.players if p.status == PlayerStatus.ACTIVE]
-            to_act_players = [p for p in active_players if p.player_id in poker_game.to_act]
-            
-            logging.info(f"Active players after error: {len(active_players)}, Players to act: {len(to_act_players)}")
-            
-            # The current_player_idx should already be updated to the next player by process_action
-            if poker_game.current_player_idx < len(poker_game.players):
-                next_player = poker_game.players[poker_game.current_player_idx]
-                next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
-                
-                logging.info(f"Next player after error is {next_player.name} (index {poker_game.current_player_idx})")
-                
-                # Verify this player is active and needs to act
-                if (next_player.status == PlayerStatus.ACTIVE and 
-                    next_player.player_id in poker_game.to_act and
-                    next_player_domain):
-                    
-                    if not next_player_domain.is_human:
-                        # If next player is also AI, add a delay and trigger their action asynchronously
-                        logging.info(f"Waiting 1 second before triggering AI action for next player after error: {next_player.name}")
-                        import asyncio
-                        # Add a 1-second delay between consecutive AI actions
-                        await asyncio.sleep(1)
-                        asyncio.create_task(self._request_and_process_ai_action(
-                            game_id, next_player.player_id
-                        ))
-                    else:
-                        # If next player is human, notify them it's their turn
-                        logging.info(f"Requesting action from human player after error: {next_player.name}")
-                        await game_notifier.notify_action_request(game_id, poker_game)
+            from app.core.poker_game import PlayerAction as PokerPlayerAction
+            poker_action = PokerPlayerAction.FOLD
+            try:
+                # Ensure poker_player is valid before processing fold
+                if poker_player and poker_game:
+                    logging.warning(f"AI Action Error: Forcing FOLD for player {player_id}")
+                    poker_game.process_action(poker_player, poker_action, None)
+
+                    # Notify clients
+                    from app.core.websocket import game_notifier
+                    await game_notifier.notify_player_action(game_id, player_id, "FOLD", None)
+                    await game_notifier.notify_game_update(game_id, poker_game)
+
                 else:
-                    # If the next player can't act, find the first one who can
-                    if poker_game.to_act:
-                        next_active_player = next((p for p in poker_game.players 
-                                                  if p.player_id in poker_game.to_act and 
-                                                  p.status == PlayerStatus.ACTIVE), None)
-                                                  
-                        if next_active_player:
-                            # Update current_player_idx to point to this player
-                            poker_game.current_player_idx = poker_game.players.index(next_active_player)
-                            next_player_domain = next((p for p in game.players 
-                                                      if p.id == next_active_player.player_id), None)
-                            
-                            if next_player_domain and not next_player_domain.is_human:
-                                # If next player is AI, add a delay and trigger their action
-                                logging.info(f"Waiting 1 second before triggering AI action for alternate next player after error: {next_active_player.name}")
-                                import asyncio
-                                # Add a 1-second delay between consecutive AI actions
-                                await asyncio.sleep(1)
-                                asyncio.create_task(self._request_and_process_ai_action(
-                                    game_id, next_active_player.player_id
-                                ))
-                            else:
-                                # If next player is human, notify them
-                                logging.info(f"Requesting action from alternate human player after error: {next_active_player.name}")
-                                await game_notifier.notify_action_request(game_id, poker_game)
-            else:
-                # Invalid index - reset to a safer value
-                logging.error(f"Invalid current_player_idx after error: {poker_game.current_player_idx}")
-                poker_game.current_player_idx = 0
-                
-        # Log the end of the AI action chain
-        logging.info(f"=== AI ACTION CHAIN: END for player {player_id} in game {game_id} ===")
-        logging.info(f"Player status after action: {poker_player.status.name if hasattr(poker_player, 'status') else 'Unknown'}")
-        logging.info(f"Game round after action: {poker_game.current_round.name if hasattr(poker_game, 'current_round') else 'Unknown'}")
-        logging.info(f"Next player index: {poker_game.current_player_idx}")
-        if poker_game.to_act:
-            to_act_names = [
-                next((p.name for p in poker_game.players if p.player_id == pid), "Unknown")
-                for pid in poker_game.to_act
-            ]
-            logging.info(f"Players still to act: {to_act_names}")
+                    logging.error(f"AI Action Error: Cannot process fold because poker_player or poker_game is invalid.")
+
+            except Exception as fold_error:
+                logging.error(f"AI Action Error: Failed to process FOLD action after error: {fold_error}")
+
+        logging.info(f"--- Finished AI Action for Player {player_id} ---")
     def cash_out_player(self, game_id: str, player_id: str) -> int:
         """
         Remove a player from a cash game and return their chip count.

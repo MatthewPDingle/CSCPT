@@ -623,6 +623,9 @@ class PokerGame:
         # Record the pot size before the action
         pot_before = self.pot
         bet_facing = self.current_bet - player.current_bet
+        
+        logging.info(f"Processing action for {player.name}: {action.name} {amount if amount is not None else ''}")
+        logging.debug(f"State before action: current_bet={self.current_bet}, player_bet={player.current_bet}, to_act={self.to_act}")
             
         # Process the action
         if action == PlayerAction.FOLD:
@@ -630,6 +633,7 @@ class PokerGame:
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
+                logging.debug(f"Removed {player.name} from 'to_act'. Remaining: {self.to_act}")
             
             # Check if only one active player remains
             active_count = sum(1 for p in self.players if p.status == PlayerStatus.ACTIVE)
@@ -658,6 +662,7 @@ class PokerGame:
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
+                logging.debug(f"Removed {player.name} from 'to_act'. Remaining: {self.to_act}")
                 
         elif action == PlayerAction.CALL:
             # Calculate call amount
@@ -680,6 +685,7 @@ class PokerGame:
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
+                logging.debug(f"Removed {player.name} from 'to_act'. Remaining: {self.to_act}")
                 
         elif action == PlayerAction.BET:
             # Verify no previous bet this round
@@ -705,6 +711,7 @@ class PokerGame:
             # Reset to_act - everyone except bettor needs to act
             self.to_act = {p.player_id for p in self.players 
                           if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+            logging.debug(f"Reset 'to_act' after bet: {self.to_act}")
             
         elif action == PlayerAction.RAISE:
             # Verify there is a bet to raise
@@ -742,6 +749,7 @@ class PokerGame:
             # Reset to_act - everyone except raiser needs to act
             self.to_act = {p.player_id for p in self.players 
                           if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+            logging.debug(f"Reset 'to_act' after raise: {self.to_act}")
             
         elif action == PlayerAction.ALL_IN:
             # Go all-in
@@ -760,10 +768,12 @@ class PokerGame:
                 # Reset to_act - everyone except all-in player needs to act
                 self.to_act = {p.player_id for p in self.players 
                              if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+                logging.debug(f"Reset 'to_act' after all-in raise: {self.to_act}")
             else:
                 # Remove player from to_act set if not raising
                 if player.player_id in self.to_act:
                     self.to_act.remove(player.player_id)
+                    logging.debug(f"Removed {player.name} from 'to_act' after all-in. Remaining: {self.to_act}")
             
             self.pots[0].add(actual_bet, player.player_id)
             
@@ -851,49 +861,72 @@ class PokerGame:
                         self.hand_history_recorder.record_pot_results(self.pots, hand_evaluations)
                     
                     return True
+        
+        # Advance to next player *before* checking round end? NO, check round end first based on current state.
+        round_over = self._check_betting_round_completion()
+        logging.info(f"Betting round completion check result: {round_over}")
+
+        if round_over:
+            if not self._end_betting_round(): # end_betting_round returns True if hand is over
+                # Betting round ended, but hand continues. Next player already set in _reset_betting_round.
+                logging.info(f"Betting round ended. New round: {self.current_round.name}. Next player: {self.players[self.current_player_idx].name} (idx {self.current_player_idx})")
+            else:
+                # Hand ended.
+                logging.info("Hand ended after this action.")
+        else:
+            self._advance_to_next_player() # Find the next player if the round isn't over
+            logging.info(f"Betting round continues. Next player: {self.players[self.current_player_idx].name} (idx {self.current_player_idx})")
                     
-        # Move to the next player and return True since the action was processed successfully
-        self._advance_to_next_player()
         return True
     
-    def _advance_to_next_player(self) -> bool:
-        """
-        Advance to the next player in the betting order using simplified logic.
+    def _check_betting_round_completion(self) -> bool:
+        """Checks if the current betting round is complete."""
+        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+        if not active_players:
+            logging.warning("Checking round completion: No active players left.")
+            return True # Round is trivially over
 
-        Returns:
-            True if the betting round is complete, False otherwise
-        """
+        # Condition 1: Only one active player left who isn't all-in.
+        if len(active_players) <= 1:
+            logging.info("Checking round completion: Only <= 1 active player left.")
+            return True
 
-        # Check if betting round is over first
+        # Condition 2: All active players have acted at least once *in this round*,
+        #              AND their current bets match the highest bet placed in this round.
+        #              OR the action has returned to the last aggressor who hasn't been re-raised.
+
+        # Use the to_act set: if it's empty, everyone has acted or called the current bet level.
         if not self.to_act:
-            logging.info("No players left in to_act set. Ending betting round.")
-            return self._end_betting_round()
+            logging.info("Checking round completion: 'to_act' set is empty.")
+            return True
+
+        logging.debug("Checking round completion: Round continues.")
+        return False
+
+    def _advance_to_next_player(self) -> None:
+        """Advance to the next player who is ACTIVE and needs to act."""
+        num_players = len(self.players)
+        if num_players == 0:
+            logging.error("Advance to next player called with no players.")
+            return
 
         start_idx = self.current_player_idx
-        num_players = len(self.players)
+        logging.debug(f"Advancing from player index {start_idx}. 'to_act': {self.to_act}")
 
-        # Loop to find the next player who needs to act
-        for i in range(1, num_players + 1): # Iterate up to num_players times
+        for i in range(1, num_players + 1):
             next_idx = (start_idx + i) % num_players
             player = self.players[next_idx]
+            logging.debug(f"Checking next player at index {next_idx}: {player.name}, Status: {player.status}, In 'to_act': {player.player_id in self.to_act}")
 
-            # Check if this player is active and needs to act
             if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
                 self.current_player_idx = next_idx
-                logging.info(f"Advanced to next player: {player.name} (index {next_idx})")
-                return False # Betting round continues
+                logging.info(f"_advance_to_next_player: Found next player: {player.name} (index {next_idx})")
+                return # Found the next player
 
-        # If we completed the loop and didn't find anyone, but to_act is still populated,
-        # it implies an inconsistent state or that the round should have ended earlier.
-        if self.to_act:
-            logging.warning(f"Looped through all players but 'to_act' is still not empty: {self.to_act}. Ending round to prevent loop.")
-            # Clear to_act to ensure the round ends
-            self.to_act.clear()
-            return self._end_betting_round()
-
-        # If to_act became empty during the loop (e.g., last player folded), the round ends.
-        logging.info("Completed loop through players, to_act is empty. Ending betting round.")
-        return self._end_betting_round()
+        # If loop completes, it means no one active is left in 'to_act'.
+        # This state should have been caught by _check_betting_round_completion.
+        logging.warning(f"Advance to next player completed loop, but 'to_act' was {self.to_act}. This might indicate an issue.")
+        # Do not automatically end the round here; let _check_betting_round_completion handle it.
     
     def _end_betting_round(self) -> bool:
         """

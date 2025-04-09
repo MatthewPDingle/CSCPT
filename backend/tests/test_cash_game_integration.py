@@ -18,7 +18,7 @@ class TestCashGameIntegration:
         
         self.game_service = GameService.get_instance()
         
-    def test_cash_game_full_flow(self):
+    async def test_cash_game_full_flow(self):
         """Test complete cash game flow from creation to gameplay."""
         # 1. Create a cash game
         game = self.game_service.create_cash_game(
@@ -55,7 +55,7 @@ class TestCashGameIntegration:
         player3_id = player3.id
         
         # 3. Start the game
-        game = self.game_service.start_game(game_id)
+        game = await self.game_service.start_game(game_id)
         assert game.status == GameStatus.ACTIVE
         assert game.current_hand is not None
         
@@ -109,7 +109,7 @@ class TestCashGameIntegration:
         player_ids = [p.id for p in game.players]
         assert player1_id not in player_ids
         
-    def test_mid_game_player_changes(self):
+    async def test_mid_game_player_changes(self):
         """Test players joining/leaving during active game."""
         # Create and start a game
         game = self.game_service.create_cash_game(name="Player Changes Test")
@@ -120,7 +120,7 @@ class TestCashGameIntegration:
         self.game_service.add_player_to_cash_game(game_id, "Player 2", 1000)
         
         # Start the game
-        self.game_service.start_game(game_id)
+        await self.game_service.start_game(game_id)
         
         # Over several hands, add and remove players
         for i in range(3, 6):
@@ -156,7 +156,7 @@ class TestCashGameIntegration:
         game = self.game_service.get_game(game_id)
         assert game.status == GameStatus.ACTIVE
         
-    def test_multiple_rebuys(self):
+    async def test_multiple_rebuys(self):
         """Test multiple rebuy operations during gameplay."""
         # Create and start a game
         game = self.game_service.create_cash_game(
@@ -182,7 +182,7 @@ class TestCashGameIntegration:
         )
         
         # Start the game
-        self.game_service.start_game(game_id)
+        await self.game_service.start_game(game_id)
         
         # Simulate chip losses
         game = self.game_service.get_game(game_id)

@@ -159,7 +159,7 @@ async def start_game(
     """
     try:
         # Start the game using the service
-        game = service.start_game(game_id)
+        game = await service.start_game(game_id)
 
         # Get the poker game
         poker_game = service.poker_games.get(game_id)

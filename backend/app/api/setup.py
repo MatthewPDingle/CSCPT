@@ -120,7 +120,7 @@ async def setup_game(
                     human_player_id = player.id
             
             # Start the game automatically
-            service.start_game(game.id)
+            await service.start_game(game.id)
             
         elif setup.game_mode == "tournament":
             # Tournament setup not yet implemented
