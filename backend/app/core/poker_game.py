@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import defaultdict
 import random
 import logging
+import uuid
 
 from app.core.cards import Card, Deck, Hand
 from app.core.hand_evaluator import HandEvaluator, HandRank
@@ -268,6 +269,7 @@ class PokerGame:
         sb_player, bb_player = self._post_blinds()
         
         # --- INDEX-BASED INITIAL PLAYER DETERMINATION ---
+        # Generate a unique ID for tracking this specific execution through logs
         execution_id = str(uuid.uuid4())[:8]
         logging.info(f"=== DETERMINING FIRST PLAYER TO ACT [{execution_id}] ===")
         logging.info(f"Button position: {self.button_position}")
