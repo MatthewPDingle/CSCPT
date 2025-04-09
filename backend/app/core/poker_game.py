@@ -267,74 +267,122 @@ class PokerGame:
         # Post blinds - this function now returns SB/BB players
         sb_player, bb_player = self._post_blinds()
         
-        # --- COMPLETELY REWRITTEN INITIAL PLAYER DETERMINATION ---
-        logging.info(f"=== DETERMINING FIRST PLAYER TO ACT ===")
+        # --- INDEX-BASED INITIAL PLAYER DETERMINATION ---
+        execution_id = str(uuid.uuid4())[:8]
+        logging.info(f"=== DETERMINING FIRST PLAYER TO ACT [{execution_id}] ===")
         logging.info(f"Button position: {self.button_position}")
         logging.info(f"Active players: {len(active_players)}")
+        logging.info(f"Total players: {len(self.players)}")
         
-        # Generate position order for this hand
-        num_positions = len(self.players)
+        # Map of players by their seat/position for reference
+        players_by_position = {p.position: p for p in self.players if p.status != PlayerStatus.OUT}
         
-        # Create relative position to player mapping
-        rel_pos_to_player = {}
+        # Log each player's position relative to the button
         for player in active_players:
-            rel_pos = (player.position - self.button_position) % num_positions
-            rel_pos_to_player[rel_pos] = player
-            
-            # Log each player's relative position
+            rel_pos = (player.position - self.button_position) % len(self.players)
             pos_name = self._get_position_name(rel_pos)
-            logging.info(f"Player {player.name} is in seat {player.position}, relative pos {rel_pos} [{pos_name}]")
-            
-        # Determine the first player to act based on number of players
+            logging.info(f"Player {player.name} is in seat {player.position}, relative pos {rel_pos} [{pos_name}], index {self.players.index(player)}")
+        
+        # Find the right starting player based on game size
         if len(active_players) == 2:  # Heads-up
             # In heads-up, SB/BTN acts first preflop
-            first_rel_pos = 0  # Button
-            first_player = rel_pos_to_player.get(first_rel_pos)
+            # Find the button player
+            btn_player = None
+            for p in active_players:
+                if p.position == self.button_position:
+                    btn_player = p
+                    break
             
-            if first_player:
-                self.current_player_idx = self.players.index(first_player)
-                logging.info(f"Heads-up: First player to act is {first_player.name} [BTN] (seat {first_player.position}, index {self.current_player_idx})")
+            if btn_player:
+                # Button player acts first in heads-up
+                self.current_player_idx = self.players.index(btn_player)
+                logging.info(f"[{execution_id}] Heads-up: First player to act is {btn_player.name} [BTN] (seat {btn_player.position}, index {self.current_player_idx})")
             else:
-                # Fallback
-                logging.warning("Could not find button player in heads-up. Using fallback.")
+                # Fallback if button not found
                 self.current_player_idx = self.players.index(active_players[0])
-                logging.info(f"Heads-up fallback: First player to act is {active_players[0].name}")
+                logging.info(f"[{execution_id}] Heads-up fallback: First player to act is {active_players[0].name} (index {self.current_player_idx})")
         else:
-            # Normal play (3+ players) - UTG acts first preflop
-            # UTG is the player 3 positions after the button
-            first_rel_pos = 3  # UTG
+            # Normal play (3+ players)
+            # First find the big blind position (2 spots after button)
+            bb_pos = (self.button_position + 2) % len(self.players)
+            logging.info(f"[{execution_id}] Big blind position: {bb_pos}")
             
-            # If there are fewer than 4 players, adjust UTG position
-            if len(active_players) < 4:
-                first_rel_pos = 0  # Start from button with small tables
+            # In full ring, the player after BB (UTG) acts first preflop
+            # We use the players list index order rather than positions to find this player
+            
+            # First, find the big blind player
+            bb_player = None
+            for p in active_players:
+                if p.position == bb_pos:
+                    bb_player = p
+                    break
+            
+            if not bb_player:
+                logging.warning(f"[{execution_id}] Could not find BB player at position {bb_pos}")
+                # Try to find next closest position
+                closest_pos = None
+                min_distance = len(self.players)
+                for pos in sorted(players_by_position.keys()):
+                    # Calculate clockwise distance from BB position
+                    distance = (pos - bb_pos) % len(self.players)
+                    if 0 < distance < min_distance:
+                        min_distance = distance
+                        closest_pos = pos
                 
-            # Find the player who should act first (UTG)
-            first_player = rel_pos_to_player.get(first_rel_pos)
+                if closest_pos is not None:
+                    bb_player = players_by_position[closest_pos]
+                    logging.info(f"[{execution_id}] Using closest player to BB: {bb_player.name} at position {closest_pos}")
             
-            if first_player:
-                self.current_player_idx = self.players.index(first_player)
-                logging.info(f"First player to act is {first_player.name} [UTG] (seat {first_player.position}, index {self.current_player_idx})")
-            else:
-                # If UTG position doesn't exist or player isn't active, find the next position
+            if bb_player:
+                # Find the BB's index in the players list
+                bb_idx = self.players.index(bb_player)
+                logging.info(f"[{execution_id}] Big blind player: {bb_player.name} (index {bb_idx})")
+                
+                # The player after BB should act first
+                first_idx = (bb_idx + 1) % len(self.players)
+                first_player = self.players[first_idx]
+                
+                # Find the next ACTIVE player, wrapping around if needed
                 found = False
-                for rel_pos in range(first_rel_pos, first_rel_pos + num_positions):
-                    adjusted_rel_pos = rel_pos % num_positions
-                    if adjusted_rel_pos in rel_pos_to_player:
-                        first_player = rel_pos_to_player[adjusted_rel_pos]
-                        self.current_player_idx = self.players.index(first_player)
-                        pos_name = self._get_position_name(adjusted_rel_pos)
-                        logging.info(f"First available player is {first_player.name} [{pos_name}] (seat {first_player.position}, index {self.current_player_idx})")
+                for i in range(len(self.players)):
+                    check_idx = (first_idx + i) % len(self.players)
+                    check_player = self.players[check_idx]
+                    if check_player.status == PlayerStatus.ACTIVE:
+                        self.current_player_idx = check_idx
+                        rel_pos = (check_player.position - self.button_position) % len(self.players)
+                        pos_name = self._get_position_name(rel_pos)
+                        logging.info(f"[{execution_id}] First player to act: {check_player.name} [{pos_name}] (index {check_idx})")
                         found = True
                         break
-                        
+                
                 if not found:
-                    logging.error("Could not find any active player in the correct position! Using first active player.")
+                    logging.error(f"[{execution_id}] Could not find any active player after BB!")
+                    # Emergency fallback
                     self.current_player_idx = self.players.index(active_players[0])
-                    logging.info(f"Emergency fallback: First player to act is {active_players[0].name}")
+                    logging.info(f"[{execution_id}] Emergency fallback: First player is {active_players[0].name} (index {self.current_player_idx})")
+            else:
+                # Completely failed to find BB or nearby player
+                logging.error(f"[{execution_id}] Could not determine first player based on positions!")
+                # Emergency fallback
+                self.current_player_idx = self.players.index(active_players[0])
+                logging.info(f"[{execution_id}] Last resort fallback: First player is {active_players[0].name} (index {self.current_player_idx})")
         
-        # Log the expected action order for the hand
+        # Final validation of the selected player
+        if 0 <= self.current_player_idx < len(self.players):
+            first_player = self.players[self.current_player_idx]
+            if first_player.status != PlayerStatus.ACTIVE or first_player.player_id not in self.to_act:
+                logging.error(f"[{execution_id}] Selected first player {first_player.name} cannot act! Status: {first_player.status}, in to_act: {first_player.player_id in self.to_act}")
+                # Try to find any valid player as a fallback
+                for idx, p in enumerate(self.players):
+                    if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act:
+                        self.current_player_idx = idx
+                        logging.info(f"[{execution_id}] Fixing invalid selection: new first player is {p.name} (index {idx})")
+                        break
+        
+        # Log the expected action order for the hand for clarity
         self._log_expected_action_order()
-        # --- END REWRITTEN LOGIC ---
+        logging.info(f"=== FIRST PLAYER DETERMINATION COMPLETE [{execution_id}] ===")
+        # --- END INDEX-BASED INITIAL PLAYER DETERMINATION ---
         
         # Initialize all players who contributed to the pot as eligible for main pot
         for player in active_players:
@@ -557,7 +605,15 @@ class PokerGame:
         self._reset_betting_round()
     
     def _reset_betting_round(self):
-        """Reset betting for a new round."""
+        """
+        Reset betting for a new round (flop, turn, river).
+        Sets the first player to act and initializes the to_act set.
+        """
+        import uuid
+        execution_id = str(uuid.uuid4())[:8]
+        logging.info(f"=== RESETTING BETTING ROUND FOR {self.current_round.name} [{execution_id}] ===")
+        
+        # Reset betting amounts
         self.current_bet = 0
         self.min_raise = self.big_blind
         
@@ -565,33 +621,85 @@ class PokerGame:
         for player in self.players:
             player.current_bet = 0
             
-        # Set first player to act
-        active_players = [p for p in self.players 
-                          if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
+        # Get active and all-in players
+        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
         
+        logging.info(f"[RESET-{execution_id}] Active players: {len(active_players)}")
         if not active_players:
+            logging.warning(f"[RESET-{execution_id}] No active players to act in this round!")
             return
-            
-        # After preflop, first active player after button acts first
-        first_position = (self.button_position + 1) % len(active_players)
         
-        # Find player index with this position
-        found = False
+        # POST-FLOP STRATEGY: After preflop, first active player after button acts first
+        # We'll use the button position and iterate through the players list by index
+        
+        # First, find the button player's index
+        btn_idx = -1
         for idx, player in enumerate(self.players):
-            if player.status == PlayerStatus.ACTIVE and player.position == first_position:
-                self.current_player_idx = idx
-                found = True
+            if player.position == self.button_position:
+                btn_idx = idx
+                logging.info(f"[RESET-{execution_id}] Found button at index {btn_idx} (player {player.name})")
                 break
-                
-        # If not found, just use the first active player
-        if not found and active_players:
-            self.current_player_idx = self.players.index(active_players[0])
         
-        # Reset last aggressor
+        if btn_idx == -1:
+            logging.warning(f"[RESET-{execution_id}] Could not find button player at position {self.button_position}")
+            # Fallback - use first player
+            if active_players:
+                self.current_player_idx = self.players.index(active_players[0])
+                logging.info(f"[RESET-{execution_id}] FALLBACK: Using first active player {active_players[0].name} at index {self.current_player_idx}")
+        else:
+            # Start looking from the player after the button
+            start_idx = (btn_idx + 1) % len(self.players)
+            
+            # Find the first ACTIVE player after the button (SB position or later)
+            found_first_player = False
+            for offset in range(len(self.players)):
+                check_idx = (start_idx + offset) % len(self.players)
+                check_player = self.players[check_idx]
+                
+                if check_player.status == PlayerStatus.ACTIVE:
+                    # This is the first active player after the button
+                    self.current_player_idx = check_idx
+                    rel_pos = (check_player.position - self.button_position) % len(self.players)
+                    pos_name = self._get_position_name(rel_pos)
+                    
+                    logging.info(f"[RESET-{execution_id}] First player for {self.current_round.name}: " 
+                                f"{check_player.name} [{pos_name}] at index {check_idx}")
+                    found_first_player = True
+                    break
+            
+            # If no active player found (should not happen, but fallback)
+            if not found_first_player:
+                if active_players:
+                    self.current_player_idx = self.players.index(active_players[0])
+                    logging.warning(f"[RESET-{execution_id}] Could not find active player after button! " 
+                                  f"Using first active player {active_players[0].name} at index {self.current_player_idx}")
+        
+        # Reset last aggressor to first player
         self.last_aggressor_idx = self.current_player_idx
         
         # Reset to_act set - all active players need to act in this round
+        old_to_act = self.to_act.copy() if hasattr(self, 'to_act') else set()
         self.to_act = {p.player_id for p in self.players if p.status == PlayerStatus.ACTIVE}
+        
+        logging.info(f"[RESET-{execution_id}] Updated to_act set: {self.to_act}")
+        logging.info(f"[RESET-{execution_id}] Previous to_act set: {old_to_act}")
+        
+        # Final validation - make sure the selected player is actually eligible
+        if 0 <= self.current_player_idx < len(self.players):
+            first_player = self.players[self.current_player_idx]
+            if first_player.status != PlayerStatus.ACTIVE or first_player.player_id not in self.to_act:
+                logging.error(f"[RESET-{execution_id}] Selected first player {first_player.name} cannot act! " 
+                            f"Status: {first_player.status}, in to_act: {first_player.player_id in self.to_act}")
+                
+                # Find any valid player
+                for idx, player in enumerate(self.players):
+                    if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
+                        self.current_player_idx = idx
+                        logging.info(f"[RESET-{execution_id}] Fixed invalid selection: new first player is " 
+                                    f"{player.name} at index {idx}")
+                        break
+        
+        logging.info(f"=== BETTING ROUND RESET COMPLETE [{execution_id}] ===")
         
     def get_valid_actions(self, player: Player) -> List[Tuple[PlayerAction, int, int]]:
         """
@@ -1073,139 +1181,131 @@ class PokerGame:
         return success
     
     def _check_betting_round_completion(self) -> bool:
-        """Checks if the current betting round is complete."""
+        """
+        Checks if the current betting round is complete.
+        
+        Returns:
+            bool: True if the round is complete, False otherwise
+        """
+        import uuid
+        execution_id = str(uuid.uuid4())[:8]
+        
+        logging.info(f"[ROUND-CHECK-{execution_id}] Checking if betting round {self.current_round.name} is complete")
+        
         active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+        all_in_players = [p for p in self.players if p.status == PlayerStatus.ALL_IN]
+        folded_players = [p for p in self.players if p.status == PlayerStatus.FOLDED]
+        
+        logging.info(f"[ROUND-CHECK-{execution_id}] Player counts: {len(active_players)} active, {len(all_in_players)} all-in, {len(folded_players)} folded")
+        logging.info(f"[ROUND-CHECK-{execution_id}] Current bet: {self.current_bet}")
+        logging.info(f"[ROUND-CHECK-{execution_id}] to_act set: {self.to_act}")
+        
+        # Log each active player's betting status
+        for player in active_players:
+            logging.info(f"[ROUND-CHECK-{execution_id}] Player {player.name}: bet={player.current_bet}, needs_to_act={player.player_id in self.to_act}")
+        
+        # Condition 1: No active players remaining (everyone folded or is all-in)
         if not active_players:
-            logging.warning("Checking round completion: No active players left.")
-            return True # Round is trivially over
+            logging.warning(f"[ROUND-CHECK-{execution_id}] No active players left - round is over")
+            return True  # Round is trivially over
 
-        # Condition 1: Only one active player left who isn't all-in.
+        # Condition 2: Only one active player left who isn't all-in (everyone else folded or went all-in)
         if len(active_players) <= 1:
-            logging.info("Checking round completion: Only <= 1 active player left.")
+            logging.info(f"[ROUND-CHECK-{execution_id}] Only {len(active_players)} active player(s) left - round is over")
             return True
 
-        # Condition 2: All active players have acted at least once *in this round*,
-        #              AND their current bets match the highest bet placed in this round.
-        #              OR the action has returned to the last aggressor who hasn't been re-raised.
-
-        # Use the to_act set: if it's empty, everyone has acted or called the current bet level.
+        # Condition 3: All active players have acted and their bets match the current bet
+        # Use the to_act set: if it's empty, everyone has acted or called the current bet level
         if not self.to_act:
-            logging.info("Checking round completion: 'to_act' set is empty.")
+            logging.info(f"[ROUND-CHECK-{execution_id}] 'to_act' set is empty - round is complete")
             return True
-
-        logging.debug("Checking round completion: Round continues.")
+            
+        # Detailed logging about why the round continues
+        active_to_act = [p for p in active_players if p.player_id in self.to_act]
+        logging.info(f"[ROUND-CHECK-{execution_id}] {len(active_to_act)} active players still need to act: {[p.name for p in active_to_act]}")
+        
+        # Check bet amounts
+        unmatched_bets = [p for p in active_players if p.current_bet != self.current_bet]
+        if unmatched_bets:
+            logging.info(f"[ROUND-CHECK-{execution_id}] Players with unmatched bets: {[(p.name, p.current_bet) for p in unmatched_bets]}")
+            
+        logging.info(f"[ROUND-CHECK-{execution_id}] Round continues")
         return False
 
     def _advance_to_next_player(self) -> None:
-        """Advance to the next player who is ACTIVE and needs to act.
+        """
+        Advance action to the next eligible player in clockwise order based on list index.
+        Handles folded/all-in/out players and checks the 'to_act' set.
         
-        This is one of the most critical methods for poker position handling.
-        This is a completely rewritten, simplified implementation that follows
-        clockwise table position more reliably, especially with many players.
+        This implementation uses a simple index-based approach to ensure reliable turn order
+        with any number of players at the table.
         """
         import uuid
-        # Generate a unique ID for tracking this specific execution through logs
         execution_id = str(uuid.uuid4())[:8]
-        
-        # Log current state BEFORE any modifications
-        logging.info(f"=== ADVANCING TO NEXT PLAYER - START {execution_id} ===")
+        logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - START {execution_id} ===")
         logging.info(f"Current player index BEFORE: {self.current_player_idx}")
         logging.info(f"Current round: {self.current_round.name}")
         logging.info(f"Button position: {self.button_position}")
         logging.info(f"Players who need to act (full to_act set): {self.to_act}")
-        
-        # Get current player for reference
-        current_player = None
-        if 0 <= self.current_player_idx < len(self.players):
-            current_player = self.players[self.current_player_idx]
-            logging.info(f"Current player is {current_player.name} (position {current_player.position}, id {current_player.player_id})")
-        else:
-            logging.warning(f"Current player index {self.current_player_idx} is out of bounds!")
-        
-        # Early exit if no players need to act
+
         if not self.to_act:
-            logging.warning(f"[{execution_id}] No active players to act - round might be complete")
+            logging.warning(f"[{execution_id}] No players left in to_act set. Round should be complete or ending.")
+            # The calling function (`process_action`) checks for round completion *after* the action.
+            # If we reach here with an empty to_act, it implies the round just ended.
             return
-            
-        # Get all active players who need to act
-        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act]
-        logging.info(f"[{execution_id}] Active players who need to act: {[p.name for p in active_players]}")
-        
-        if not active_players:
-            logging.warning(f"[{execution_id}] No active players found who need to act.")
+
+        num_players = len(self.players)
+        if num_players == 0:
+            logging.error(f"[{execution_id}] No players in the game to advance to.")
             return
-        
-        # Simple direct approach:
-        # 1. Arrange players by absolute position around the table
-        # 2. Find current player's position in this order
-        # 3. Take the next player clockwise who is active and needs to act
-        
-        # Sort all players by their seat positions (clockwise around table)
-        players_by_position = sorted(self.players, key=lambda p: p.position)
-        logging.info(f"[{execution_id}] Players sorted by position: {[(p.name, p.position) for p in players_by_position]}")
-        
-        # Find current player's index in the position order
-        current_pos_idx = -1
-        if current_player:
-            for i, p in enumerate(players_by_position):
-                if p.player_id == current_player.player_id:
-                    current_pos_idx = i
-                    break
-        
-        logging.info(f"[{execution_id}] Current player position index in sorted order: {current_pos_idx}")
-        
-        # Starting from the position after the current player, find next active player who needs to act
-        next_player = None
+
+        # Ensure current_player_idx is valid before starting the loop
+        if not (0 <= self.current_player_idx < num_players):
+             logging.error(f"[{execution_id}] Invalid current_player_idx ({self.current_player_idx}) before advancing. Resetting to 0.")
+             self.current_player_idx = 0  # Attempt recovery
+
+        start_index = self.current_player_idx
         
         # Detailed logging of all player statuses before loop
         for p in self.players:
             logging.info(f"[{execution_id}] Player status check: {p.name} - Status: {p.status.name}, In to_act: {p.player_id in self.to_act}, Position: {p.position}")
+
+        for i in range(1, num_players + 1):  # Check up to num_players times
+            next_idx = (start_index + i) % num_players
+            next_player = self.players[next_idx]
+
+            logging.debug(f"[{execution_id}] Checking index {next_idx}: Player {next_player.name} (ID: {next_player.player_id}), Status: {next_player.status}, In to_act: {next_player.player_id in self.to_act}")
+            logging.info(f"[{execution_id}] Checking player: {next_player.name}, Status: {next_player.status.name}, " 
+                       f"In to_act: {next_player.player_id in self.to_act}, Position: {next_player.position}, "
+                       f"Index in list: {next_idx}")
+
+            # Check if this player is eligible to act
+            # Player must be ACTIVE (not FOLDED, ALL_IN, or OUT)
+            # AND must be in the set of players who still need to act this round.
+            if next_player.status == PlayerStatus.ACTIVE and next_player.player_id in self.to_act:
+                old_idx = self.current_player_idx
+                self.current_player_idx = next_idx
+                rel_pos = (next_player.position - self.button_position) % len(self.players)
+                pos_name = self._get_position_name(rel_pos)
+                logging.info(f"[{execution_id}] Found next player: {next_player.name} [{pos_name}] at index {next_idx} (was {old_idx})")
+                logging.info(f"[{execution_id}] Player status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
+                logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - END {execution_id} ===")
+                return  # Found the next player
+
+        # If the loop completes without finding an eligible player
+        logging.warning(f"[{execution_id}] Completed loop without finding an eligible player in to_act set: {self.to_act}. This might indicate the round ended or a state issue.")
         
-        # If we have a valid current player, start search from the player after them
-        if current_pos_idx >= 0:
-            # Look at each position clockwise from current player (including wraparound)
-            for i in range(1, len(players_by_position) + 1):
-                check_idx = (current_pos_idx + i) % len(players_by_position)
-                check_player = players_by_position[check_idx]
-                
-                # Log each player being considered
-                logging.info(f"[{execution_id}] Checking player: {check_player.name}, Status: {check_player.status.name}, " 
-                           f"In to_act: {check_player.player_id in self.to_act}, Position: {check_player.position}, "
-                           f"Check index: {check_idx}")
-                
-                # This player is active and needs to act
-                if check_player.status == PlayerStatus.ACTIVE and check_player.player_id in self.to_act:
-                    next_player = check_player
-                    logging.info(f"[{execution_id}] Found next player: {next_player.name} (position {next_player.position}, id {next_player.player_id})")
-                    break
-        
-        # If we didn't find a player or didn't have a current player for reference,
-        # fall back to taking the first active player who needs to act
-        if not next_player and active_players:
-            # Sort eligible players by position order
-            sorted_active = sorted(active_players, key=lambda p: p.position)
-            next_player = sorted_active[0]
-            logging.info(f"[{execution_id}] Falling back to first eligible player: {next_player.name} (position {next_player.position}, id {next_player.player_id})")
-        
-        # Update current player index if we found a next player
-        if next_player:
-            old_idx = self.current_player_idx
-            self.current_player_idx = self.players.index(next_player)
-            rel_pos = (next_player.position - self.button_position) % len(self.players)
-            pos_name = self._get_position_name(rel_pos)
-            logging.info(f"[{execution_id}] Next player is {next_player.name} [{pos_name}] (position {next_player.position}, index was {old_idx} now {self.current_player_idx}, id {next_player.player_id})")
-            logging.info(f"[{execution_id}] Player status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
-        else:
-            logging.warning(f"[{execution_id}] Could not find any eligible player to act next. This might indicate an issue.")
-            # We don't modify current_player_idx here, letting _check_betting_round_completion handle it
-        
-        logging.info(f"=== ADVANCING TO NEXT PLAYER - END {execution_id} ===")
-        
-        # Final verification
-        if next_player and (next_player.status != PlayerStatus.ACTIVE or next_player.player_id not in self.to_act):
-            logging.error(f"[{execution_id}] CRITICAL ERROR: Selected next player {next_player.name} is either not active or not in to_act!")
-            logging.error(f"[{execution_id}] Status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
-            # This would indicate a bug in the selection logic
+        # If the `to_act` set wasn't actually empty, but we couldn't find anyone, log an error.
+        if self.to_act:
+             logging.error(f"[{execution_id}] CRITICAL ERROR: to_act set is not empty {self.to_act}, but no eligible player found!")
+             # As a fallback, try to find the first player in the to_act set
+             for idx, player in enumerate(self.players):
+                 if player.player_id in self.to_act and player.status == PlayerStatus.ACTIVE:
+                     logging.error(f"[{execution_id}] Fallback: Setting current_player_idx to {idx} ({player.name})")
+                     self.current_player_idx = idx
+                     break
+
+        logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - END {execution_id} ===")
         
     def _get_position_name(self, rel_pos: int) -> str:
         """Get the poker position name for a relative position."""

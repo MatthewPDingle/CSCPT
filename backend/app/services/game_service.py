@@ -1360,7 +1360,8 @@ class GameService:
 
                             if not next_player_domain.is_human:
                                 logging.info(f"[AI-ACTION-{execution_id}] Next player is AI ({next_player.name}). AWAITING next action (sequential execution).")
-                                # CRITICAL CHANGE: await instead of create_task to ensure sequential execution
+                                # Maintain sequential execution (no create_task) to prevent race conditions
+                                # This ensures one AI player completes their action before the next one begins
                                 await self._request_and_process_ai_action(game_id, next_player.player_id)
                             else:
                                 logging.info(f"[AI-ACTION-{execution_id}] Next player is Human ({next_player.name}). Sending action request.")
