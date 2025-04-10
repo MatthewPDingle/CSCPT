@@ -120,6 +120,29 @@ async def websocket_endpoint(
             game_state_sent = True
             logging.warning(f"Initial game state successfully sent for game {game_id}")
             
+            # Check if the current player is an AI and trigger after sending game state
+            if 0 <= poker_game.current_player_idx < len(poker_game.players):
+                current_player_poker = poker_game.players[poker_game.current_player_idx]
+                
+                # Verify this player is active and needs to act
+                if (current_player_poker.status == PlayerStatus.ACTIVE and 
+                    current_player_poker.player_id in poker_game.to_act):
+                    
+                    # Find the domain player
+                    game = service.get_game(game_id)
+                    if game:
+                        current_player_domain = next((p for p in game.players if p.id == current_player_poker.player_id), None)
+                        
+                        if current_player_domain:
+                            # Determine if the first player is AI
+                            if not current_player_domain.is_human:
+                                logging.warning(f"WebSocket connected: First player is AI ({current_player_domain.name}). Triggering AI action.")
+                                # Trigger AI action after connection is established - use await to maintain sequential execution
+                                logging.warning(f"WebSocket connected: Using await for first AI player to ensure sequential execution")
+                                await service._request_and_process_ai_action(game_id, current_player_domain.id)
+                            else:
+                                logging.warning(f"WebSocket connected: First player is Human ({current_player_domain.name}). Will request action normally.")
+            
         except Exception as e:
             logging.error(f"Error sending initial game state: {str(e)}")
             logging.error(traceback.format_exc())
@@ -504,9 +527,10 @@ async def process_action_message(
                     # AI player's turn - trigger AI action asynchronously
                     logging.info(f"Triggering AI action for next player: {next_player.name}")
                     import asyncio
-                    asyncio.create_task(service._request_and_process_ai_action(
+                    logging.info(f"Triggering AI action for next player: Using await to ensure sequential execution")
+                    await service._request_and_process_ai_action(
                         game_id, next_player.player_id
-                    ))
+                    )
                     return  # AI will handle the turn, no need to send action request
                 else:
                     # Human player's turn - send action request
@@ -530,9 +554,10 @@ async def process_action_message(
                             # AI player's turn
                             logging.info(f"Triggering AI action for alternate next player: {next_active_player.name}")
                             import asyncio
-                            asyncio.create_task(service._request_and_process_ai_action(
+                            logging.info(f"Triggering AI action for alternate next player: Using await to ensure sequential execution")
+                            await service._request_and_process_ai_action(
                                 game_id, next_active_player.player_id
-                            ))
+                            )
                             return
                         else:
                             # Human player's turn

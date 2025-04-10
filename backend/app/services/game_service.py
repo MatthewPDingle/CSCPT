@@ -424,6 +424,13 @@ class GameService:
             if 0 <= poker_game.current_player_idx < len(poker_game.players):
                 current_player_poker = poker_game.players[poker_game.current_player_idx]
                 
+                # *** ADD LOGGING HERE ***
+                logging.info(f"Check after start_hand: Current Player Index: {poker_game.current_player_idx}")
+                logging.info(f"Check after start_hand: Player object at index: {current_player_poker.name}")
+                logging.info(f"Check after start_hand: Contents of to_act: {poker_game.to_act}")
+                logging.info(f"Check after start_hand: Does to_act contain {current_player_poker.player_id}? {current_player_poker.player_id in poker_game.to_act}")
+                # *** END ADDED LOGGING ***
+                
                 # Log the current player's info
                 logging.info(f"First player to act: {current_player_poker.name} (index {poker_game.current_player_idx})")
                 logging.info(f"Player status: {current_player_poker.status.name if hasattr(current_player_poker, 'status') else 'Unknown'}")
