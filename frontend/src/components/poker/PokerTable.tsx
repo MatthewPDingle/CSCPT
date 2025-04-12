@@ -167,9 +167,9 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
   console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
   
-  // Define active players (non-folded)
-  const activePlayers = validPlayers.filter(player => player.isActive);
-  console.log(`Active players: ${activePlayers.length}`);
+  // Use all valid players, including folded ones
+  const filteredPlayers = validPlayers;
+  console.log(`Total players: ${filteredPlayers.length}`);
   
   // Ensure communityCards is an array
   const validCommunityCards = Array.isArray(communityCards) ? communityCards : [];
@@ -226,7 +226,7 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
           />
           
           {/* Player positions */}
-          {activePlayers.map((player, index) => {
+          {filteredPlayers.map((player, index) => {
             try {
               // Ensure player has an ID
               const playerId = player.id || `player_${index}`;

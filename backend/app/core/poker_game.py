@@ -143,6 +143,59 @@ class Pot:
 
 
 class PokerGame:
+    def _format_hand_description(self, rank, kickers):
+        """
+        Format hand rank and kickers into a human-readable string.
+        
+        Args:
+            rank: The hand rank enum
+            kickers: List of kicker values
+            
+        Returns:
+            A human-readable string describing the hand
+        """
+        from app.core.hand_evaluator import HandRank
+        
+        rank_map = {
+            HandRank.HIGH_CARD: "High Card", HandRank.PAIR: "Pair", HandRank.TWO_PAIR: "Two Pair",
+            HandRank.THREE_OF_A_KIND: "Three of a Kind", HandRank.STRAIGHT: "Straight", HandRank.FLUSH: "Flush",
+            HandRank.FULL_HOUSE: "Full House", HandRank.FOUR_OF_A_KIND: "Four of a Kind",
+            HandRank.STRAIGHT_FLUSH: "Straight Flush", HandRank.ROYAL_FLUSH: "Royal Flush"
+        }
+        rank_name = rank_map.get(rank, rank.name)
+
+        # Convert kicker values to readable ranks (T, J, Q, K, A)
+        def rank_to_str(r):
+            if r == 14: return 'A'
+            if r == 13: return 'K'
+            if r == 12: return 'Q'
+            if r == 11: return 'J'
+            if r == 10: return 'T'
+            return str(r)
+
+        readable_kickers = [rank_to_str(k) for k in kickers]
+
+        # Specific descriptions based on rank
+        if rank == HandRank.PAIR:
+            return f"Pair of {readable_kickers[0]}s ({', '.join(readable_kickers[1:])} kickers)"
+        elif rank == HandRank.TWO_PAIR:
+             return f"Two Pair, {readable_kickers[0]}s and {readable_kickers[1]}s ({readable_kickers[2]} kicker)"
+        elif rank == HandRank.THREE_OF_A_KIND:
+             return f"Three of a Kind, {readable_kickers[0]}s ({', '.join(readable_kickers[1:])} kickers)"
+        elif rank == HandRank.STRAIGHT:
+             return f"Straight, {readable_kickers[0]} high"
+        elif rank == HandRank.FLUSH:
+             return f"Flush, {readable_kickers[0]} high ({', '.join(readable_kickers[1:])})"
+        elif rank == HandRank.FULL_HOUSE:
+             return f"Full House, {readable_kickers[0]}s full of {readable_kickers[1]}s"
+        elif rank == HandRank.FOUR_OF_A_KIND:
+             return f"Four of a Kind, {readable_kickers[0]}s ({readable_kickers[1]} kicker)"
+        elif rank == HandRank.STRAIGHT_FLUSH:
+             return f"Straight Flush, {readable_kickers[0]} high"
+        elif rank == HandRank.ROYAL_FLUSH:
+             return "Royal Flush"
+        else: # High Card
+             return f"High Card {readable_kickers[0]} ({', '.join(readable_kickers[1:])})"
     """Manages a Texas Hold'em poker game."""
     
     def __init__(self, small_blind: int, big_blind: int, ante: int = 0, game_id: str = None, 
@@ -591,6 +644,19 @@ class PokerGame:
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             
+            # Send notification to clients about new round
+            if self.game_id:
+                try:
+                    from app.core.websocket import game_notifier
+                    import asyncio
+                    asyncio.create_task(game_notifier.notify_new_round(
+                        self.game_id, 
+                        self.current_round.name, 
+                        self.community_cards
+                    ))
+                except Exception as e:
+                    logging.error(f"Error sending new round notification: {e}")
+            
         self._reset_betting_round()
     
     def deal_turn(self):
@@ -628,6 +694,19 @@ class PokerGame:
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             
+            # Send notification to clients about new round
+            if self.game_id:
+                try:
+                    from app.core.websocket import game_notifier
+                    import asyncio
+                    asyncio.create_task(game_notifier.notify_new_round(
+                        self.game_id, 
+                        self.current_round.name, 
+                        self.community_cards
+                    ))
+                except Exception as e:
+                    logging.error(f"Error sending new round notification: {e}")
+            
         self._reset_betting_round()
     
     def deal_river(self):
@@ -651,6 +730,19 @@ class PokerGame:
                 cards=self.community_cards,
                 round_name=self.current_round.name
             )
+            
+            # Send notification to clients about new round
+            if self.game_id:
+                try:
+                    from app.core.websocket import game_notifier
+                    import asyncio
+                    asyncio.create_task(game_notifier.notify_new_round(
+                        self.game_id, 
+                        self.current_round.name, 
+                        self.community_cards
+                    ))
+                except Exception as e:
+                    logging.error(f"Error sending new round notification: {e}")
             
             # Send notification to clients about new round
             if self.game_id:
@@ -1244,6 +1336,19 @@ class PokerGame:
                     logging.info(f"[ACTION-{execution_id}] Betting round ended. New round: {self.current_round.name}. Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
                 else:
                     logging.error(f"[ACTION-{execution_id}] Invalid current_player_idx after round transition: {self.current_player_idx}")
+                    
+                    # Handle out of bounds index by finding ANY player who can act
+                    valid_player_found = False
+                    for idx, p in enumerate(self.players):
+                        if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act:
+                            logging.warning(f"[ACTION-{execution_id}] Recovered from round transition - found eligible player {p.name} at index {idx}")
+                            self.current_player_idx = idx
+                            valid_player_found = True
+                            break
+                    
+                    if not valid_player_found and len(self.players) > 0:
+                        logging.warning(f"[ACTION-{execution_id}] Could not find any eligible player after round transition, resetting to index 0")
+                        self.current_player_idx = 0
                 
                 logging.info(f"[ACTION-{execution_id}] to_act after round transition: {self.to_act}")
             else:
@@ -1282,6 +1387,19 @@ class PokerGame:
                     logging.error(f"[ACTION-{execution_id}] Status: {current_player.status.name}, In to_act: {current_player.player_id in self.to_act}")
             else:
                 logging.error(f"[ACTION-{execution_id}] Invalid current_player_idx after advancing: {self.current_player_idx}")
+                
+                # Handle out of bounds index by finding ANY player who can act
+                valid_player_found = False
+                for idx, p in enumerate(self.players):
+                    if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act:
+                        logging.warning(f"[ACTION-{execution_id}] Recovered from invalid index - found eligible player {p.name} at index {idx}")
+                        self.current_player_idx = idx
+                        valid_player_found = True
+                        break
+                
+                if not valid_player_found and len(self.players) > 0:
+                    logging.warning(f"[ACTION-{execution_id}] Could not find any eligible player, resetting to index 0")
+                    self.current_player_idx = 0
                     
         logging.info(f"[ACTION-{execution_id}] Action processing complete for {player.name} {action.name}")
         return success
@@ -1415,9 +1533,13 @@ class PokerGame:
              for idx, player in enumerate(self.players):
                  if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
                      logging.error(f"[{execution_id}] Fallback: Setting current_player_idx to {idx} ({player.name}) due to inconsistency.")
-                     self.current_player_idx = idx
-                     found_next_player = True
-                     break
+                     if 0 <= idx < len(self.players):  # Double-check bounds
+                         self.current_player_idx = idx
+                         found_next_player = True
+                         break
+                     else:
+                         logging.error(f"[{execution_id}] Critical error: Player {player.name} found at index {idx}, which is outside the valid range (0-{len(self.players)-1})")
+                         continue
              
              if not found_next_player:
                  # If STILL no one found (major issue), maybe the round really is over?
@@ -1614,7 +1736,8 @@ class PokerGame:
             
             for player, (hand_rank, kickers) in pot_results.items():
                 # Log player hands for debugging
-                print(f"Player {player.name} has {hand_rank.name} {kickers}")
+                description = self._format_hand_description(hand_rank, kickers)
+                print(f"Player {player.name} has {description}")
                 
                 if best_hand is None:
                     # First player we're checking

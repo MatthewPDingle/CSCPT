@@ -1411,6 +1411,14 @@ class GameService:
 
                     # Update game in repository again after starting new hand
                     self.game_repo.update(game)
+                    
+                    # Send an explicit game state update for the new hand
+                    new_poker_game = self.poker_games.get(game.id)
+                    if new_poker_game:
+                        logging.info("AI Action: Notifying clients about the *new* hand state.")
+                        await game_notifier.notify_game_update(game_id, new_poker_game)
+                    else:
+                        logging.error("AI Action: Could not find poker game instance after starting new hand to notify clients.")
 
                     # DO NOT trigger the first AI action of the new hand here!
                     # WebSocket will handle that after sending the initial game state
