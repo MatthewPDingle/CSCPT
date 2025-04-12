@@ -858,10 +858,10 @@ class PokerGame:
             logging.warning(f"[ACTION-{execution_id}] No active players found")
             return False
             
+        # Index validation is now handled thoroughly in _advance_to_next_player
         if self.current_player_idx >= len(active_players):
-            # Reset to first active player if index is out of range
-            logging.warning(f"[ACTION-{execution_id}] Current player index {self.current_player_idx} is out of range. Resetting to 0.")
-            self.current_player_idx = 0
+            logging.warning(f"[ACTION-{execution_id}] Current player index {self.current_player_idx} appears to be out of range.")
+            # No longer resetting to 0 as this can cause turn order issues
             
         # DISABLED FOR TESTING to allow out-of-order actions in tests
         # In a real game, we would enforce player order
@@ -1328,6 +1328,7 @@ class PokerGame:
         for p in self.players:
             logging.info(f"[{execution_id}] Player status check: {p.name} - Status: {p.status.name}, In to_act: {p.player_id in self.to_act}, Position: {p.position}")
 
+        found_next_player = False
         for i in range(1, num_players + 1):  # Check up to num_players times
             next_idx = (start_index + i) % num_players
             next_player = self.players[next_idx]
@@ -1348,6 +1349,7 @@ class PokerGame:
                 logging.info(f"[{execution_id}] Found next player: {next_player.name} [{pos_name}] at index {next_idx} (was {old_idx})")
                 logging.info(f"[{execution_id}] Player status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
                 logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - END {execution_id} ===")
+                found_next_player = True
                 return  # Found the next player
 
         # If the loop completes without finding an eligible player
@@ -1355,13 +1357,23 @@ class PokerGame:
         
         # If the `to_act` set wasn't actually empty, but we couldn't find anyone, log an error.
         if self.to_act:
-             logging.error(f"[{execution_id}] CRITICAL ERROR: to_act set is not empty {self.to_act}, but no eligible player found!")
-             # As a fallback, try to find the first player in the to_act set
+             logging.error(f"[{execution_id}] CRITICAL ERROR: to_act set is not empty {self.to_act}, but no eligible active player found!")
+             # Log detailed status of all players to help diagnose
+             for idx, p in enumerate(self.players):
+                 logging.error(f"[{execution_id}] Player Index {idx}: {p.name}, Status: {p.status.name}, In to_act: {p.player_id in self.to_act}")
+             
+             # As a robust fallback, find the *first* player in the list who is ACTIVE and in to_act,
+             # even if it means restarting the turn order for the round in the worst case.
              for idx, player in enumerate(self.players):
-                 if player.player_id in self.to_act and player.status == PlayerStatus.ACTIVE:
-                     logging.error(f"[{execution_id}] Fallback: Setting current_player_idx to {idx} ({player.name})")
+                 if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
+                     logging.error(f"[{execution_id}] Fallback: Setting current_player_idx to {idx} ({player.name}) due to inconsistency.")
                      self.current_player_idx = idx
+                     found_next_player = True
                      break
+             
+             if not found_next_player:
+                 # If STILL no one found (major issue), maybe the round really is over?
+                 logging.error(f"[{execution_id}] Fallback failed: Still couldn't find any valid player to act.")
 
         logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - END {execution_id} ===")
         
