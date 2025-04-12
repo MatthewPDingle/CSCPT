@@ -32,7 +32,8 @@ class AgentResponseParser:
         """
         # Validate basic structure
         if not isinstance(agent_response, dict):
-            raise ValueError("Agent response must be a dictionary")
+            logger.error("Agent response is not a dictionary, defaulting to check")
+            return "check", None, {"reasoning": {}, "thinking": "Error: Invalid response format"}
         
         # Extract required fields
         try:
@@ -42,13 +43,15 @@ class AgentResponseParser:
             thinking = agent_response.get("thinking", "")
             calculations = agent_response.get("calculations", {})
         except (AttributeError, KeyError) as e:
-            raise ValueError(f"Missing required field in agent response: {str(e)}")
+            logger.error(f"Missing required field in agent response: {str(e)}")
+            return "check", None, {"reasoning": {}, "thinking": f"Error: {str(e)}"}
         
         # Validate action
         valid_actions = ["fold", "check", "call", "bet", "raise", "all-in"]
         if action not in valid_actions:
-            logger.warning(f"Invalid action '{action}', defaulting to fold")
-            action = "fold"
+            logger.warning(f"Invalid action '{action}', using smart fallback")
+            # Default to 'check' rather than 'fold' when possible
+            action = "check"  
             amount = None
         
         # Validate amount based on action
@@ -58,13 +61,20 @@ class AgentResponseParser:
         elif action in ["bet", "raise", "all-in"]:
             # These actions require an amount
             if amount is None:
-                raise ValueError(f"Action '{action}' requires an amount")
-            try:
-                amount = int(amount)
-                if amount <= 0:
-                    raise ValueError(f"Amount must be positive for '{action}'")
-            except (TypeError, ValueError):
-                raise ValueError(f"Invalid amount '{amount}' for action '{action}'")
+                logger.warning(f"Action '{action}' requires an amount but none provided, using call instead")
+                action = "call"
+                amount = None
+            else:
+                try:
+                    amount = int(amount)
+                    if amount <= 0:
+                        logger.warning(f"Amount must be positive for '{action}', using call instead")
+                        action = "call"
+                        amount = None
+                except (TypeError, ValueError):
+                    logger.warning(f"Invalid amount '{amount}' for action '{action}', using call instead")
+                    action = "call"
+                    amount = None
         
         # Construct metadata with all additional information
         metadata = {
@@ -109,18 +119,64 @@ class AgentResponseParser:
         Returns:
             Potentially modified (action, amount) tuple that conforms to game rules
         """
-        # This is a placeholder implementation
-        # A real implementation would check:
-        # - If player has enough chips for the action
-        # - If the amount meets minimum raise requirements
-        # - If the action is valid in the current game state (e.g., can't check if there's a bet)
+        # Get player stack and current bet
+        stack = game_state.get("stack_sizes", {}).get("0", 0)  # Player's stack
+        current_bet = game_state.get("current_bet", 0)  # Current bet to call
+        min_raise = game_state.get("min_raise", current_bet * 2)  # Minimum raise amount
         
-        # For now, we'll just handle a simple case - if all-in and amount > stack, adjust the amount
-        if action == "all-in" or (action in ["bet", "raise"] and amount is not None):
-            stack = game_state.get("stack_sizes", {}).get("0", 0)  # Player's stack
+        # Log the current state for debugging
+        logger.info(f"Applying game rules for action: {action}, amount: {amount}")
+        logger.info(f"Player stack: {stack}, Current bet: {current_bet}, Min raise: {min_raise}")
+        
+        # Check if action is appropriate given the current state
+        if action == "check" and current_bet > 0:
+            logger.warning(f"Cannot check when there's a bet of {current_bet}. Converting to call.")
+            action = "call"
+            amount = None
+            
+        elif action == "call":
+            # If call amount is more than player's stack, convert to all-in
+            if current_bet >= stack:
+                logger.info(f"Call amount {current_bet} exceeds stack {stack}. Converting to all-in.")
+                action = "all-in"
+                amount = stack
+                
+        elif action == "raise" or action == "bet":
+            # Handle raise/bet amounts
+            if amount is None:
+                amount = min_raise  # Default to min raise if not specified
+                logger.info(f"No amount specified for {action}, using min raise: {amount}")
+                
+            # Ensure min raise
+            if amount < min_raise and action == "raise":
+                logger.warning(f"Raise amount {amount} below min raise {min_raise}. Adjusting.")
+                amount = min_raise
+                
+            # Cap at stack size
             if amount > stack:
                 logger.info(f"Adjusting {action} amount from {amount} to {stack} (all-in)")
                 amount = stack
                 action = "all-in"
+                
+        elif action == "all-in":
+            amount = stack
+            logger.info(f"All-in with stack size: {stack}")
+            
+        # Preferred fallback cascade (final safety check):
+        # If action can't be executed, try to degrade gracefully rather than defaulting to fold
+        
+        # If player has no chips, force fold
+        if stack <= 0:
+            logger.warning("Player has no chips. Forcing fold.")
+            return "fold", None
+            
+        # If player can't call and action requires chips, switch to check if possible or fold
+        if stack < current_bet and action in ["call", "raise", "bet", "all-in"]:
+            if current_bet == 0:
+                logger.warning(f"Not enough chips for {action}, but can check. Converting to check.")
+                return "check", None
+            else:
+                logger.warning(f"Not enough chips ({stack}) to call bet of {current_bet}. Forcing fold.")
+                return "fold", None
         
         return action, amount

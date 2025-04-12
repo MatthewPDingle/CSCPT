@@ -377,16 +377,39 @@ Based on the current situation, what action will you take? Analyze the hand, con
             
         except Exception as e:
             logger.error(f"Error making agent decision: {str(e)}")
-            # Fallback to a safe default response
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Determine a more intelligent fallback action based on the game state
+            current_bet = game_state.get("current_bet", 0)
+            
+            # If there's no bet to call, check instead of folding
+            if current_bet == 0:
+                fallback_action = "check"
+                action_reason = "checking as fallback since there's no bet to call"
+            else:
+                # Get player's stack size
+                stack = game_state.get("stack_sizes", {}).get("0", 0)
+                
+                # If the call is a significant portion of stack, fold
+                if current_bet > stack / 3:
+                    fallback_action = "fold"
+                    action_reason = f"folding as fallback - call of {current_bet} is too large relative to stack of {stack}"
+                else:
+                    # Otherwise try to call
+                    fallback_action = "call"
+                    action_reason = f"calling as fallback - bet of {current_bet} is reasonable relative to stack of {stack}"
+            
+            # Return a more descriptive fallback response
             return {
-                "thinking": f"Error occurred: {str(e)}",
-                "action": "fold",
+                "thinking": f"Error occurred in LLM response: {str(e)}\nUsing fallback logic: {action_reason}",
+                "action": fallback_action,
                 "amount": None,
                 "reasoning": {
-                    "hand_assessment": "Error occurred, folding as a safe default",
-                    "positional_considerations": "N/A",
-                    "opponent_reads": "N/A",
-                    "archetype_alignment": "N/A"
+                    "hand_assessment": f"Error occurred, {action_reason}",
+                    "positional_considerations": "Using fallback decision process",
+                    "opponent_reads": "No opponent reads available due to error",
+                    "archetype_alignment": f"Aligned with {self.__class__.__name__} - conservative fallback"
                 }
             }
             

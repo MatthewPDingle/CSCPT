@@ -114,7 +114,121 @@ class MemoryIntegration:
             return profile.to_dict()
         return None
     
-    # get_agent_decision has been removed - agent decisions are now handled directly in game_service.py
+    @classmethod
+    async def get_agent_decision(cls, 
+                                archetype: str, 
+                                game_state: dict, 
+                                context: dict, 
+                                player_id: str, 
+                                use_memory: bool = True,
+                                intelligence_level: str = "expert") -> dict:
+        """
+        Get a decision from an AI agent of a specific archetype.
+        
+        Args:
+            archetype: The agent archetype (e.g., "TAG", "LAG", "Adaptable")
+            game_state: Current game state
+            context: Additional context information
+            player_id: ID of the player making the decision
+            use_memory: Whether to use player memory/profiles
+            intelligence_level: Agent intelligence level
+            
+        Returns:
+            A decision object with action, amount, and reasoning
+        """
+        import logging
+        from ai.llm_service import LLMService
+        import importlib
+        
+        # Initialize LLM service
+        llm_service = LLMService()
+        
+        # Default to OpenAI provider (GPT-4o) per requirements
+        provider = "openai"
+        
+        # Map archetype strings to agent classes
+        archetype_map = {
+            "TAG": "TAGAgent",
+            "LAG": "LAGAgent",
+            "TightPassive": "TightPassiveAgent",
+            "LoosePassive": "LoosePassiveAgent",
+            "CallingStation": "CallingStationAgent",
+            "Maniac": "ManiacAgent", 
+            "Beginner": "BeginnerAgent",
+            "Adaptable": "AdaptableAgent",
+            "GTO": "GTOAgent",
+            "ShortStack": "ShortStackAgent",
+            "Trappy": "TrappyAgent"
+        }
+        
+        # Handle case variations in archetype names
+        archetype = archetype.replace(" ", "")
+        agent_class_name = archetype_map.get(archetype, "TAGAgent")  # Default to TAG if not found
+        
+        try:
+            # Dynamically import the appropriate agent class
+            agent_module = importlib.import_module(f"ai.agents.{agent_class_name.lower()}")
+            agent_class = getattr(agent_module, agent_class_name)
+            
+            # Create agent instance
+            agent = agent_class(
+                llm_service=llm_service,
+                provider=provider,
+                intelligence_level=intelligence_level,
+                temperature=0.7,
+                extended_thinking=True,
+                use_persistent_memory=use_memory
+            )
+            
+            # Get the decision from the agent
+            logging.info(f"Requesting decision from {agent_class_name} with provider {provider}")
+            decision = await agent.make_decision(game_state, context)
+            logging.info(f"Received decision from agent: {decision}")
+            
+            return decision
+            
+        except (ImportError, AttributeError) as e:
+            logging.error(f"Error loading agent class {agent_class_name}: {e}")
+            # Fallback to a default decision
+            return {
+                "thinking": f"Error loading agent: {str(e)}",
+                "action": "check" if game_state.get("current_bet", 0) == 0 else "call",
+                "amount": None,
+                "reasoning": {
+                    "hand_assessment": "Using fallback decision due to agent loading error",
+                    "positional_considerations": "Default reasoning",
+                    "opponent_reads": "Default reasoning",
+                    "archetype_alignment": f"Attempted to use {archetype} archetype"
+                }
+            }
+        except Exception as e:
+            logging.error(f"Unexpected error in get_agent_decision: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            
+            # More lenient fallback that prefers checking to folding when possible
+            current_bet = game_state.get("current_bet", 0)
+            if current_bet == 0:
+                action = "check"  # If no bet to call, check instead of fold
+            else:
+                action = "call"   # Try to call if there's a bet
+                
+                # If we can't afford the call, then fold
+                player_stack = game_state.get("stack_sizes", {}).get("0", 0)
+                if player_stack < current_bet:
+                    action = "fold"
+            
+            return {
+                "thinking": f"Error in agent decision: {str(e)}",
+                "action": action,
+                "amount": None,
+                "reasoning": {
+                    "hand_assessment": "Using fallback decision due to error",
+                    "positional_considerations": "Default reasoning",
+                    "opponent_reads": "Default reasoning", 
+                    "archetype_alignment": f"Attempted to use {archetype} archetype"
+                }
+            }
     
     @classmethod
     def process_hand_history(cls, hand_data, connector=None):

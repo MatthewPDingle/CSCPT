@@ -1206,7 +1206,13 @@ class GameService:
                 player_model["cards"] = None
         
         try:
-            action_type = "FOLD" # Default action
+            # Determine a smart default action based on game state
+            current_bet = game_state_dict.get("current_bet", 0)
+            if current_bet == 0:
+                action_type = "CHECK"  # Default to check if no bet to call
+            else:
+                # We'll decide between CALL and FOLD based on various factors below
+                action_type = "FOLD"
             action_amount = None
 
             if MEMORY_SYSTEM_AVAILABLE:
@@ -1234,12 +1240,26 @@ class GameService:
                     # **Important:** Use game_state_dict which has filtered cards
                     action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state_dict)
 
-                    # Map AI response to poker game actions
+                    # Map AI response to poker game actions (case-insensitive)
                     action_map = {
                         "fold": "FOLD", "check": "CHECK", "call": "CALL",
                         "bet": "BET", "raise": "RAISE", "all-in": "ALL_IN"
                     }
-                    action_type = action_map.get(action, "FOLD") # Default to FOLD if unknown
+                    action_type = action_map.get(action.lower(), None)
+                    
+                    # If action_type is None (unknown action), make a smart default choice
+                    if action_type is None:
+                        logging.warning(f"Unknown action '{action}' received. Making intelligent fallback decision.")
+                        if current_bet == 0:
+                            action_type = "CHECK"
+                        else:
+                            # Check if this is an aggressive archetype
+                            aggressive_archetypes = ["LAG", "Maniac"]
+                            if any(a.lower() in archetype.lower() for a in aggressive_archetypes):
+                                action_type = "CALL"
+                            else:
+                                action_type = "FOLD"
+                    
                     action_amount = amount
 
                     logging.info(f"AI Action: Parsed and validated decision: {action_type} {action_amount if action_amount is not None else ''}")
@@ -1247,9 +1267,49 @@ class GameService:
                 except Exception as ai_error:
                     logging.error(f"Error in AI decision making process: {ai_error}")
                     logging.error(traceback.format_exc())
-                    # Keep default action as FOLD
+                    
+                    # Use smarter fallback based on archetype and bet amount
+                    if current_bet == 0:
+                        action_type = "CHECK"
+                    else:
+                        # Determine appropriate fallback based on archetype
+                        aggressive_archetypes = ["LAG", "Maniac"]
+                        passive_archetypes = ["CallingStation", "LoosePassive", "Beginner"]
+                        tight_archetypes = ["TAG", "TightPassive", "ShortStack"]
+                        
+                        player_stack = 0
+                        for player in game_state_dict.get("players", []):
+                            if player.get("player_id") == player_id:
+                                player_stack = player.get("stack", 0)
+                                break
+                        
+                        # If current bet is small compared to stack, more likely to call
+                        if any(a.lower() in archetype.lower() for a in aggressive_archetypes):
+                            action_type = "CALL"  # Aggressive types call more
+                        elif any(a.lower() in archetype.lower() for a in passive_archetypes):
+                            if current_bet < player_stack / 5:  # Call small bets
+                                action_type = "CALL"
+                            else:
+                                action_type = "FOLD"
+                        else:  # Tight archetypes or unknown
+                            if current_bet < player_stack / 10:  # Only call very small bets
+                                action_type = "CALL"
+                            else:
+                                action_type = "FOLD"
+                    
+                    logging.info(f"Using intelligent fallback action: {action_type}")
             else:
-                 logging.warning("AI Action: Memory system not available, defaulting to FOLD.")
+                 logging.warning("AI Action: Memory system not available, using smart defaults.")
+                 
+                 # Even if memory system isn't available, make reasonable decisions
+                 if current_bet == 0:
+                     action_type = "CHECK"
+                 else:
+                     # Basic strategy based on archetype
+                     if "LAG" in archetype or "Maniac" in archetype:
+                         action_type = "CALL"
+                     else:
+                         action_type = "FOLD"
             
             # Convert the action type string to the poker game action enum
             from app.core.poker_game import PlayerAction as PokerPlayerAction
@@ -1386,25 +1446,55 @@ class GameService:
             import traceback
             logging.error(traceback.format_exc())
 
-            # Default to fold on error
+            # Use intelligent fallback based on game state
             from app.core.poker_game import PlayerAction as PokerPlayerAction
-            poker_action = PokerPlayerAction.FOLD
+            
+            # Get current bet to determine appropriate action
+            current_bet = poker_game.current_bet if poker_game else 0
+            
+            if current_bet == 0:
+                # If no bet to call, check is the safest action
+                poker_action = PokerPlayerAction.CHECK
+                fallback_action_name = "CHECK"
+            else:
+                # Determine if we should call or fold
+                # Use archetype to make this decision
+                if domain_player and domain_player.archetype:
+                    archetype = domain_player.archetype
+                    # Aggressive archetypes should call more often
+                    if any(x in archetype for x in ["LAG", "Maniac", "CallingStation"]):
+                        poker_action = PokerPlayerAction.CALL
+                        fallback_action_name = "CALL"
+                    else:
+                        poker_action = PokerPlayerAction.FOLD
+                        fallback_action_name = "FOLD"
+                else:
+                    poker_action = PokerPlayerAction.FOLD
+                    fallback_action_name = "FOLD"
+                
             try:
-                # Ensure poker_player is valid before processing fold
+                # Ensure poker_player is valid before processing the action
                 if poker_player and poker_game:
-                    logging.warning(f"AI Action Error: Forcing FOLD for player {player_id}")
-                    poker_game.process_action(poker_player, poker_action, None)
+                    logging.warning(f"AI Action Error: Using fallback {fallback_action_name} for player {player_id}")
+                    action_success = poker_game.process_action(poker_player, poker_action, None)
+                    
+                    if not action_success and fallback_action_name != "FOLD":
+                        # If the chosen action fails, fall back to FOLD as a last resort
+                        logging.warning(f"AI Action Error: {fallback_action_name} failed, forcing FOLD")
+                        poker_action = PokerPlayerAction.FOLD
+                        fallback_action_name = "FOLD"
+                        poker_game.process_action(poker_player, poker_action, None)
 
                     # Notify clients
                     from app.core.websocket import game_notifier
-                    await game_notifier.notify_player_action(game_id, player_id, "FOLD", None)
+                    await game_notifier.notify_player_action(game_id, player_id, fallback_action_name, None)
                     await game_notifier.notify_game_update(game_id, poker_game)
 
                 else:
-                    logging.error(f"AI Action Error: Cannot process fold because poker_player or poker_game is invalid.")
+                    logging.error(f"AI Action Error: Cannot process action because poker_player or poker_game is invalid.")
 
-            except Exception as fold_error:
-                logging.error(f"AI Action Error: Failed to process FOLD action after error: {fold_error}")
+            except Exception as action_error:
+                logging.error(f"AI Action Error: Failed to process {fallback_action_name} action after error: {action_error}")
 
         logging.info(f"[AI-ACTION-END-{execution_id}] Finished AI Action for Player {player_id} - Duration: {time.time() - start_time:.2f}s")
     def cash_out_player(self, game_id: str, player_id: str) -> int:
