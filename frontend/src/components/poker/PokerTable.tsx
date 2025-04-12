@@ -15,6 +15,7 @@ interface Player {
   isButton?: boolean;
   isSB?: boolean;
   isBB?: boolean;
+  status?: string;
 }
 
 interface PokerTableProps {
@@ -207,7 +208,8 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
               isDealer: true,
               isButton: false,
               isSB: false,
-              isBB: false
+              isBB: false,
+              status: "ACTIVE"
             }}
             position={getPlayerPosition({
               id: 'dealer',
@@ -217,7 +219,8 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
               cards: [],
               isActive: true,
               isCurrent: false,
-              isDealer: true
+              isDealer: true,
+              status: "ACTIVE"
             })}
             isHuman={false}
           />

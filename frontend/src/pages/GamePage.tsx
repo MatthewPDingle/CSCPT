@@ -461,6 +461,7 @@ const GamePage: React.FC = () => {
               isButton: false,
               isSB: false,
               isBB: false,
+              status: "ACTIVE",
               currentBet: 0
             };
           }
@@ -508,6 +509,7 @@ const GamePage: React.FC = () => {
             isButton,
             isSB: position === sbPos,
             isBB: position === bbPos,
+            status: player.status, // Pass the player status to handle folded state
             currentBet: typeof player.current_bet === 'number' ? player.current_bet : 0
           };
         } catch (playerError) {
@@ -525,6 +527,7 @@ const GamePage: React.FC = () => {
             isButton: false,
             isSB: false,
             isBB: false,
+            status: "ACTIVE",
             currentBet: 0
           };
         }

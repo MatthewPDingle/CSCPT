@@ -105,6 +105,31 @@ export const useGameWebSocket = (wsUrl: string) => {
   // Store player ID for checking turns
   const [playerId, setPlayerId] = useState<string | undefined>();
   
+  // Sound effect refs
+  const checkSoundRef = useRef<HTMLAudioElement | null>(null);
+  const chipsSoundRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Initialize sound effects
+  useEffect(() => {
+    // Create audio elements
+    checkSoundRef.current = new Audio('/audio/check.wav');
+    chipsSoundRef.current = new Audio('/audio/chips.wav');
+    
+    // Preload the sounds
+    checkSoundRef.current.load();
+    chipsSoundRef.current.load();
+    
+    // Clean up
+    return () => {
+      if (checkSoundRef.current) {
+        checkSoundRef.current.pause();
+      }
+      if (chipsSoundRef.current) {
+        chipsSoundRef.current.pause();
+      }
+    };
+  }, []);
+  
   // Extract playerId from URL if present
   useEffect(() => {
     // Skip if URL isn't provided
@@ -209,6 +234,20 @@ export const useGameWebSocket = (wsUrl: string) => {
               return;
             }
             setLastAction(message.data);
+            
+            // Play appropriate sound effect based on action
+            try {
+              const action = message.data.action.toUpperCase();
+              if (action === 'CHECK' && checkSoundRef.current) {
+                checkSoundRef.current.currentTime = 0;
+                checkSoundRef.current.play().catch(e => console.log('Sound play error:', e));
+              } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(action) && chipsSoundRef.current) {
+                chipsSoundRef.current.currentTime = 0;
+                chipsSoundRef.current.play().catch(e => console.log('Sound play error:', e));
+              }
+            } catch (e) {
+              console.log('Error playing sound effect:', e);
+            }
             break;
             
           case 'action_log':

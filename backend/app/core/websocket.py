@@ -457,6 +457,56 @@ class GameStateNotifier:
     def __init__(self, connection_mgr: ConnectionManager):
         self.connection_manager = connection_mgr
         
+    async def notify_new_hand(self, game_id: str, hand_number: int):
+        """
+        Notify all clients about a new hand starting.
+        
+        Args:
+            game_id: The ID of the game
+            hand_number: The hand number that's starting
+        """
+        message = {
+            "type": "action_log",
+            "data": {
+                "text": f"*** Starting Hand #{hand_number} ***",
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        
+        await self.connection_manager.broadcast_to_game(game_id, message)
+        
+    async def notify_new_round(self, game_id: str, round_name: str, community_cards: list):
+        """
+        Notify all clients about a new betting round.
+        
+        Args:
+            game_id: The ID of the game
+            round_name: The name of the new round (FLOP, TURN, RIVER)
+            community_cards: The current community cards
+        """
+        # Format cards for display
+        card_str = ' '.join([str(card) for card in community_cards])
+        
+        # Create appropriate message based on the round
+        if round_name == "FLOP":
+            text = f"*** Dealing the Flop: [{card_str}] ***"
+        elif round_name == "TURN":
+            text = f"*** Dealing the Turn: [{card_str}] ***"
+        elif round_name == "RIVER":
+            text = f"*** Dealing the River: [{card_str}] ***"
+        else:
+            text = f"*** {round_name.capitalize()} ***"
+        
+        message = {
+            "type": "action_log",
+            "data": {
+                "text": text,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        
+        await self.connection_manager.broadcast_to_game(game_id, message)
+        
     async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func=None):
         """
         Notify all clients about a game state update.

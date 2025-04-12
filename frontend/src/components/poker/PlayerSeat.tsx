@@ -14,6 +14,7 @@ interface Player {
   isButton?: boolean;
   isSB?: boolean;
   isBB?: boolean;
+  status?: string;
 }
 
 interface PlayerSeatProps {
@@ -59,10 +60,12 @@ const SeatContainer = styled.div<PositionProps>`
 interface PlayerInfoProps {
   $isHuman: boolean;
   $isDealer?: boolean;
+  $isFolded?: boolean;
 }
 
 const PlayerInfo = styled.div<PlayerInfoProps>`
   background-color: ${props => {
+    if (props.$isFolded) return 'rgba(100, 100, 100, 0.75)';
     if (props.$isDealer) return 'rgba(155, 89, 182, 0.85)';
     if (props.$isHuman) return 'rgba(41, 128, 185, 0.85)';
     return 'rgba(0, 0, 0, 0.75)';
@@ -76,10 +79,12 @@ const PlayerInfo = styled.div<PlayerInfoProps>`
   max-width: 110px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
   border: ${props => {
+    if (props.$isFolded) return 'none';
     if (props.$isDealer) return '2px solid #8e44ad';
     if (props.$isHuman) return '2px solid #3498db';
     return 'none';
   }};
+  filter: ${props => props.$isFolded ? 'grayscale(80%)' : 'none'};
 `;
 
 const PlayerName = styled.div<{ $isHuman: boolean }>`
@@ -104,7 +109,7 @@ const ChipCount = styled.div<{ $isHuman: boolean }>`
   margin-top: 0.15rem;
 `;
 
-const PlayerCards = styled.div<{ $isHuman: boolean }>`
+const PlayerCards = styled.div<{ $isHuman: boolean; $isFolded?: boolean }>`
   display: flex;
   gap: 0.3rem;
   /* Same scale for all players */
@@ -112,6 +117,7 @@ const PlayerCards = styled.div<{ $isHuman: boolean }>`
   transform-origin: top center;
   filter: drop-shadow(0 5px 5px rgba(0, 0, 0, 0.5));
   min-height: 53px; /* Ensure consistent height even without cards */
+  opacity: ${props => props.$isFolded ? 0.6 : 1};
 `;
 
 // Create a container for the markers
@@ -156,6 +162,9 @@ const BigBlindMarker = styled(PositionMarker)`
 `;
 
 const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) => {
+  // Check if player is folded based on status
+  const isFolded = player.status === 'FOLDED';
+  
   return (
     <SeatContainer 
       x={position.x} 
@@ -164,7 +173,11 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
       $isCurrent={player.isCurrent}
       $isHuman={isHuman}
     >
-      <PlayerInfo $isHuman={isHuman} $isDealer={player.id === 'dealer'}>
+      <PlayerInfo 
+        $isHuman={isHuman} 
+        $isDealer={player.id === 'dealer'}
+        $isFolded={isFolded}
+      >
         <PlayerName $isHuman={isHuman}>{player.name}</PlayerName>
         <ChipCount $isHuman={isHuman}>${player.chips}</ChipCount>
         
@@ -178,7 +191,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
         )}
       </PlayerInfo>
       
-      <PlayerCards $isHuman={isHuman}>
+      <PlayerCards $isHuman={isHuman} $isFolded={isFolded}>
         {player.id === 'dealer' ? (
           // Empty div placeholders for dealer (invisible)
           <>
@@ -191,7 +204,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
             <Card 
               key={index} 
               card={card}
-              faceDown={!isHuman} // Only show the human player's cards
+              faceDown={!isHuman || isFolded} // Hide cards if not human player or folded
             />
           ))
         )}
