@@ -1019,6 +1019,9 @@ class GameService:
                     # Start a new hand
                     self._start_new_hand(game)
                 
+                # Import at the beginning of the function instead of inside the loop
+                from app.core.poker_game import PlayerStatus as PokerPlayerStatus
+                
                 # Update player states
                 for i, p in enumerate(game.players):
                     if i < len(poker_game.players):
@@ -1026,7 +1029,6 @@ class GameService:
                         if p.id == poker_p.player_id:
                             # Update chips, status, etc.
                             p.chips = poker_p.chips
-                            from app.core.poker_game import PlayerStatus as PokerPlayerStatus
                             status_map = {
                                 PokerPlayerStatus.ACTIVE: PlayerStatus.ACTIVE,
                                 PokerPlayerStatus.FOLDED: PlayerStatus.FOLDED,
@@ -1153,12 +1155,31 @@ class GameService:
         
         # *** CRITICAL CHECK: Verify it's actually this player's turn ***
         active_poker_players = [p for p in poker_game.players if p.status == PokerPlayerStatus.ACTIVE]
-        if not active_poker_players or poker_game.current_player_idx >= len(poker_game.players) or poker_game.players[poker_game.current_player_idx].player_id != player_id:
-            current_turn_player_id = "None"
-            if poker_game.current_player_idx < len(poker_game.players):
-                current_turn_player_id = poker_game.players[poker_game.current_player_idx].player_id
-            logging.error(f"AI Action Aborted: It's not player {player_id}'s turn. Current turn is index {poker_game.current_player_idx} (Player ID: {current_turn_player_id})")
-            return
+        current_idx = poker_game.current_player_idx
+        player_list_len = len(poker_game.players)
+        target_player_id = player_id  # The player ID passed to the function
+
+        # Log values BEFORE the check
+        logging.info(f"[AI-ACTION-CHECK-{execution_id}] Checking turn: current_idx={current_idx}, player_list_len={player_list_len}, target_player_id={target_player_id}")
+        
+        is_turn = False
+        current_turn_player_id = "None"
+        if 0 <= current_idx < player_list_len:
+            current_turn_player_id = poker_game.players[current_idx].player_id
+            is_turn = (current_turn_player_id == target_player_id)
+        
+        # The original check was complex, let's simplify and log why it fails
+        if not active_poker_players:
+             logging.error(f"AI Action Aborted: No active players. Context: current_idx={current_idx}, player_id={player_id}")
+             return
+        elif not (0 <= current_idx < player_list_len):
+             logging.error(f"AI Action Aborted: current_player_idx {current_idx} is out of bounds for players list length {player_list_len}. Context: player_id={player_id}")
+             return
+        elif poker_game.players[current_idx].player_id != target_player_id:
+             logging.error(f"AI Action Aborted: It's not player {target_player_id}'s turn. Current turn is index {current_idx} (Player ID: {current_turn_player_id})")
+             return
+        # If we pass all checks, log success
+        logging.info(f"[AI-ACTION-CHECK-{execution_id}] Turn validation passed for player {player_id}")
         # *** END CRITICAL CHECK ***
         
         # Enhanced logging with position information
@@ -1264,7 +1285,7 @@ class GameService:
 
                     logging.info(f"AI Action: Parsed and validated decision: {action_type} {action_amount if action_amount is not None else ''}")
                     
-                except Exception as ai_error:
+                except (Exception, ImportError) as ai_error:
                     logging.error(f"Error in AI decision making process: {ai_error}")
                     logging.error(traceback.format_exc())
                     

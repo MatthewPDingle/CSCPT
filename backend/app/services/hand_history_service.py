@@ -200,13 +200,14 @@ class HandHistoryRecorder:
                         }
                         
                         # Update memory with this action
-                        MemoryIntegration.update_from_action(
-                            player_id=player_id,
-                            action_type=action_type.name,
-                            amount=amount,
-                            betting_round=betting_round.name,
-                            game_state=game_state
-                        )
+                        if 'MemoryIntegration' in globals():
+                            MemoryIntegration.update_from_action(
+                                player_id=player_id,
+                                action_type=action_type.name,
+                                amount=amount,
+                                betting_round=betting_round.name,
+                                game_state=game_state
+                            )
                         break
             except Exception as e:
                 # Don't let memory errors disrupt the game
@@ -349,8 +350,11 @@ class HandHistoryRecorder:
                 # Convert the hand history to a dictionary for memory processing
                 hand_dict = self.current_hand.dict()
                 
-                # Process in memory system
-                MemoryIntegration.process_hand_history(hand_dict)
+                # Process in memory system if MemoryIntegration is available
+                if 'MemoryIntegration' in globals():
+                    MemoryIntegration.process_hand_history(hand_dict)
+                else:
+                    print("MemoryIntegration not available, skipping hand history processing")
             except Exception as e:
                 # Don't let memory errors disrupt the game
                 print(f"Error processing hand in memory system: {str(e)}")

@@ -1348,6 +1348,7 @@ class PokerGame:
                 pos_name = self._get_position_name(rel_pos)
                 logging.info(f"[{execution_id}] Found next player: {next_player.name} [{pos_name}] at index {next_idx} (was {old_idx})")
                 logging.info(f"[{execution_id}] Player status: {next_player.status.name}, In to_act: {next_player.player_id in self.to_act}")
+                logging.info(f"[{execution_id}] Final current_player_idx set to: {self.current_player_idx}")
                 logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - END {execution_id} ===")
                 found_next_player = True
                 return  # Found the next player
@@ -1375,6 +1376,7 @@ class PokerGame:
                  # If STILL no one found (major issue), maybe the round really is over?
                  logging.error(f"[{execution_id}] Fallback failed: Still couldn't find any valid player to act.")
 
+        logging.info(f"[{execution_id}] Final current_player_idx set to: {self.current_player_idx}")
         logging.info(f"=== ADVANCING TO NEXT PLAYER (Index-Based) - END {execution_id} ===")
         
     def _get_position_name(self, rel_pos: int) -> str:
