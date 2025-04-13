@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import PokerTable from '../components/poker/PokerTable';
 import ActionControls from '../components/poker/ActionControls';
@@ -140,6 +140,27 @@ const ConnectionHealthDisplay = styled.div`
 // Define the status type to avoid PropType warnings
 type ConnectionStatus = 'open' | 'connecting' | 'closed';
 
+const CopyButton = styled.button`
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 0.9rem;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  z-index: 21;
+
+  &:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.3);
+  }
+`;
+
 // Use transient prop to avoid DOM warnings
 // The $ prefix makes styled-components not pass the prop to the DOM
 const ConnectionStatusDot = styled.div<{ $status: ConnectionStatus }>`
@@ -166,12 +187,13 @@ const ActionLogDisplay = styled.div`
   position: absolute;
   bottom: 80px;
   left: 20px;
-  width: 250px;
+  width: 450px;
   height: 150px;
   background-color: rgba(0, 0, 0, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 5px;
   padding: 10px;
+  padding-top: 30px; /* Add space for the copy button */
   overflow-y: scroll;
   color: white;
   font-size: 0.8rem;
@@ -211,6 +233,7 @@ const GamePage: React.FC = () => {
   
   // Use state to ensure stable initialization before creating websocket
   const [initData, setInitData] = useState<{ gameId: string; playerId: string; gameMode: 'cash' | 'tournament' } | null>(null);
+  const [copyStatus, setCopyStatus] = useState('');
   
   // Extract required data from location state, only after mounting
   useEffect(() => {
@@ -548,10 +571,26 @@ const GamePage: React.FC = () => {
   };
   
   // Function to update player data after cash game operations
-  const handlePlayerUpdate = () => {
+  const handlePlayerUpdate = useCallback(() => {
     // In a real implementation, WebSocket updates would handle this
     console.log('Player data will be updated via WebSocket');
-  };
+  }, []);
+  
+  // Function to copy action log to clipboard
+  const handleCopyLog = useCallback(() => {
+    const logText = actionLog.join('\n');
+    navigator.clipboard.writeText(logText)
+      .then(() => {
+        console.log('Action log copied to clipboard!');
+        setCopyStatus('Copied!');
+        setTimeout(() => setCopyStatus(''), 1500); // Clear message after 1.5s
+      })
+      .catch(err => {
+        console.error('Failed to copy action log:', err);
+        setCopyStatus('Failed');
+        setTimeout(() => setCopyStatus(''), 1500);
+      });
+  }, [actionLog]);
   
   // Render loading screen if needed
   if (isLoading || !initData || !wsUrl || status === 'connecting' || status === 'error') {
@@ -790,6 +829,10 @@ const connectionIndicator = (
             el.scrollTop = el.scrollHeight;
           }
         }}>
+          {/* Add Copy Button */}
+          <CopyButton onClick={handleCopyLog} title="Copy Action Log">
+            {copyStatus || '📋'}
+          </CopyButton>
           {actionLog.map((log, index) => (
             <ActionLogItem key={index}>{log}</ActionLogItem>
           ))}

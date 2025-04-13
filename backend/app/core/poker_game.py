@@ -644,19 +644,6 @@ class PokerGame:
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             
-            # Send notification to clients about new round
-            if self.game_id:
-                try:
-                    from app.core.websocket import game_notifier
-                    import asyncio
-                    asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id, 
-                        self.current_round.name, 
-                        self.community_cards
-                    ))
-                except Exception as e:
-                    logging.error(f"Error sending new round notification: {e}")
-            
         self._reset_betting_round()
     
     def deal_turn(self):
@@ -694,19 +681,6 @@ class PokerGame:
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             
-            # Send notification to clients about new round
-            if self.game_id:
-                try:
-                    from app.core.websocket import game_notifier
-                    import asyncio
-                    asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id, 
-                        self.current_round.name, 
-                        self.community_cards
-                    ))
-                except Exception as e:
-                    logging.error(f"Error sending new round notification: {e}")
-            
         self._reset_betting_round()
     
     def deal_river(self):
@@ -730,19 +704,6 @@ class PokerGame:
                 cards=self.community_cards,
                 round_name=self.current_round.name
             )
-            
-            # Send notification to clients about new round
-            if self.game_id:
-                try:
-                    from app.core.websocket import game_notifier
-                    import asyncio
-                    asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id, 
-                        self.current_round.name, 
-                        self.community_cards
-                    ))
-                except Exception as e:
-                    logging.error(f"Error sending new round notification: {e}")
             
             # Send notification to clients about new round
             if self.game_id:
