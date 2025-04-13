@@ -1016,7 +1016,8 @@ class GameService:
                     if poker_game.current_hand_id:
                         game.hand_history_ids.append(poker_game.current_hand_id)
                     
-                    # Start a new hand
+                    # Start a new hand (delay will be added via the WebSocket handler)
+                    logging.info(f"Hand {game.current_hand.hand_number} concluded. Starting new hand...")
                     self._start_new_hand(game)
                 
                 # Import at the beginning of the function instead of inside the loop
@@ -1405,6 +1406,10 @@ class GameService:
                     # Notify about hand result
                     await game_notifier.notify_hand_result(game_id, poker_game)
 
+                    # Add a 1-second delay before starting a new hand
+                    logging.info("AI Action: Waiting 1 second before starting new hand...")
+                    await asyncio.sleep(1.0)
+                    
                     # Start a new hand
                     logging.info("AI Action: Starting new hand.")
                     self._start_new_hand(game)

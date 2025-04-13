@@ -756,8 +756,13 @@ class GameStateNotifier:
             game_id: The ID of the game
             game: The PokerGame instance
         """
+        import asyncio
+        import logging
+        
         if game.current_hand_id is None:
             return
+        
+        logging.info(f"Notifying hand result for game {game_id}, hand {game.current_hand_id}")
             
         result_message = {
             "type": "hand_result",
@@ -811,6 +816,10 @@ class GameStateNotifier:
         
         # Broadcast to all players
         await self.connection_manager.broadcast_to_game(game_id, result_message)
+        
+        # Add a 1-second delay before starting a new hand
+        logging.info(f"Adding 1-second delay after hand result for game {game_id} before starting new hand")
+        await asyncio.sleep(1.0)
     
     async def notify_action_request(self, game_id: str, game: PokerGame):
         """

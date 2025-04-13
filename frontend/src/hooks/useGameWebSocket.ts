@@ -108,16 +108,19 @@ export const useGameWebSocket = (wsUrl: string) => {
   // Sound effect refs
   const checkSoundRef = useRef<HTMLAudioElement | null>(null);
   const chipsSoundRef = useRef<HTMLAudioElement | null>(null);
+  const shuffleSoundRef = useRef<HTMLAudioElement | null>(null);
   
   // Initialize sound effects
   useEffect(() => {
     // Create audio elements
     checkSoundRef.current = new Audio('/audio/check.wav');
     chipsSoundRef.current = new Audio('/audio/chips.wav');
+    shuffleSoundRef.current = new Audio('/audio/shuffle.wav');
     
     // Preload the sounds
     checkSoundRef.current.load();
     chipsSoundRef.current.load();
+    shuffleSoundRef.current.load();
     
     // Clean up
     return () => {
@@ -126,6 +129,9 @@ export const useGameWebSocket = (wsUrl: string) => {
       }
       if (chipsSoundRef.current) {
         chipsSoundRef.current.pause();
+      }
+      if (shuffleSoundRef.current) {
+        shuffleSoundRef.current.pause();
       }
     };
   }, []);
@@ -254,6 +260,16 @@ export const useGameWebSocket = (wsUrl: string) => {
             console.log('Action log received:', message.data);
             if (message.data?.text) {
               setActionLog(prev => [...prev.slice(-50), message.data.text]); // Keep last 50 logs
+              
+              // Play shuffle sound when a new hand is starting
+              if (message.data.text.includes('Starting Hand #') && shuffleSoundRef.current) {
+                try {
+                  shuffleSoundRef.current.currentTime = 0;
+                  shuffleSoundRef.current.play().catch(e => console.log('Shuffle sound play error:', e));
+                } catch (e) {
+                  console.log('Error playing shuffle sound:', e);
+                }
+              }
             }
             break;
             
@@ -269,6 +285,19 @@ export const useGameWebSocket = (wsUrl: string) => {
           case 'hand_result':
             console.log('Hand result received:', message.data);
             setHandResult(message.data);
+            
+            // Play the shuffle sound with a short delay when hand results are shown
+            // This gives a nice audio cue that the cards are being shuffled for the next hand
+            setTimeout(() => {
+              if (shuffleSoundRef.current) {
+                try {
+                  shuffleSoundRef.current.currentTime = 0;
+                  shuffleSoundRef.current.play().catch(e => console.log('Delayed shuffle sound error:', e));
+                } catch (e) {
+                  console.log('Error playing delayed shuffle sound:', e);
+                }
+              }
+            }, 500);
             break;
             
           case 'chat':
