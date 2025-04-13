@@ -814,7 +814,24 @@ class GameStateNotifier:
             
             result_message["data"]["players"].append(player_info)
         
-        # Broadcast to all players
+        # Add winner information to action log with more details about the hand
+        if result_message["data"].get("winners") and len(result_message["data"]["winners"]) > 0:
+            for winner in result_message["data"]["winners"]:
+                winning_player = winner.get("name", "Unknown Player")
+                hand_type = winner.get("hand_rank", "Unknown hand")
+                win_amount = winner.get("amount", 0)
+                
+                # Send detailed hand result to action log for better player experience
+                action_log_message = {
+                    "type": "action_log",
+                    "data": {
+                        "text": f"🏆 {winning_player} wins ${win_amount} with {hand_type}!",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                }
+                await self.connection_manager.broadcast_to_game(game_id, action_log_message)
+        
+        # Broadcast hand result to all players
         await self.connection_manager.broadcast_to_game(game_id, result_message)
         
         # Add a 1.5-second delay before starting a new hand to show cards at showdown

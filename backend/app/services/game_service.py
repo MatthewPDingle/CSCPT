@@ -898,161 +898,158 @@ class GameService:
             ValueError: If the action is invalid
             KeyError: If the game or player doesn't exist
         """
-        game = self.game_repo.get(game_id)
-        if not game:
-            raise KeyError(f"Game {game_id} not found")
-            
-        if game.status != GameStatus.ACTIVE:
-            raise ValueError(f"Cannot process action for game with status {game.status}")
-            
-        if not game.current_hand:
-            raise ValueError("No active hand in the game")
-            
-        # Validate the player
-        player = None
-        for p in game.players:
-            if p.id == player_id:
-                player = p
-                break
-        
-        if not player:
-            raise KeyError(f"Player {player_id} not found in game {game_id}")
-            
-        # Log the current action with position information
-        import logging
-        poker_game = self.poker_games.get(game_id)
-        if poker_game:
-            # Get the player position name
-            player_count = len(game.players)
-            position_name = ""
-            
-            if player.position == poker_game.button_position:
-                position_name = "BTN (Dealer)"
-            elif player.position == (poker_game.button_position + 1) % player_count:
-                position_name = "SB (Small Blind)"
-            elif player.position == (poker_game.button_position + 2) % player_count:
-                position_name = "BB (Big Blind)"
-            elif player.position == (poker_game.button_position + 3) % player_count:
-                position_name = "UTG (Under the Gun)"
-            elif player.position == (poker_game.button_position + 4) % player_count:
-                position_name = "UTG+1"
-            elif player.position == (poker_game.button_position + 5) % player_count:
-                position_name = "UTG+2"
-            elif player.position == (poker_game.button_position + 6) % player_count:
-                position_name = "LJ (Lojack)"
-            elif player.position == (poker_game.button_position + 7) % player_count:
-                position_name = "HJ (Hijack)"
-            elif player.position == (poker_game.button_position + 8) % player_count:
-                position_name = "CO (Cutoff)"
+        import time # Added for logging
+        import logging # Added for explicit logging
+        import asyncio # Added for async sleep
+        start_time = time.time() # Added for logging
+        execution_id = f"{start_time:.6f}" # Added for logging
+        logging.info(f"[PROCESS-ACTION-{execution_id}] Starting for player {player_id}, action {action}, amount {amount}")
+
+        game_lock = await self._get_game_lock(game_id)
+        async with game_lock:
+            logging.info(f"[PROCESS-ACTION-{execution_id}] Lock acquired.")
+            game = self.game_repo.get(game_id)
+            if not game:
+                raise KeyError(f"Game {game_id} not found")
                 
-            logging.info(f"Processing action: {player.name} [{position_name} - Seat {player.position}] {action} {amount if amount else ''}")
-            logging.info(f"Current round: {game.current_hand.current_round}")
-            
-            # Log who's next to act
-            if 0 <= poker_game.current_player_idx < len(poker_game.players):
-                current_player = poker_game.players[poker_game.current_player_idx]
-                active_players = [p for p in poker_game.players if p.status == PokerPlayerStatus.ACTIVE]
-                to_act_players = [p.name for p in active_players if p.player_id in poker_game.to_act]
+            if game.status != GameStatus.ACTIVE:
+                raise ValueError(f"Cannot process action for game with status {game.status}")
                 
-                logging.info(f"Active players: {[p.name for p in active_players]}")
-                logging.info(f"Players still to act: {to_act_players}")
-                logging.info(f"Next player to act: {current_player.name} (index {poker_game.current_player_idx})")
-        
-        # Create action history record
-        action_history = ActionHistory(
-            game_id=game_id,
-            hand_id=game.current_hand.id,
-            player_id=player_id,
-            action=action,
-            amount=amount,
-            round=game.current_hand.current_round
-        )
-        
-        # Save the action in the action repository
-        self.action_repo.create(action_history)
-        
-        # Add the action to the hand
-        game.current_hand.actions.append(action_history)
-        
-        # Process the action in the poker game
-        if game_id in self.poker_games:
-            poker_game = self.poker_games[game_id]
-            
-            # Find the player in the poker game
-            poker_player = None
-            for p in poker_game.players:
-                if p.player_id == player_id:
-                    poker_player = p
-                    break
+            if not game.current_hand:
+                raise ValueError("No active hand in the game")
+                
+            # Validate the player
+            player = next((p for p in game.players if p.id == player_id), None)
+            if not player:
+                raise KeyError(f"Player {player_id} not found in game {game_id}")
+                
+            # Log the current action with position information
+            poker_game = self.poker_games.get(game_id)
+            if poker_game:
+                # Get the player position name
+                player_count = len(game.players)
+                position_name = ""
+                
+                if player.position == poker_game.button_position:
+                    position_name = "BTN (Dealer)"
+                elif player.position == (poker_game.button_position + 1) % player_count:
+                    position_name = "SB (Small Blind)"
+                elif player.position == (poker_game.button_position + 2) % player_count:
+                    position_name = "BB (Big Blind)"
+                elif player.position == (poker_game.button_position + 3) % player_count:
+                    position_name = "UTG (Under the Gun)"
+                elif player.position == (poker_game.button_position + 4) % player_count:
+                    position_name = "UTG+1"
+                elif player.position == (poker_game.button_position + 5) % player_count:
+                    position_name = "UTG+2"
+                elif player.position == (poker_game.button_position + 6) % player_count:
+                    position_name = "LJ (Lojack)"
+                elif player.position == (poker_game.button_position + 7) % player_count:
+                    position_name = "HJ (Hijack)"
+                elif player.position == (poker_game.button_position + 8) % player_count:
+                    position_name = "CO (Cutoff)"
                     
-            if poker_player:
-                # Convert the domain action to poker game action
-                action_map = {
-                    PlayerAction.FOLD: 'FOLD',
-                    PlayerAction.CHECK: 'CHECK', 
-                    PlayerAction.CALL: 'CALL',
-                    PlayerAction.BET: 'BET',
-                    PlayerAction.RAISE: 'RAISE',
-                    PlayerAction.ALL_IN: 'ALL_IN'
-                }
+                logging.info(f"Processing action: {player.name} [{position_name} - Seat {player.position}] {action} {amount if amount else ''}")
+                logging.info(f"Current round: {game.current_hand.current_round}")
                 
-                # Get the corresponding poker game action from the class, not the instance
-                from app.core.poker_game import PlayerAction as PokerPlayerAction
-                poker_action = getattr(PokerPlayerAction, action_map[action])
+                # Log who's next to act
+                if 0 <= poker_game.current_player_idx < len(poker_game.players):
+                    current_player = poker_game.players[poker_game.current_player_idx]
+                    active_players = [p for p in poker_game.players if p.status == PokerPlayerStatus.ACTIVE]
+                    to_act_players = [p.name for p in active_players if p.player_id in poker_game.to_act]
+                    
+                    logging.info(f"Active players: {[p.name for p in active_players]}")
+                    logging.info(f"Players still to act: {to_act_players}")
+                    logging.info(f"Next player to act: {current_player.name} (index {poker_game.current_player_idx})")
+            
+            # Create action history record
+            action_history = ActionHistory(
+                game_id=game_id,
+                hand_id=game.current_hand.id,
+                player_id=player_id,
+                action=action,
+                amount=amount,
+                round=game.current_hand.current_round
+            )
+            
+            # Save the action in the action repository
+            self.action_repo.create(action_history)
+            
+            # Add the action to the hand
+            game.current_hand.actions.append(action_history)
+            
+            # Process the action in the poker game
+            if game_id in self.poker_games:
+                poker_game = self.poker_games[game_id]
                 
-                # Process the action
-                poker_game.process_action(poker_player, poker_action, amount)
-                
-                # If the hand is over, start a new one
-                from app.core.poker_game import BettingRound
-                if poker_game.current_round == BettingRound.SHOWDOWN:
-                    # Record end of hand in domain model
-                    game.current_hand.ended_at = datetime.now()
+                # Find the player in the poker game
+                poker_player = next((p for p in poker_game.players if p.player_id == player_id), None)
                     
-                    # Add to hand history
-                    game.hand_history.append(game.current_hand)
+                if poker_player:
+                    # Convert the domain action to poker game action
+                    action_map = {
+                        PlayerAction.FOLD: 'FOLD',
+                        PlayerAction.CHECK: 'CHECK', 
+                        PlayerAction.CALL: 'CALL',
+                        PlayerAction.BET: 'BET',
+                        PlayerAction.RAISE: 'RAISE',
+                        PlayerAction.ALL_IN: 'ALL_IN'
+                    }
                     
-                    # Update hand history IDs list if we have a hand history ID
-                    if poker_game.current_hand_id:
-                        game.hand_history_ids.append(poker_game.current_hand_id)
+                    # Get the corresponding poker game action from the class, not the instance
+                    from app.core.poker_game import PlayerAction as PokerPlayerAction
+                    from app.core.poker_game import BettingRound, PlayerStatus as PokerPlayerStatus
+                    poker_action = getattr(PokerPlayerAction, action_map[action])
                     
-                    # First notify about the hand result
-                    try:
-                        from app.core.websocket import game_notifier
-                        await game_notifier.notify_hand_result(game_id, poker_game)
+                    # Process the action
+                    poker_game.process_action(poker_player, poker_action, amount)
+                    
+                    # If the hand is over, start a new one
+                    if poker_game.current_round == BettingRound.SHOWDOWN:
+                        # Record end of hand in domain model
+                        game.current_hand.ended_at = datetime.now()
                         
-                        # Add delay to show cards at showdown before starting new hand
-                        logging.info(f"Hand {game.current_hand.hand_number} concluded. Adding delay to show cards at showdown...")
-                        await asyncio.sleep(1.5)
-                    except Exception as e:
-                        logging.error(f"Error showing hand result or delaying: {e}")
+                        # Add to hand history
+                        game.hand_history.append(game.current_hand)
                         
-                    # Start a new hand
-                    logging.info("Starting new hand...")
-                    self._start_new_hand(game)
-                
-                # Import at the beginning of the function instead of inside the loop
-                from app.core.poker_game import PlayerStatus as PokerPlayerStatus
-                
-                # Update player states
-                for i, p in enumerate(game.players):
-                    if i < len(poker_game.players):
-                        poker_p = poker_game.players[i]
-                        if p.id == poker_p.player_id:
-                            # Update chips, status, etc.
-                            p.chips = poker_p.chips
-                            status_map = {
-                                PokerPlayerStatus.ACTIVE: PlayerStatus.ACTIVE,
-                                PokerPlayerStatus.FOLDED: PlayerStatus.FOLDED,
-                                PokerPlayerStatus.ALL_IN: PlayerStatus.ALL_IN,
-                                PokerPlayerStatus.OUT: PlayerStatus.OUT
-                            }
-                            p.status = status_map.get(poker_p.status, PlayerStatus.ACTIVE)
-        
-        # Update the game
-        self.game_repo.update(game)
-        
-        return game
+                        # Update hand history IDs list if we have a hand history ID
+                        if poker_game.current_hand_id:
+                            game.hand_history_ids.append(poker_game.current_hand_id)
+                        
+                        # First notify about the hand result
+                        try:
+                            from app.core.websocket import game_notifier
+                            await game_notifier.notify_hand_result(game_id, poker_game)
+                            
+                            # Add delay to show cards at showdown before starting new hand
+                            logging.info(f"Hand {game.current_hand.hand_number} concluded. Adding delay to show cards at showdown...")
+                            await asyncio.sleep(1.5)  # Increased delay to 1.5 seconds for better UX
+                        except Exception as e:
+                            logging.error(f"Error showing hand result or delaying: {e}")
+                        
+                        # Start a new hand
+                        logging.info("Starting new hand...")
+                        self._start_new_hand(game)
+                    
+                    # Update player states
+                    for i, p in enumerate(game.players):
+                        if i < len(poker_game.players):
+                            poker_p = poker_game.players[i]
+                            if p.id == poker_p.player_id:
+                                # Update chips, status, etc.
+                                p.chips = poker_p.chips
+                                status_map = {
+                                    PokerPlayerStatus.ACTIVE: PlayerStatus.ACTIVE,
+                                    PokerPlayerStatus.FOLDED: PlayerStatus.FOLDED,
+                                    PokerPlayerStatus.ALL_IN: PlayerStatus.ALL_IN,
+                                    PokerPlayerStatus.OUT: PlayerStatus.OUT
+                                }
+                                p.status = status_map.get(poker_p.status, PlayerStatus.ACTIVE)
+            
+            # Update the game
+            self.game_repo.update(game)
+            
+            return game
     
     def get_hand_history(self, hand_id: str) -> Optional[HandHistory]:
         """
