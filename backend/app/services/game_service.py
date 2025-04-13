@@ -11,10 +11,10 @@ from typing import Dict, List, Optional, Tuple, Any, Set
 from app.core.cards import Deck
 from app.core.hand_evaluator import HandEvaluator
 from app.core.poker_game import PokerGame
-from app.core.poker_game import PlayerStatus as PokerPlayerStatus
+from app.core.poker_game import PlayerStatus as PokerPlayerStatus, BettingRound as PokerBettingRound
 from app.models.domain_models import (
     Game, Player, Hand, ActionHistory, GameType, GameStatus, 
-    BettingRound, PlayerAction, PlayerStatus, TournamentInfo, CashGameInfo,
+    BettingRound, PlayerAction, PlayerStatus as DomainPlayerStatus, TournamentInfo, CashGameInfo,
     BlindLevel, HandHistory
 )
 from app.repositories.in_memory import (
@@ -277,7 +277,7 @@ class GameService:
             user_id=user_id,
             archetype=archetype,
             position=position,
-            status=PlayerStatus.WAITING
+            status=DomainPlayerStatus.WAITING
         )
         
         # Set initial chips based on game type or provided value
@@ -502,7 +502,7 @@ class GameService:
         dealer_position = 0
         if hand_number > 1:
             # Move dealer button clockwise
-            active_positions = sorted([p.position for p in game.players if p.status != PlayerStatus.OUT])
+            active_positions = sorted([p.position for p in game.players if p.status != DomainPlayerStatus.OUT])
             if not active_positions:
                 raise ValueError("No active players to start a hand")
                 
@@ -579,14 +579,14 @@ class GameService:
         all_in_player_ids = []
         
         for player in game.players:
-            if player.status == PlayerStatus.OUT:
+            if player.status == DomainPlayerStatus.OUT:
                 continue
                 
             # Reset player state for new hand
             player.cards = []
             player.bet = 0
             player.has_acted = False
-            player.status = PlayerStatus.ACTIVE
+            player.status = DomainPlayerStatus.ACTIVE
             player.is_dealer = (player.position == dealer_position)
             
             # Set dealer, SB, BB
@@ -648,7 +648,7 @@ class GameService:
                 
             # Add players to poker game
             for player in game.players:
-                if player.status != PlayerStatus.OUT:
+                if player.status != DomainPlayerStatus.OUT:
                     poker_game.add_player(player.id, player.name, player.chips)
                     
             self.poker_games[game.id] = poker_game
@@ -669,7 +669,7 @@ class GameService:
         # Log each player's position
         position_info = []
         for player in game.players:
-            if player.status == PlayerStatus.OUT:
+            if player.status == DomainPlayerStatus.OUT:
                 continue
                 
             poker_pos = ""
@@ -904,6 +904,8 @@ class GameService:
         import time # Added for logging
         import logging # Added for explicit logging
         import asyncio # Added for async sleep
+        # Using PokerBettingRound already imported at the top of the file
+        
         start_time = time.time() # Added for logging
         execution_id = f"{start_time:.6f}" # Added for logging
         logging.info(f"[PROCESS-ACTION-{execution_id}] Starting for player {player_id}, action {action}, amount {amount}")
@@ -1005,14 +1007,15 @@ class GameService:
                     
                     # Get the corresponding poker game action from the class, not the instance
                     from app.core.poker_game import PlayerAction as PokerPlayerAction
-                    from app.core.poker_game import BettingRound, PlayerStatus as PokerPlayerStatus
+                    # Use BettingRound imported at the top of the method
+                    # Use PokerPlayerStatus imported at the top of the file
                     poker_action = getattr(PokerPlayerAction, action_map[action])
                     
                     # Process the action
                     poker_game.process_action(poker_player, poker_action, amount)
                     
                     # If the hand is over, start a new one
-                    if poker_game.current_round == BettingRound.SHOWDOWN:
+                    if poker_game.current_round == PokerBettingRound.SHOWDOWN:
                         # Record end of hand in domain model
                         game.current_hand.ended_at = datetime.now()
                         
@@ -1039,19 +1042,21 @@ class GameService:
                         self._start_new_hand(game)
                     
                     # Update player states
-                    for i, p in enumerate(game.players):
-                        if i < len(poker_game.players):
-                            poker_p = poker_game.players[i]
-                            if p.id == poker_p.player_id:
-                                # Update chips, status, etc.
-                                p.chips = poker_p.chips
-                                status_map = {
-                                    PokerPlayerStatus.ACTIVE: PlayerStatus.ACTIVE,
-                                    PokerPlayerStatus.FOLDED: PlayerStatus.FOLDED,
-                                    PokerPlayerStatus.ALL_IN: PlayerStatus.ALL_IN,
-                                    PokerPlayerStatus.OUT: PlayerStatus.OUT
-                                }
-                                p.status = status_map.get(poker_p.status, PlayerStatus.ACTIVE)
+                    for p in game.players:
+                        # Find corresponding poker player by ID instead of index for safety
+                        poker_p = next((pp for pp in poker_game.players if pp.player_id == p.id), None)
+                        if poker_p:
+                            # Update chips, status, etc.
+                            p.chips = poker_p.chips
+                            # Map poker game status to domain model status
+                            # Using the DomainPlayerStatus imported at the top of the file
+                            status_map = {
+                                PokerPlayerStatus.ACTIVE: DomainPlayerStatus.ACTIVE,
+                                PokerPlayerStatus.FOLDED: DomainPlayerStatus.FOLDED,
+                                PokerPlayerStatus.ALL_IN: DomainPlayerStatus.ALL_IN,
+                                PokerPlayerStatus.OUT: DomainPlayerStatus.OUT
+                            }
+                            p.status = status_map.get(poker_p.status, DomainPlayerStatus.ACTIVE)
             
             # Update the game
             self.game_repo.update(game)
@@ -1406,8 +1411,8 @@ class GameService:
                 await game_notifier.notify_game_update(game_id, poker_game)
                 
                 # Check if hand is complete and handle accordingly
-                from app.core.poker_game import BettingRound
-                if poker_game.current_round == BettingRound.SHOWDOWN:
+                # Using PokerBettingRound imported at top of file
+                if poker_game.current_round == PokerBettingRound.SHOWDOWN:
                     logging.info("AI Action: Hand ended, handling showdown.")
                     # Record end of hand in domain model
                     if game.current_hand:
@@ -1445,7 +1450,7 @@ class GameService:
                 else:
                     # Hand continues, check next player
                     logging.info("AI Action: Hand continues, checking next player.")
-                    from app.core.poker_game import PlayerStatus
+                    # Use PokerPlayerStatus imported at the top of file
 
                     # Get the next player - use the index already updated by process_action
                     if poker_game.current_player_idx < len(poker_game.players):
@@ -1470,7 +1475,7 @@ class GameService:
                         logging.info(f"[AI-ACTION-{execution_id}] All players position info: {[(p.name, p.position, (p.position - poker_game.button_position) % len(poker_game.players)) for p in poker_game.players]}")
 
                         # Verify this player is active and needs to act
-                        if (next_player.status == PlayerStatus.ACTIVE and
+                        if (next_player.status == PokerPlayerStatus.ACTIVE and
                             next_player.player_id in poker_game.to_act and
                             next_player_domain):
 
