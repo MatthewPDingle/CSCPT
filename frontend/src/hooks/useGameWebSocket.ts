@@ -109,6 +109,8 @@ export const useGameWebSocket = (wsUrl: string) => {
   const checkSoundRef = useRef<HTMLAudioElement | null>(null);
   const chipsSoundRef = useRef<HTMLAudioElement | null>(null);
   const shuffleSoundRef = useRef<HTMLAudioElement | null>(null);
+  const flopSoundRef = useRef<HTMLAudioElement | null>(null);
+  const cardSoundRef = useRef<HTMLAudioElement | null>(null);
   
   // Initialize sound effects
   useEffect(() => {
@@ -116,11 +118,15 @@ export const useGameWebSocket = (wsUrl: string) => {
     checkSoundRef.current = new Audio('/audio/check.wav');
     chipsSoundRef.current = new Audio('/audio/chips.wav');
     shuffleSoundRef.current = new Audio('/audio/shuffle.wav');
+    flopSoundRef.current = new Audio('/audio/3cards.wav');
+    cardSoundRef.current = new Audio('/audio/card.wav');
     
     // Preload the sounds
     checkSoundRef.current.load();
     chipsSoundRef.current.load();
     shuffleSoundRef.current.load();
+    flopSoundRef.current.load();
+    cardSoundRef.current.load();
     
     // Clean up
     return () => {
@@ -132,6 +138,12 @@ export const useGameWebSocket = (wsUrl: string) => {
       }
       if (shuffleSoundRef.current) {
         shuffleSoundRef.current.pause();
+      }
+      if (flopSoundRef.current) {
+        flopSoundRef.current.pause();
+      }
+      if (cardSoundRef.current) {
+        cardSoundRef.current.pause();
       }
     };
   }, []);
@@ -164,6 +176,9 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
+  
+  // Reference to track changes in community cards to play sounds at the right time
+  const prevCommunityCardsRef = useRef<number>(0);
   
   // Handle WebSocket messages
   const handleMessage = useCallback((event: MessageEvent) => {
@@ -229,6 +244,42 @@ export const useGameWebSocket = (wsUrl: string) => {
               }
             }
             
+            // Play sounds based on community cards changes
+            const currentCommunityCardsCount = message.data?.community_cards?.length || 0;
+            const prevCommunityCardsCount = prevCommunityCardsRef.current;
+            
+            try {
+              // Flop: 0->3 cards
+              if (prevCommunityCardsCount === 0 && currentCommunityCardsCount === 3) {
+                console.log('Flop detected - playing 3cards.wav');
+                if (flopSoundRef.current) {
+                  flopSoundRef.current.currentTime = 0;
+                  flopSoundRef.current.play().catch(e => console.log('Flop sound play error:', e));
+                }
+              }
+              // Turn: 3->4 cards
+              else if (prevCommunityCardsCount === 3 && currentCommunityCardsCount === 4) {
+                console.log('Turn detected - playing card.wav');
+                if (cardSoundRef.current) {
+                  cardSoundRef.current.currentTime = 0;
+                  cardSoundRef.current.play().catch(e => console.log('Turn sound play error:', e));
+                }
+              }
+              // River: 4->5 cards
+              else if (prevCommunityCardsCount === 4 && currentCommunityCardsCount === 5) {
+                console.log('River detected - playing card.wav');
+                if (cardSoundRef.current) {
+                  cardSoundRef.current.currentTime = 0;
+                  cardSoundRef.current.play().catch(e => console.log('River sound play error:', e));
+                }
+              }
+              
+              // Update the reference for next comparison
+              prevCommunityCardsRef.current = currentCommunityCardsCount;
+            } catch (soundError) {
+              console.error('Error playing card sounds:', soundError);
+            }
+            
             // Proceed with setting state after validation
             setGameState(message.data);
             break;
@@ -261,7 +312,7 @@ export const useGameWebSocket = (wsUrl: string) => {
             if (message.data?.text) {
               setActionLog(prev => [...prev.slice(-50), message.data.text]); // Keep last 50 logs
               
-              // Play shuffle sound when a new hand is starting
+              // Only play shuffle sound from action log (more reliable for new hand)
               if (message.data.text.includes('Starting Hand #') && shuffleSoundRef.current) {
                 try {
                   shuffleSoundRef.current.currentTime = 0;
@@ -285,6 +336,21 @@ export const useGameWebSocket = (wsUrl: string) => {
           case 'hand_result':
             console.log('Hand result received:', message.data);
             setHandResult(message.data);
+            
+            // Add detailed hand result to action log
+            if (message.data.winners && message.data.winners.length > 0) {
+              message.data.winners.forEach((winner: HandResultWinner) => {
+                const winningPlayer = winner.name || `Player ${winner.player_id}`;
+                const handType = winner.hand_rank || 'Unknown hand';
+                const winAmount = winner.amount || 'unknown amount';
+                
+                // Add hand result to action log with emoji for visibility
+                setActionLog(prev => [
+                  ...prev, 
+                  `🏆 ${winningPlayer} wins ${winAmount} chips with ${handType}!`
+                ]);
+              });
+            }
             
             // Play the shuffle sound with a short delay when hand results are shown
             // This gives a nice audio cue that the cards are being shuffled for the next hand

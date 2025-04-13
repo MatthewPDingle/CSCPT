@@ -144,20 +144,22 @@ const CopyButton = styled.button`
   position: absolute;
   top: 5px;
   right: 5px;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   color: white;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   padding: 3px 6px;
   border-radius: 3px;
   cursor: pointer;
   opacity: 0.7;
-  transition: opacity 0.2s ease;
-  z-index: 21;
+  transition: all 0.2s ease;
+  z-index: 25;
+  backdrop-filter: blur(2px);
 
   &:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.8);
+    border-color: rgba(255, 255, 255, 0.5);
   }
 `;
 
@@ -183,7 +185,7 @@ const ConnectionStats = styled.div`
   line-height: 1.4;
 `;
 
-const ActionLogDisplay = styled.div`
+const ActionLogContainer = styled.div`
   position: absolute;
   bottom: 80px;
   left: 20px;
@@ -192,12 +194,17 @@ const ActionLogDisplay = styled.div`
   background-color: rgba(0, 0, 0, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 5px;
+  z-index: 20;
+  overflow: hidden;
+`;
+
+const ActionLogDisplay = styled.div`
+  width: 100%;
+  height: 100%;
   padding: 10px;
-  padding-top: 30px; /* Add space for the copy button */
-  overflow-y: scroll;
+  overflow-y: auto;
   color: white;
   font-size: 0.8rem;
-  z-index: 20;
 
   /* Styling for scrollbar */
   &::-webkit-scrollbar {
@@ -823,20 +830,21 @@ const connectionIndicator = (
       
       {/* Action Log Display */}
       {actionLog && actionLog.length > 0 && (
-        <ActionLogDisplay ref={(el) => {
-          // Auto-scroll to bottom whenever action log changes
-          if (el) {
-            el.scrollTop = el.scrollHeight;
-          }
-        }}>
-          {/* Add Copy Button */}
+        <ActionLogContainer>
           <CopyButton onClick={handleCopyLog} title="Copy Action Log">
             {copyStatus || '📋'}
           </CopyButton>
-          {actionLog.map((log, index) => (
-            <ActionLogItem key={index}>{log}</ActionLogItem>
-          ))}
-        </ActionLogDisplay>
+          <ActionLogDisplay ref={(el) => {
+            // Auto-scroll to bottom whenever action log changes
+            if (el) {
+              el.scrollTop = el.scrollHeight;
+            }
+          }}>
+            {actionLog.map((log, index) => (
+              <ActionLogItem key={index}>{log}</ActionLogItem>
+            ))}
+          </ActionLogDisplay>
+        </ActionLogContainer>
       )}
       
       {/* Debug button to trigger AI moves */}
