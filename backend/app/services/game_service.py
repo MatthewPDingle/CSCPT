@@ -72,6 +72,9 @@ class GameService:
         self.poker_games: Dict[str, PokerGame] = {}
         self.hand_history_recorder = HandHistoryRecorder(self.repo_factory)
         
+        # Define showdown delay constant
+        self.SHOWDOWN_DELAY = 1.5  # seconds to show cards at showdown
+        
         # Add locks for game actions to prevent race conditions in production code
         # but handle gracefully in test code
         try:
@@ -905,7 +908,11 @@ class GameService:
         execution_id = f"{start_time:.6f}" # Added for logging
         logging.info(f"[PROCESS-ACTION-{execution_id}] Starting for player {player_id}, action {action}, amount {amount}")
 
-        game_lock = await self._get_game_lock(game_id)
+        # Get or create a lock for this game
+        if game_id not in self.game_locks:
+            self.game_locks[game_id] = asyncio.Lock()
+        game_lock = self.game_locks[game_id]
+        
         async with game_lock:
             logging.info(f"[PROCESS-ACTION-{execution_id}] Lock acquired.")
             game = self.game_repo.get(game_id)
@@ -1022,8 +1029,8 @@ class GameService:
                             await game_notifier.notify_hand_result(game_id, poker_game)
                             
                             # Add delay to show cards at showdown before starting new hand
-                            logging.info(f"Hand {game.current_hand.hand_number} concluded. Adding delay to show cards at showdown...")
-                            await asyncio.sleep(1.5)  # Increased delay to 1.5 seconds for better UX
+                            logging.info(f"Hand {game.current_hand.hand_number} concluded. Adding delay of {self.SHOWDOWN_DELAY}s to show cards at showdown...")
+                            await asyncio.sleep(self.SHOWDOWN_DELAY)  # Use consistent delay from class constant
                         except Exception as e:
                             logging.error(f"Error showing hand result or delaying: {e}")
                         
@@ -1414,9 +1421,9 @@ class GameService:
                     # Notify about hand result
                     await game_notifier.notify_hand_result(game_id, poker_game)
 
-                    # Add a 1.5-second delay before starting a new hand to show cards at showdown
-                    logging.info("AI Action: Waiting 1.5 seconds before starting new hand to show cards at showdown...")
-                    await asyncio.sleep(1.5)
+                    # Add delay before starting a new hand to show cards at showdown
+                    logging.info(f"AI Action: Waiting {self.SHOWDOWN_DELAY} seconds before starting new hand to show cards at showdown...")
+                    await asyncio.sleep(self.SHOWDOWN_DELAY)
                     
                     # Start a new hand
                     logging.info("AI Action: Starting new hand.")
