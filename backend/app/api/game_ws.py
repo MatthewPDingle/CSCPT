@@ -461,7 +461,7 @@ async def process_action_message(
 
     # Process in service (for history)
     try:
-        service.process_action(game_id, player_id, domain_action, action_amount)
+        await service.process_action(game_id, player_id, domain_action, action_amount)
     except Exception as e:
         print(f"Error processing action in service: {str(e)}")
 

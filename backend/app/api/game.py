@@ -304,7 +304,7 @@ async def player_action(
         domain_action = action_map.get(action)
 
         # Process in both service (for history) and directly in poker game (for current state)
-        game = service.process_action(
+        game = await service.process_action(
             game_id, player.player_id, domain_action, action_request.amount
         )
         success = poker_game.process_action(player, action, action_request.amount)

@@ -21,6 +21,7 @@ interface PlayerSeatProps {
   player: Player;
   position: { x: string; y: string };
   isHuman: boolean;
+  showdownActive?: boolean;
 }
 
 interface PositionProps {
@@ -161,7 +162,7 @@ const BigBlindMarker = styled(PositionMarker)`
   background-color: #e74c3c; // Red
 `;
 
-const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) => {
+const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman, showdownActive = false }) => {
   // Check if player is folded based on status
   const isFolded = player.status === 'FOLDED';
   
@@ -204,7 +205,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman }) =>
             <Card 
               key={index} 
               card={card}
-              faceDown={!isHuman || isFolded} // Hide cards if not human player or folded
+              faceDown={!(isHuman || (showdownActive && !isFolded))} // Show cards if human player OR during showdown for non-folded players
             />
           ))
         )}

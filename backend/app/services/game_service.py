@@ -875,7 +875,7 @@ class GameService:
         
         return game
 
-    def process_action(
+    async def process_action(
         self, 
         game_id: str, 
         player_id: str, 
@@ -1016,8 +1016,19 @@ class GameService:
                     if poker_game.current_hand_id:
                         game.hand_history_ids.append(poker_game.current_hand_id)
                     
-                    # Start a new hand (delay will be added via the WebSocket handler)
-                    logging.info(f"Hand {game.current_hand.hand_number} concluded. Starting new hand...")
+                    # First notify about the hand result
+                    try:
+                        from app.core.websocket import game_notifier
+                        await game_notifier.notify_hand_result(game_id, poker_game)
+                        
+                        # Add delay to show cards at showdown before starting new hand
+                        logging.info(f"Hand {game.current_hand.hand_number} concluded. Adding delay to show cards at showdown...")
+                        await asyncio.sleep(1.5)
+                    except Exception as e:
+                        logging.error(f"Error showing hand result or delaying: {e}")
+                        
+                    # Start a new hand
+                    logging.info("Starting new hand...")
                     self._start_new_hand(game)
                 
                 # Import at the beginning of the function instead of inside the loop
@@ -1406,9 +1417,9 @@ class GameService:
                     # Notify about hand result
                     await game_notifier.notify_hand_result(game_id, poker_game)
 
-                    # Add a 1-second delay before starting a new hand
-                    logging.info("AI Action: Waiting 1 second before starting new hand...")
-                    await asyncio.sleep(1.0)
+                    # Add a 1.5-second delay before starting a new hand to show cards at showdown
+                    logging.info("AI Action: Waiting 1.5 seconds before starting new hand to show cards at showdown...")
+                    await asyncio.sleep(1.5)
                     
                     # Start a new hand
                     logging.info("AI Action: Starting new hand.")

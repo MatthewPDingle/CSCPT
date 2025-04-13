@@ -22,6 +22,7 @@ interface PokerTableProps {
   players: Player[];
   communityCards: (string | null)[];
   pot: number;
+  showdownActive?: boolean;
 }
 
 const TableContainer = styled.div`
@@ -162,7 +163,7 @@ const getPlayerPosition = (player: Player) => {
   return seatPositions[5];
 };
 
-const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot }) => {
+const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot, showdownActive = false }) => {
   // Ensure players array is valid and handle potential undefined/null values
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
   console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
@@ -223,6 +224,7 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
               status: "ACTIVE"
             })}
             isHuman={false}
+            showdownActive={showdownActive}
           />
           
           {/* Player positions */}
@@ -256,6 +258,7 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot })
                   player={sanitizedPlayer}
                   position={position}
                   isHuman={playerId.toLowerCase().includes('you')}
+                  showdownActive={showdownActive}
                 />
               );
             } catch (error) {

@@ -177,6 +177,7 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
   
+  
   // Reference to track changes in community cards to play sounds at the right time
   const prevCommunityCardsRef = useRef<number>(0);
   

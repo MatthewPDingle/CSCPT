@@ -241,6 +241,8 @@ const GamePage: React.FC = () => {
   // Use state to ensure stable initialization before creating websocket
   const [initData, setInitData] = useState<{ gameId: string; playerId: string; gameMode: 'cash' | 'tournament' } | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
+  const [isShowdown, setIsShowdown] = useState<boolean>(false);
+  const showdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Extract required data from location state, only after mounting
   useEffect(() => {
@@ -418,6 +420,32 @@ const GamePage: React.FC = () => {
   
   // Use either WebSocket game state or local game state
   const effectiveGameState = gameState || localGameState;
+
+  // Handle showdown state to display cards
+  useEffect(() => {
+    if (handResult) {
+      console.log('Showdown active - showing cards for all players');
+      setIsShowdown(true);
+      
+      // Clear previous timer if any
+      if (showdownTimerRef.current) {
+        clearTimeout(showdownTimerRef.current);
+      }
+      
+      // Set timer to hide cards after delay
+      showdownTimerRef.current = setTimeout(() => {
+        console.log('Showdown timer expired - hiding cards');
+        setIsShowdown(false);
+      }, 1500); // Display cards for 1.5 seconds
+    }
+    
+    // Cleanup timer on unmount
+    return () => {
+      if (showdownTimerRef.current) {
+        clearTimeout(showdownTimerRef.current);
+      }
+    };
+  }, [handResult]);
   
   // Only show loading if we have no game state at all
   const isLoading = !effectiveGameState;
@@ -797,6 +825,7 @@ const connectionIndicator = (
           card ? `${card.rank}${card.suit}` : null
         )}
         pot={effectiveGameState?.total_pot || 0}
+        showdownActive={isShowdown}
       />
       
       <ActionControls 

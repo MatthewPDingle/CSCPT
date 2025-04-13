@@ -817,9 +817,9 @@ class GameStateNotifier:
         # Broadcast to all players
         await self.connection_manager.broadcast_to_game(game_id, result_message)
         
-        # Add a 1-second delay before starting a new hand
-        logging.info(f"Adding 1-second delay after hand result for game {game_id} before starting new hand")
-        await asyncio.sleep(1.0)
+        # Add a 1.5-second delay before starting a new hand to show cards at showdown
+        logging.info(f"Adding 1.5-second delay after hand result for game {game_id} to show cards before starting new hand")
+        await asyncio.sleep(1.5)
     
     async def notify_action_request(self, game_id: str, game: PokerGame):
         """
