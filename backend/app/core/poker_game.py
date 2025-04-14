@@ -495,38 +495,100 @@ class PokerGame:
     
     def _assign_random_seat_positions(self):
         """
-        Assign random seat positions to players at the start of a new game.
-        This creates a more realistic poker table where players are seated randomly.
+        Assign positions to players at the start of a new game.
+        This respects position preferences from setup if provided, or assigns random positions.
         Seat numbers are fixed (0-8 for a 9-max table) and don't change during the game.
         """
         # Get active players
         active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
         num_active = len(active_players)
         
-        # Create a list of available seats (0 to max-1)
-        # For most tables, this would be 0-8 for a 9-max table
-        table_size = max(9, num_active + 1)  # Ensure enough seats for all players plus buffer
-        available_seats = list(range(table_size))
+        # Define the table size (standard poker table has 9 seats)
+        table_size = max(9, num_active)
         
-        # Shuffle the available seats to randomize assignment
-        random.shuffle(available_seats)
+        # First check if any players have preassigned positions from setup
+        # Keep track of already assigned positions to avoid conflicts
+        assigned_positions = set()
         
-        # Assign each player a unique seat
-        for i, player in enumerate(active_players):
-            if i < len(available_seats):
-                player.position = available_seats[i]
+        # Log the initial position assignments
+        logging.info(f"Initial player positions before assignment:")
+        for player in active_players:
+            logging.info(f"  {player.name}: position={player.position}")
+        
+        # First pass: Keep assigned positions if they're valid and not duplicated
+        for player in active_players:
+            # If player already has a valid position
+            if (0 <= player.position < table_size) and (player.position not in assigned_positions):
+                assigned_positions.add(player.position)
+                logging.info(f"Player {player.name} keeping original position {player.position}")
+        
+        # Create a list of available seats (positions not yet assigned)
+        available_seats = [pos for pos in range(table_size) if pos not in assigned_positions]
+        random.shuffle(available_seats)  # Randomize the remaining seats
+        
+        # Second pass: Assign positions to players who need them
+        for player in active_players:
+            # If player doesn't have a valid position or has a duplicate position
+            if player.position < 0 or player.position >= table_size or player.position in assigned_positions:
+                # Get a new position from available seats
+                if available_seats:
+                    new_position = available_seats.pop(0)
+                    logging.info(f"Player {player.name} reassigned from position {player.position} to {new_position}")
+                    player.position = new_position
+                    assigned_positions.add(new_position)
+                else:
+                    # Fallback - very unlikely but just in case
+                    logging.error(f"No available seats for player {player.name}! Using position {len(assigned_positions)}")
+                    player.position = len(assigned_positions)
+                    assigned_positions.add(player.position)
             else:
-                # Fallback if somehow we run out of available seats
-                player.position = i
+                # This player already has a valid and unique position from the first pass
+                # Just reconfirm it's in the assigned set
+                assigned_positions.add(player.position)
+
+        # Ensure every player has a unique position
+        position_counts = {}
+        for player in active_players:
+            position_counts[player.position] = position_counts.get(player.position, 0) + 1
+        
+        for position, count in position_counts.items():
+            if count > 1:
+                logging.error(f"DUPLICATE POSITION DETECTED: Position {position} is assigned to {count} players!")
+                # Find the duplicate players
+                duplicate_players = [p for p in active_players if p.position == position]
+                logging.error(f"Duplicate players: {[p.name for p in duplicate_players]}")
                 
-        # Also pick a random initial button position from the occupied seats
+                # Fix duplicates by reassigning extra players
+                for i, player in enumerate(duplicate_players[1:], 1):  # Skip first player
+                    # Find an unused position
+                    new_position = None
+                    for pos in range(table_size):
+                        if pos not in position_counts or position_counts[pos] == 0:
+                            new_position = pos
+                            break
+                    
+                    if new_position is not None:
+                        logging.info(f"Fixing duplicate: Reassigning {player.name} from {player.position} to {new_position}")
+                        player.position = new_position
+                        position_counts[position] -= 1
+                        position_counts[new_position] = position_counts.get(new_position, 0) + 1
+                    else:
+                        # Last resort - assign to position beyond table size
+                        new_position = table_size + i - 1
+                        logging.error(f"No available positions! Assigning {player.name} to position {new_position}")
+                        player.position = new_position
+                        position_counts[position] -= 1
+                        position_counts[new_position] = 1
+        
+        # Choose an initial button position from the occupied seats
         active_positions = [p.position for p in active_players]
         self.button_position = random.choice(active_positions)
         logging.info(f"Random button position set to seat {self.button_position}")
         
-        # Log all player seat assignments
+        # Log final seat assignments
+        logging.info(f"Final player position assignments:")
         for player in active_players:
-            logging.info(f"Player {player.name} assigned to seat {player.position}")
+            logging.info(f"  {player.name}: position={player.position}")
             
     def move_button(self):
         """

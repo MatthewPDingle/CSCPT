@@ -846,12 +846,34 @@ class GameStateNotifier:
             game_id: The ID of the game
             game: The PokerGame instance
         """
-        active_players = [p for p in game.players 
-                         if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
-        if not active_players or game.current_player_idx >= len(active_players):
+        # Import necessary modules
+        import logging
+
+        # Get all active players
+        active_players = [p for p in game.players if p.status == PlayerStatus.ACTIVE]
+        logging.info(f"Action request: {len(active_players)} active players, current_idx={game.current_player_idx}")
+        
+        # Safety check for valid index
+        if not active_players or game.current_player_idx >= len(game.players):
+            logging.error(f"Invalid current player index: {game.current_player_idx}, players: {len(game.players)}")
             return
             
-        current_player = active_players[game.current_player_idx]
+        # Get the current player based on the current player index
+        current_player = game.players[game.current_player_idx]
+        
+        # Verify this player is actually active and needs to act
+        if current_player.status != PlayerStatus.ACTIVE or current_player.player_id not in game.to_act:
+            logging.error(f"Current player {current_player.name} cannot act: status={current_player.status.name}, in to_act={current_player.player_id in game.to_act}")
+            
+            # Try to find first active player who can act
+            for p in active_players:
+                if p.player_id in game.to_act:
+                    logging.info(f"Found alternative active player who can act: {p.name}")
+                    current_player = p
+                    break
+            else:
+                logging.error("No active players who can act found")
+                return
         
         # Import necessary modules
         import logging
