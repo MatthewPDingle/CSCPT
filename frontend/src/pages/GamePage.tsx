@@ -21,15 +21,9 @@ const AudioInitButton = styled.button`
   cursor: pointer;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   z-index: 1000;
-  animation: fadeOut 0.5s 0.5s forwards;
   
   &:hover {
     background-color: #2980b9;
-  }
-  
-  @keyframes fadeOut {
-    from { opacity: 1; }
-    to { opacity: 0; pointer-events: none; }
   }
 `;
 
@@ -346,22 +340,8 @@ const GamePage: React.FC = () => {
   
   // Audio initialization state
   const [showAudioInit, setShowAudioInit] = useState(true);
+  const [audioInitialized, setAudioInitialized] = useState(false);
   const audioInitButtonRef = useRef<HTMLButtonElement>(null);
-  
-  // Auto-click the audio init button after component mounts
-  useEffect(() => {
-    if (showAudioInit && audioInitButtonRef.current) {
-      // Slight delay to ensure the component is fully rendered
-      const timer = setTimeout(() => {
-        if (audioInitButtonRef.current) {
-          audioInitButtonRef.current.click();
-          setShowAudioInit(false);
-        }
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [showAudioInit]);
   
   // Update local game state when WebSocket state changes
   React.useEffect(() => {
@@ -869,8 +849,8 @@ const connectionIndicator = (
       {/* Add connection status indicator */}
       {connectionIndicator}
       
-      {/* Audio initialization button that appears briefly and automatically clicks itself */}
-      {showAudioInit && (
+      {/* Audio initialization button that requires explicit user interaction */}
+      {showAudioInit && !audioInitialized && (
         <AudioInitButton 
           ref={audioInitButtonRef}
           onClick={() => {
@@ -901,7 +881,10 @@ const connectionIndicator = (
               const silentSound = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
               silentSound.volume = 0.01;
               silentSound.play()
-                .then(() => console.log('Audio initialized by user interaction'))
+                .then(() => {
+                  console.log('Audio initialized by user interaction');
+                  setAudioInitialized(true);
+                })
                 .catch(err => console.error('Failed to initialize audio:', err));
                 
               // Also try to play each of our actual sound effects once with full paths
@@ -915,24 +898,35 @@ const connectionIndicator = (
                   const checkSound = new Audio(`${baseUrl}/audio/check.wav`);
                   const chipsSound = new Audio(`${baseUrl}/audio/chips.wav`);
                   const foldSound = new Audio(`${baseUrl}/audio/fold.wav`);
+                  const shuffleSound = new Audio(`${baseUrl}/audio/shuffle.wav`);
+                  const cardSound = new Audio(`${baseUrl}/audio/card.wav`);
+                  const threecardSound = new Audio(`${baseUrl}/audio/3cards.wav`);
                   
                   // Set volume low for preloading
-                  checkSound.volume = 0.01;
-                  chipsSound.volume = 0.01;
-                  foldSound.volume = 0.01;
+                  checkSound.volume = 0.1;
+                  chipsSound.volume = 0.1;
+                  foldSound.volume = 0.1;
+                  shuffleSound.volume = 0.1;
+                  cardSound.volume = 0.1;
+                  threecardSound.volume = 0.1;
                   
                   // Play each sound to unlock them
-                  checkSound.play()
-                    .then(() => console.log('Check sound preloaded'))
-                    .catch(e => console.warn('Could not preload check sound:', e));
-                    
-                  chipsSound.play()
-                    .then(() => console.log('Chips sound preloaded'))
-                    .catch(e => console.warn('Could not preload chips sound:', e));
-                    
-                  foldSound.play()
-                    .then(() => console.log('Fold sound preloaded'))
-                    .catch(e => console.warn('Could not preload fold sound:', e));
+                  console.log('Attempting to preload all game sounds...');
+                  
+                  const preloadSound = (sound: HTMLAudioElement, name: string) => {
+                    console.log(`Preloading ${name} sound - src:`, sound.src);
+                    sound.play()
+                      .then(() => console.log(`${name} sound preloaded successfully`))
+                      .catch(e => console.warn(`Could not preload ${name} sound:`, e));
+                  };
+                  
+                  preloadSound(checkSound, 'check');
+                  preloadSound(chipsSound, 'chips');
+                  preloadSound(foldSound, 'fold');
+                  preloadSound(shuffleSound, 'shuffle');
+                  preloadSound(cardSound, 'card');
+                  preloadSound(threecardSound, 'three cards');
+                  
                 } catch (e) {
                   console.log('Error pre-loading sounds:', e);
                 }
@@ -945,7 +939,7 @@ const connectionIndicator = (
             }
           }}
         >
-          Initialize Audio
+          Click to Enable Sound
         </AudioInitButton>
       )}
       

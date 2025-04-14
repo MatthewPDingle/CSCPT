@@ -23,6 +23,8 @@ interface PokerTableProps {
   communityCards: (string | null)[];
   pot: number;
   showdownActive?: boolean;
+  currentTurnPlayerId?: string | null;
+  showTurnHighlight?: boolean;
 }
 
 const TableContainer = styled.div`
@@ -163,7 +165,14 @@ const getPlayerPosition = (player: Player) => {
   return seatPositions[5];
 };
 
-const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot, showdownActive = false }) => {
+const PokerTable: React.FC<PokerTableProps> = ({ 
+  players, 
+  communityCards, 
+  pot, 
+  showdownActive = false,
+  currentTurnPlayerId = null,
+  showTurnHighlight = false
+}) => {
   // Ensure players array is valid and handle potential undefined/null values
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
   console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
@@ -225,6 +234,8 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot, s
             })}
             isHuman={false}
             showdownActive={showdownActive}
+            isCurrentTurn={false}
+            showTurnHighlight={false}
           />
           
           {/* Player positions */}
@@ -252,6 +263,9 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot, s
               // Get position - use player's actual position from the game state
               const position = getPlayerPosition(sanitizedPlayer);
               
+              // Check if this player is the current turn player
+              const isPlayerCurrentTurn = playerId === currentTurnPlayerId;
+              
               return (
                 <PlayerSeat
                   key={playerId}
@@ -259,6 +273,8 @@ const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot, s
                   position={position}
                   isHuman={playerId.toLowerCase().includes('you')}
                   showdownActive={showdownActive}
+                  isCurrentTurn={isPlayerCurrentTurn}
+                  showTurnHighlight={showTurnHighlight && isPlayerCurrentTurn}
                 />
               );
             } catch (error) {

@@ -22,6 +22,8 @@ interface PlayerSeatProps {
   position: { x: string; y: string };
   isHuman: boolean;
   showdownActive?: boolean;
+  isCurrentTurn?: boolean;
+  showTurnHighlight?: boolean;
 }
 
 interface PositionProps {
@@ -29,6 +31,8 @@ interface PositionProps {
   y: string;
   $isActive: boolean;
   $isCurrent: boolean;
+  $isCurrentTurn: boolean;
+  $showTurnHighlight: boolean;
   $isHuman: boolean;
 }
 
@@ -43,7 +47,13 @@ const SeatContainer = styled.div<PositionProps>`
   z-index: 10;
   transition: all 0.3s ease-in-out;
   
-  ${props => props.$isCurrent && `
+  /* Apply golden highlight when it's the player's turn and highlighting is enabled */
+  ${props => props.$isCurrentTurn && props.$showTurnHighlight && `
+    box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.8);
+  `}
+  
+  /* Keep backward compatibility with the old isCurrent property for now */
+  ${props => props.$isCurrent && !props.$isCurrentTurn && `
     box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.8);
   `}
   
@@ -162,7 +172,14 @@ const BigBlindMarker = styled(PositionMarker)`
   background-color: #e74c3c; // Red
 `;
 
-const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman, showdownActive = false }) => {
+const PlayerSeat: React.FC<PlayerSeatProps> = ({ 
+  player, 
+  position, 
+  isHuman, 
+  showdownActive = false,
+  isCurrentTurn = false,
+  showTurnHighlight = false
+}) => {
   // Check if player is folded based on status
   const isFolded = player.status === 'FOLDED';
   
@@ -172,6 +189,8 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({ player, position, isHuman, show
       y={position.y} 
       $isActive={player.isActive}
       $isCurrent={player.isCurrent}
+      $isCurrentTurn={isCurrentTurn}
+      $showTurnHighlight={showTurnHighlight}
       $isHuman={isHuman}
     >
       <PlayerInfo 
