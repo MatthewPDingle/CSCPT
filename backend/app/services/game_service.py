@@ -1460,6 +1460,14 @@ class GameService:
                         self.game_locks[game_id] = asyncio.Lock()
                     game_lock = self.game_locks[game_id]
                     
+                    # CRITICAL FIX: Add enhanced debugging and validation of to_act set 
+                    # before we try to advance the player
+                    logging.info(f"[AI-ACTION-{execution_id}] Before advancing - current_player_idx: {poker_game.current_player_idx}")
+                    logging.info(f"[AI-ACTION-{execution_id}] Before advancing - to_act set: {poker_game.to_act}")
+                    if 0 <= poker_game.current_player_idx < len(poker_game.players):
+                        current_p = poker_game.players[poker_game.current_player_idx]
+                        logging.info(f"[AI-ACTION-{execution_id}] Before advancing - current player: {current_p.name}, in to_act: {current_p.player_id in poker_game.to_act}")
+                    
                     async with game_lock:
                         # This is a critical line that was missing before - explicitly advance player turn
                         poker_game._advance_to_next_player()

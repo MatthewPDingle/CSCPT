@@ -1186,8 +1186,16 @@ class PokerGame:
             return False
         
         # Check if the player is allowed to act by being in the to_act set
+        # CRITICAL DEBUG: Add extensive debugging for the to_act set check
+        logging.info(f"[ACTION-DEBUG-{execution_id}] CRITICAL CHECK: Is player {player.name} (ID: {player.player_id}) in to_act set: {self.to_act}?")
         if player.player_id not in self.to_act:
             logging.error(f"[ACTION-{execution_id}] Player {player.name} (ID: {player.player_id}) is not in the to_act set: {self.to_act}. Cannot process action.")
+            # Enhanced debugging for failures
+            logging.error(f"[ACTION-DEBUG-{execution_id}] Current player status: {player.status.name}")
+            logging.error(f"[ACTION-DEBUG-{execution_id}] All players in to_act set: {[(p.name, p.player_id) for p in self.players if p.player_id in self.to_act]}")
+            logging.error(f"[ACTION-DEBUG-{execution_id}] to_act set size: {len(self.to_act)}")
+            logging.error(f"[ACTION-DEBUG-{execution_id}] Current round: {self.current_round.name}")
+            logging.error(f"[ACTION-DEBUG-{execution_id}] Current bet: {self.current_bet}")
             return False
             
         # Verify player is active

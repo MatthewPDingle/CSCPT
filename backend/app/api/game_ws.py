@@ -459,11 +459,34 @@ async def process_action_message(
     }
     domain_action = action_map.get(action_type)
 
-    # Process in service (for history)
+    # CRITICAL FIX: We should NOT process in service, as we're handling the poker_game action directly below.
+    # The service.process_action would cause a duplicate processing since it calls poker_game.process_action internally.
+    # We'll handle the action history recording ourselves.
+    
+    # Create a record for action history
     try:
-        await service.process_action(game_id, player_id, domain_action, action_amount)
+        from app.models.domain_models import ActionHistory
+        
+        # Get the current hand info
+        game = service.get_game(game_id)
+        if game and game.current_hand:
+            action_history = ActionHistory(
+                game_id=game_id,
+                hand_id=game.current_hand.id,
+                player_id=player_id,
+                action=domain_action,
+                amount=action_amount,
+                round=game.current_hand.current_round
+            )
+            
+            # Save the action
+            service.action_repo.create(action_history)
+            
+            # Add the action to the hand
+            game.current_hand.actions.append(action_history)
     except Exception as e:
-        print(f"Error processing action in service: {str(e)}")
+        import logging
+        logging.error(f"Error recording action history: {str(e)}")
 
     # Acquire game lock before processing action to prevent race conditions
     if game_id not in service.game_locks:
@@ -551,6 +574,15 @@ async def process_action_message(
         execution_id = f"{time.time():.6f}"
         
         logging.info(f"[WS-ACTION-{execution_id}] Hand continues after human action, explicitly advancing turn index from {poker_game.current_player_idx}")
+        
+        # CRITICAL FIX: Add enhanced debugging and validation of to_act set 
+        # before we try to advance the player
+        logging.info(f"[WS-ACTION-{execution_id}] Before advancing - current_player_idx: {poker_game.current_player_idx}")
+        logging.info(f"[WS-ACTION-{execution_id}] Before advancing - to_act set: {poker_game.to_act}")
+        if 0 <= poker_game.current_player_idx < len(poker_game.players):
+            current_p = poker_game.players[poker_game.current_player_idx]
+            logging.info(f"[WS-ACTION-{execution_id}] Before advancing - current player: {current_p.name}, in to_act: {current_p.player_id in poker_game.to_act}")
+        
         # Acquire lock to update the turn index
         if game_id not in service.game_locks:
             service.game_locks[game_id] = asyncio.Lock()

@@ -848,31 +848,50 @@ class GameStateNotifier:
         """
         # Import necessary modules
         import logging
+        import time
+        execution_id = f"{time.time():.6f}"
 
         # Get all active players
         active_players = [p for p in game.players if p.status == PlayerStatus.ACTIVE]
-        logging.info(f"Action request: {len(active_players)} active players, current_idx={game.current_player_idx}")
+        logging.info(f"[ACTION_REQUEST-{execution_id}] Action request: {len(active_players)} active players, current_idx={game.current_player_idx}")
+        logging.info(f"[ACTION_REQUEST-{execution_id}] Current to_act set: {game.to_act}")
         
         # Safety check for valid index
         if not active_players or game.current_player_idx >= len(game.players):
-            logging.error(f"Invalid current player index: {game.current_player_idx}, players: {len(game.players)}")
+            logging.error(f"[ACTION_REQUEST-{execution_id}] Invalid current player index: {game.current_player_idx}, players: {len(game.players)}")
             return
             
         # Get the current player based on the current player index
         current_player = game.players[game.current_player_idx]
+        logging.info(f"[ACTION_REQUEST-{execution_id}] Initial current player: {current_player.name} (ID: {current_player.player_id})")
+        logging.info(f"[ACTION_REQUEST-{execution_id}] Current player status: {current_player.status.name}, in to_act: {current_player.player_id in game.to_act}")
         
         # Verify this player is actually active and needs to act
         if current_player.status != PlayerStatus.ACTIVE or current_player.player_id not in game.to_act:
-            logging.error(f"Current player {current_player.name} cannot act: status={current_player.status.name}, in to_act={current_player.player_id in game.to_act}")
+            logging.error(f"[ACTION_REQUEST-{execution_id}] Current player {current_player.name} cannot act: status={current_player.status.name}, in to_act={current_player.player_id in game.to_act}")
             
             # Try to find first active player who can act
+            found_alternative = False
             for p in active_players:
                 if p.player_id in game.to_act:
-                    logging.info(f"Found alternative active player who can act: {p.name}")
+                    logging.info(f"[ACTION_REQUEST-{execution_id}] Found alternative active player who can act: {p.name}")
                     current_player = p
+                    found_alternative = True
                     break
-            else:
-                logging.error("No active players who can act found")
+            
+            if not found_alternative:
+                logging.error(f"[ACTION_REQUEST-{execution_id}] No active players who can act found")
+                return
+                
+            # CRITICAL FIX: Update the current_player_idx to match the alternative player we found
+            # This ensures the game state is consistent
+            try:
+                # Find the index of the alternative player to update current_player_idx
+                alt_idx = game.players.index(current_player)
+                logging.info(f"[ACTION_REQUEST-{execution_id}] Updating current_player_idx from {game.current_player_idx} to {alt_idx}")
+                game.current_player_idx = alt_idx
+            except ValueError:
+                logging.error(f"[ACTION_REQUEST-{execution_id}] Could not find alternative player in players list")
                 return
         
         # Import necessary modules
