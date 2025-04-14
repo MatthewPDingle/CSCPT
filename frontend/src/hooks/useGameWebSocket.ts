@@ -111,6 +111,7 @@ export const useGameWebSocket = (wsUrl: string) => {
   const shuffleSoundRef = useRef<HTMLAudioElement | null>(null);
   const flopSoundRef = useRef<HTMLAudioElement | null>(null);
   const cardSoundRef = useRef<HTMLAudioElement | null>(null);
+  const foldSoundRef = useRef<HTMLAudioElement | null>(null);
   
   // Initialize sound effects
   useEffect(() => {
@@ -120,6 +121,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     shuffleSoundRef.current = new Audio('/audio/shuffle.wav');
     flopSoundRef.current = new Audio('/audio/3cards.wav');
     cardSoundRef.current = new Audio('/audio/card.wav');
+    foldSoundRef.current = new Audio('/audio/fold.wav');
     
     // Preload the sounds
     checkSoundRef.current.load();
@@ -127,6 +129,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     shuffleSoundRef.current.load();
     flopSoundRef.current.load();
     cardSoundRef.current.load();
+    foldSoundRef.current.load();
     
     // Clean up
     return () => {
@@ -144,6 +147,9 @@ export const useGameWebSocket = (wsUrl: string) => {
       }
       if (cardSoundRef.current) {
         cardSoundRef.current.pause();
+      }
+      if (foldSoundRef.current) {
+        foldSoundRef.current.pause();
       }
     };
   }, []);
@@ -302,6 +308,9 @@ export const useGameWebSocket = (wsUrl: string) => {
               } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(action) && chipsSoundRef.current) {
                 chipsSoundRef.current.currentTime = 0;
                 chipsSoundRef.current.play().catch(e => console.log('Sound play error:', e));
+              } else if (action === 'FOLD' && foldSoundRef.current) {
+                foldSoundRef.current.currentTime = 0;
+                foldSoundRef.current.play().catch(e => console.log('Fold sound play error:', e));
               }
             } catch (e) {
               console.log('Error playing sound effect:', e);
