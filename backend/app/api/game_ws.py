@@ -492,14 +492,29 @@ async def process_action_message(
         logging.info(f"[WS-ACTION-{execution_id}] Lock acquired - Processing {action_type.name} {action_amount if action_amount is not None else ''}")
         logging.info(f"[WS-ACTION-{execution_id}] Before process_action - to_act: {poker_game.to_act}")
         
-        # Verify turn again after acquiring lock (index may have changed while waiting for lock)
+        # Enhanced verification after acquiring lock (index may have changed while waiting for lock)
         if 0 <= poker_game.current_player_idx < len(poker_game.players):
             expected_player = poker_game.players[poker_game.current_player_idx]
             if expected_player.player_id != player.player_id:
                 logging.error(f"[WS-ACTION-{execution_id}] Turn mismatch AFTER lock! Expected {expected_player.name}, but got action from {player.name}")
-                # Don't actually fail here - the process_action will do validation
+                logging.error(f"[WS-ACTION-{execution_id}] Current betting round: {poker_game.current_round.name}")
+                logging.error(f"[WS-ACTION-{execution_id}] Button position: {poker_game.button_position}")
+                logging.error(f"[WS-ACTION-{execution_id}] Player positions: {[(p.name, p.position) for p in poker_game.players]}")
+                logging.error(f"[WS-ACTION-{execution_id}] All players status: {[(p.name, p.status.name, p.player_id in poker_game.to_act) for p in poker_game.players]}")
+                logging.error(f"[WS-ACTION-{execution_id}] to_act set: {poker_game.to_act}")
+                
+                # Try to fix the index if there's a clear mismatch
+                if player.player_id in poker_game.to_act and player.status == PlayerStatus.ACTIVE:
+                    try:
+                        corrected_idx = poker_game.players.index(player)
+                        if 0 <= corrected_idx < len(poker_game.players):
+                            logging.warning(f"[WS-ACTION-{execution_id}] Auto-correcting player index from {poker_game.current_player_idx} to {corrected_idx}")
+                            poker_game.current_player_idx = corrected_idx
+                    except ValueError:
+                        logging.error(f"[WS-ACTION-{execution_id}] Could not find player {player.name} in players list for correction")
         
         # Process directly in poker game for current state
+        logging.info(f"[WS-ACTION-{execution_id}] About to call process_action with player {player.name}, action {action_type}, amount {action_amount}")
         success = poker_game.process_action(player, action_type, action_amount)
         
         logging.info(f"[WS-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
