@@ -106,17 +106,6 @@ const getPlayerPosition = (player: Player) => {
     { x: '8%',  y: '30%' }     // Position 8: Left top
   ];
   
-  // Additional positions if we somehow need more than 9 seats
-  const extraPositions = [
-    { x: '15%', y: '20%' },    // Position 9: Extra top left
-    { x: '85%', y: '20%' },    // Position 10: Extra top right
-    { x: '85%', y: '80%' },    // Position 11: Extra bottom right
-    { x: '15%', y: '80%' }     // Position 12: Extra bottom left
-  ];
-  
-  // Combine all possible positions
-  const allPositions = [...seatPositions, ...extraPositions];
-  
   // Dealer position is special
   const dealerPosition = { x: '50%', y: '5%' };  // Top middle
   
@@ -126,20 +115,10 @@ const getPlayerPosition = (player: Player) => {
   }
   
   // Use player.position if it exists and is valid
-  if (typeof player.position === 'number' && player.position >= 0) {
-    // If position is within regular range
-    if (player.position < allPositions.length) {
-      return allPositions[player.position];
-    } else {
-      // For extreme cases, calculate a position around the circle
-      const angle = (player.position % 12) * (Math.PI / 6); // 12 positions around a circle
-      const radius = 40; // % of container
-      const centerX = 50;
-      const centerY = 50;
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
-      return { x: `${x}%`, y: `${y}%` };
-    }
+  if (typeof player.position === 'number' && 
+      player.position >= 0 && 
+      player.position < seatPositions.length) {
+    return seatPositions[player.position];
   }
   
   // Fallback to ID-based positioning if position property isn't valid
@@ -150,38 +129,38 @@ const getPlayerPosition = (player: Player) => {
   const posMatch = playerId.match(/.*?_?(\d+)$/);
   if (posMatch && posMatch[1]) {
     const position = parseInt(posMatch[1], 10);
-    if (!isNaN(position) && position >= 0 && position < allPositions.length) {
-      return allPositions[position];
+    if (!isNaN(position) && position >= 0 && position < seatPositions.length) {
+      return seatPositions[position];
     }
   }
   
   // Handle common IDs
   if (playerId === "player" || playerId.toLowerCase().includes("you")) {
-    return allPositions[0]; // Human player usually in position 0
+    return seatPositions[0]; // Human player usually in position 0
   }
   
   // Handle specific player names if present in our system
   const playerNameMap: {[key: string]: number} = {
-    "alice": 1,
-    "bob": 2,
-    "charlie": 3,
-    "dan": 4,
-    "ernesto": 5,
-    "francis": 6,
-    "gemma": 7,
-    "hector": 8
+    "michael": 1,
+    "dwight": 2,
+    "jim": 3,
+    "mose": 4,
+    "andy": 5,
+    "pam": 6,
+    "angela": 7,
+    "kevin": 8
   };
   
   // Check if player name is in our mapping
-  const lowerPlayerId = player.name.toLowerCase();
+  const lowerPlayerId = playerId.toLowerCase();
   for (const [name, position] of Object.entries(playerNameMap)) {
     if (lowerPlayerId.includes(name)) {
-      return allPositions[position % allPositions.length];
+      return seatPositions[position];
     }
   }
   
   // Default fallback - use middle bottom position
-  return allPositions[5];
+  return seatPositions[5];
 };
 
 const PokerTable: React.FC<PokerTableProps> = ({ players, communityCards, pot, showdownActive = false }) => {
