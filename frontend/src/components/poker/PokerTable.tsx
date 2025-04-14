@@ -95,19 +95,19 @@ const PlayerPositions = styled.div`
 const getPlayerPosition = (player: Player) => {
   // Define the 10 fixed positions around the oval table in clockwise order
   const seatPositions = [
-    { x: '28%', y: '12%' },    // Position 0: Top left
-    { x: '72%', y: '12%' },    // Position 1: Top right
-    { x: '92%', y: '30%' },    // Position 2: Right top
-    { x: '92%', y: '70%' },    // Position 3: Right bottom
-    { x: '72%', y: '88%' },    // Position 4: Bottom right
-    { x: '50%', y: '88%' },    // Position 5: Bottom middle
-    { x: '28%', y: '88%' },    // Position 6: Bottom left
-    { x: '8%',  y: '70%' },    // Position 7: Left bottom
-    { x: '8%',  y: '30%' }     // Position 8: Left top
+    { x: '28%', y: '6%' },     // Position 0: Top left (moved up by 6%)
+    { x: '72%', y: '6%' },     // Position 1: Top right (moved up by 6%)
+    { x: '92%', y: '24%' },    // Position 2: Right top (moved up by 6%)
+    { x: '92%', y: '78%' },    // Position 3: Right bottom (moved down by 8%)
+    { x: '72%', y: '97%' },    // Position 4: Bottom right (moved down by 9%)
+    { x: '50%', y: '97%' },    // Position 5: Bottom middle (moved down by 9%)
+    { x: '28%', y: '97%' },    // Position 6: Bottom left (moved down by 9%)
+    { x: '8%',  y: '78%' },    // Position 7: Left bottom (moved down by 8%)
+    { x: '8%',  y: '24%' }     // Position 8: Left top (moved up by 6%)
   ];
   
   // Dealer position is special
-  const dealerPosition = { x: '50%', y: '5%' };  // Top middle
+  const dealerPosition = { x: '50%', y: '2%' };  // Top middle (same)
   
   // Special cases
   if (player.id === "dealer") {
