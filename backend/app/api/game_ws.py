@@ -465,8 +465,24 @@ async def process_action_message(
     except Exception as e:
         print(f"Error processing action in service: {str(e)}")
 
-    # Process directly in poker game for current state
-    success = poker_game.process_action(player, action_type, action_amount)
+    # Acquire game lock before processing action to prevent race conditions
+    if game_id not in service.game_locks:
+        service.game_locks[game_id] = asyncio.Lock()
+    game_lock = service.game_locks[game_id]
+    
+    import logging
+    execution_id = f"{id(player):.6f}"
+    logging.info(f"[WS-ACTION-{execution_id}] Acquiring game lock for processing human action {action_type.name}")
+    
+    async with game_lock:
+        logging.info(f"[WS-ACTION-{execution_id}] Lock acquired - Processing {action_type.name} {action_amount if action_amount is not None else ''}")
+        logging.info(f"[WS-ACTION-{execution_id}] Before process_action - to_act: {poker_game.to_act}")
+        
+        # Process directly in poker game for current state
+        success = poker_game.process_action(player, action_type, action_amount)
+        
+        logging.info(f"[WS-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
+        logging.info(f"[WS-ACTION-{execution_id}] PokerGame process_action result: {success}")
 
     if not success:
         await connection_manager.send_personal_message(

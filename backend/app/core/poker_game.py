@@ -748,10 +748,29 @@ class PokerGame:
         
         # CRITICAL: Reset to_act set FIRST - all active players need to act in this new round
         old_to_act = self.to_act.copy() if hasattr(self, 'to_act') else set()
+        
+        # Get detailed player status for logging
+        player_statuses = []
+        for p in self.players:
+            in_old_to_act = p.player_id in old_to_act
+            is_active = p.status == PlayerStatus.ACTIVE
+            player_statuses.append(f"{p.name} (ID: {p.player_id}): active={is_active}, was_in_to_act={in_old_to_act}")
+        
+        logging.info(f"[RESET-{execution_id}] Player statuses before reset: {', '.join(player_statuses)}")
+        
+        # Create the new to_act set with all active players
         self.to_act = {p.player_id for p in active_players}
         
         logging.info(f"[RESET-{execution_id}] Updated to_act set: {self.to_act}")
         logging.info(f"[RESET-{execution_id}] Previous to_act set: {old_to_act}")
+        
+        # Log the differences
+        added = self.to_act - old_to_act
+        removed = old_to_act - self.to_act
+        if added:
+            logging.info(f"[RESET-{execution_id}] Players added to to_act: {added}")
+        if removed:
+            logging.info(f"[RESET-{execution_id}] Players removed from to_act: {removed}")
         
         if not active_players:
             logging.warning(f"[RESET-{execution_id}] No active players to act in this round! Round might be over.")
@@ -946,6 +965,25 @@ class PokerGame:
         logging.info(f"[ACTION-{execution_id}] Processing action: {player.name} -> {action.name} " 
                     f"(amount: {amount}, current player idx: {self.current_player_idx})")
         
+        # ENHANCED VALIDATION: First check if the current player index is valid
+        logging.info(f"[ACTION-{execution_id}] Validating turn for {player.name} (ID: {player.player_id}). Expected index: {self.current_player_idx}")
+        
+        if not (0 <= self.current_player_idx < len(self.players)):
+            logging.error(f"[ACTION-{execution_id}] CRITICAL: current_player_idx {self.current_player_idx} out of bounds for players list with length {len(self.players)}!")
+            return False # Prevent further processing
+        
+        # ENHANCED VALIDATION: Verify the player is the expected player at the current index
+        expected_player = self.players[self.current_player_idx]
+        if expected_player.player_id != player.player_id:
+            logging.error(f"[ACTION-{execution_id}] Turn mismatch! Expected player {expected_player.name} (ID: {expected_player.player_id}) at index {self.current_player_idx}, but received action from {player.name} (ID: {player.player_id}).")
+            return False
+        
+        # Check if the player is allowed to act by being in the to_act set
+        if player.player_id not in self.to_act:
+            logging.error(f"[ACTION-{execution_id}] Player {player.name} (ID: {player.player_id}) is not in the to_act set: {self.to_act}. Cannot process action.")
+            return False
+            
+        # Verify player is active
         if player.status != PlayerStatus.ACTIVE:
             logging.warning(f"[ACTION-{execution_id}] Player {player.name} is not active (status: {player.status.name})")
             return False
@@ -953,32 +991,14 @@ class PokerGame:
         active_players = [p for p in self.players 
                          if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
         
-        # Validate it's the player's turn - FOR TEST ONLY: DISABLE PLAYER ORDER VALIDATION
+        # Additional validation - ensure we have active players
         if not active_players:
             logging.warning(f"[ACTION-{execution_id}] No active players found")
             return False
             
-        # FIXED: We were incorrectly checking current_player_idx against active_players length
-        # This is incorrect because current_player_idx is an index into self.players, not active_players
-        # The warning was misleading - the index is not out of range in the full players list
-        if self.current_player_idx >= len(self.players):
-            logging.error(f"[ACTION-{execution_id}] Current player index {self.current_player_idx} is truly out of range (players list size: {len(self.players)}).")
-            # This is a serious error that would need correction
-            self.current_player_idx = 0
-        else:
-            # For debugging, let's log the current player details
-            current_player = self.players[self.current_player_idx]
-            logging.info(f"[ACTION-{execution_id}] Current player is {current_player.name} (status: {current_player.status.name}, in to_act: {current_player.player_id in self.to_act})")
-            
-        # DISABLED FOR TESTING to allow out-of-order actions in tests
-        # In a real game, we would enforce player order
-        # if active_players[self.current_player_idx].player_id != player.player_id:
-        #     return False
-        
-        # Check if the player is allowed to act
-        if player.player_id not in self.to_act:
-            logging.warning(f"[ACTION-{execution_id}] Player {player.name} is not in the to_act set: {self.to_act}")
-            return False
+        # For debugging, log the current player details
+        current_player = self.players[self.current_player_idx]
+        logging.info(f"[ACTION-{execution_id}] Current player is {current_player.name} (status: {current_player.status.name}, in to_act: {current_player.player_id in self.to_act})")
             
         # Record the pot size before the action
         pot_before = self.pot
@@ -1057,6 +1077,9 @@ class PokerGame:
             # Log to_act set before modification for debugging
             logging.info(f"[ACTION-{execution_id}] to_act set BEFORE removing {player.name} after CALL: {self.to_act}")
             
+            # Save a snapshot of the to_act set before modification for verification
+            to_act_before = self.to_act.copy()
+            
             # Remove player from to_act set
             if player.player_id in self.to_act:
                 self.to_act.remove(player.player_id)
@@ -1071,27 +1094,52 @@ class PokerGame:
             # should still be in the to_act set. Let's validate the to_act set:
             
             if self.current_round == BettingRound.PREFLOP:
-                # This is where the issue is occurring - we need to ensure correct preflop action flow
-                # ONLY validate/fix the to_act set if we're early in the preflop action sequence
+                # Enhanced logging for preflop action troubleshooting
+                logging.info(f"[ACTION-{execution_id}] PREFLOP CALL: Validating to_act set integrity")
+                
+                # Find all player positions relative to button for better context
+                position_info = []
+                for p in self.players:
+                    if p.status == PlayerStatus.ACTIVE:
+                        rel_pos = (p.position - self.button_position) % len(self.players)
+                        position_name = "BTN" if rel_pos == 0 else "SB" if rel_pos == 1 else "BB" if rel_pos == 2 else f"P{rel_pos}"
+                        in_to_act = p.player_id in self.to_act
+                        position_info.append(f"{p.name} ({position_name}): in_to_act={in_to_act}")
+                
+                logging.info(f"[ACTION-{execution_id}] Player positions: {', '.join(position_info)}")
+                
                 # Find blind positions
                 blind_positions = []
+                blind_players = []
                 for p in self.players:
                     rel_pos = (p.position - self.button_position) % len(self.players)
                     if rel_pos in [1, 2]:  # SB or BB positions
                         blind_positions.append(p.position)
+                        blind_players.append(p)
                         logging.info(f"[ACTION-{execution_id}] Identified blind at position {p.position} (player {p.name})")
                 
-                # Log player position details
-                for p in self.players:
-                    rel_pos = (p.position - self.button_position) % len(self.players)
-                    logging.info(f"[ACTION-{execution_id}] Player {p.name}: position={p.position}, relative to button={rel_pos}")
-                
-                # Verify if we need to ensure button is in to_act
+                # Validate if we've properly formed the to_act set
+                # In preflop betting, when a player calls, everyone who hasn't acted yet should still be in to_act
+                # This includes the button player if they haven't acted
                 button_player = next((p for p in self.players if p.position == self.button_position), None)
-                if button_player and button_player.status == PlayerStatus.ACTIVE and button_player.player_id != player.player_id:
-                    if button_player.player_id not in self.to_act:
-                        logging.warning(f"[ACTION-{execution_id}] Button player {button_player.name} missing from to_act! Adding back.")
-                        self.to_act.add(button_player.player_id)
+                
+                # Check if the button player should be in to_act (if active and hasn't acted)
+                if button_player and button_player.status == PlayerStatus.ACTIVE:
+                    if button_player.player_id != player.player_id:  # Not the player who just called
+                        if button_player.player_id not in self.to_act and button_player.player_id in to_act_before:
+                            logging.warning(f"[ACTION-{execution_id}] Button player {button_player.name} was incorrectly removed from to_act! Adding back.")
+                            self.to_act.add(button_player.player_id)
+                
+                # Also ensure any active player who hasn't acted yet is still in to_act
+                # This is critically important for correct preflop action flow
+                for p in active_players:
+                    if p.player_id != player.player_id:  # Skip the player who just acted
+                        if p.player_id not in self.to_act and p.player_id in to_act_before:
+                            logging.warning(f"[ACTION-{execution_id}] Active player {p.name} was incorrectly removed from to_act! Adding back.")
+                            self.to_act.add(p.player_id)
+                
+                # Re-log the final to_act set after all fixes
+                logging.info(f"[ACTION-{execution_id}] Final to_act set after validation: {self.to_act}")
             
             success = True
             
