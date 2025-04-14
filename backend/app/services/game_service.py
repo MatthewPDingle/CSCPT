@@ -519,6 +519,10 @@ class GameService:
             else:
                 # First hand, pick random dealer
                 dealer_position = random.choice(active_positions)
+                
+        # Log the dealer position selection process
+        import logging
+        logging.info(f"Dealer position selected: {dealer_position} (hand #{hand_number})")
         
         # Determine blinds
         if game.type == GameType.CASH:

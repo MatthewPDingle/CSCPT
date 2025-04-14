@@ -103,6 +103,7 @@ async def setup_game(
             for player_setup in setup.players:
                 logging.warning(f"Adding player: {player_setup.name}, buy_in: {player_setup.buy_in}, is_human: {player_setup.is_human}")
                 try:
+                    # Pass the position as a preference, but it will be randomized at game start
                     _, player = service.add_player_to_cash_game(
                         game_id=game.id,
                         name=player_setup.name,
