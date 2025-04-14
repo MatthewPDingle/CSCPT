@@ -1448,11 +1448,23 @@ class GameService:
                     # DO NOT trigger the first AI action of the new hand here!
                     # WebSocket will handle that after sending the initial game state
                 else:
-                    # Hand continues, check next player
-                    logging.info("AI Action: Hand continues, checking next player.")
-                    # Use PokerPlayerStatus imported at the top of file
-
-                    # Get the next player - use the index already updated by process_action
+                    # Hand continues - CRITICAL ADDITION: Explicitly advance to next player after AI action
+                    logging.info(f"[AI-ACTION-{execution_id}] Hand continues after AI action, explicitly advancing turn index from {poker_game.current_player_idx}")
+                    
+                    # Acquire the lock again to update the turn index
+                    if game_id not in self.game_locks:
+                        self.game_locks[game_id] = asyncio.Lock()
+                    game_lock = self.game_locks[game_id]
+                    
+                    async with game_lock:
+                        # This is a critical line that was missing before - explicitly advance player turn
+                        poker_game._advance_to_next_player()
+                        logging.info(f"[AI-ACTION-{execution_id}] Turn index advanced to {poker_game.current_player_idx}")
+                    
+                    # Now check next player after advancing the turn
+                    logging.info(f"[AI-ACTION-{execution_id}] Checking next player after explicit turn advancement")
+                    
+                    # Get the next player using the newly advanced index
                     if poker_game.current_player_idx < len(poker_game.players):
                         next_player = poker_game.players[poker_game.current_player_idx]
                         next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)

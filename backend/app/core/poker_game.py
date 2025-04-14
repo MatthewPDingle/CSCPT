@@ -1474,51 +1474,14 @@ class PokerGame:
                 # Hand ended.
                 logging.info(f"[ACTION-{execution_id}] Hand ended after this action.")
         else:
-            # Log to_act before advancing
-            logging.info(f"[ACTION-{execution_id}] Betting round continues, advancing to next player")
-            logging.info(f"[ACTION-{execution_id}] to_act before advancing: {self.to_act}")
+            # *** CRITICAL CHANGE: Don't auto-advance to next player here anymore ***
+            # Instead, log that the round continues but index will be advanced externally
+            logging.info(f"[ACTION-{execution_id}] Betting round continues, but not advancing player index from within process_action")
+            logging.info(f"[ACTION-{execution_id}] Current player index remains at {self.current_player_idx}")
+            logging.info(f"[ACTION-{execution_id}] Current to_act set: {self.to_act}")
             
-            # Find the next player if the round isn't over
-            self._advance_to_next_player()
-            
-            # Detailed next player logging
-            if 0 <= self.current_player_idx < len(self.players):
-                current_player = self.players[self.current_player_idx]
-                
-                # Get poker position name
-                position_name = "Unknown"
-                if self.button_position == current_player.position:
-                    position_name = "BTN (Dealer)"
-                elif (self.button_position + 1) % len(self.players) == current_player.position:
-                    position_name = "SB (Small Blind)"
-                elif (self.button_position + 2) % len(self.players) == current_player.position:
-                    position_name = "BB (Big Blind)"
-                elif (self.button_position + 3) % len(self.players) == current_player.position:
-                    position_name = "UTG (Under the Gun)"
-                
-                logging.info(f"[ACTION-{execution_id}] Next player: {current_player.name} [{position_name}] (idx {self.current_player_idx})")
-                logging.info(f"[ACTION-{execution_id}] Next player status: {current_player.status.name}")
-                logging.info(f"[ACTION-{execution_id}] Next player in to_act set: {current_player.player_id in self.to_act}")
-                
-                # Final validation - make sure the next player is actually eligible to act
-                if current_player.status != PlayerStatus.ACTIVE or current_player.player_id not in self.to_act:
-                    logging.error(f"[ACTION-{execution_id}] CRITICAL ERROR: Selected next player {current_player.name} cannot act!")
-                    logging.error(f"[ACTION-{execution_id}] Status: {current_player.status.name}, In to_act: {current_player.player_id in self.to_act}")
-            else:
-                logging.error(f"[ACTION-{execution_id}] Invalid current_player_idx after advancing: {self.current_player_idx}")
-                
-                # Handle out of bounds index by finding ANY player who can act
-                valid_player_found = False
-                for idx, p in enumerate(self.players):
-                    if p.status == PlayerStatus.ACTIVE and p.player_id in self.to_act:
-                        logging.warning(f"[ACTION-{execution_id}] Recovered from invalid index - found eligible player {p.name} at index {idx}")
-                        self.current_player_idx = idx
-                        valid_player_found = True
-                        break
-                
-                if not valid_player_found and len(self.players) > 0:
-                    logging.warning(f"[ACTION-{execution_id}] Could not find any eligible player, resetting to index 0")
-                    self.current_player_idx = 0
+            # This player's action is successfully processed, but the turn advancement
+            # will now happen in the service layer after notifications are sent
                     
         logging.info(f"[ACTION-{execution_id}] Action processing complete for {player.name} {action.name}")
         return success

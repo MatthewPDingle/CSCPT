@@ -545,17 +545,30 @@ async def process_action_message(
     if poker_game.current_round == BettingRound.SHOWDOWN:
         await game_notifier.notify_hand_result(game_id, poker_game)
     else:
-        # Check which player should act next - use more robust logic
+        # *** CRITICAL ADDITION: Explicitly advance to next player after human action ***
         import logging
+        import time
+        execution_id = f"{time.time():.6f}"
+        
+        logging.info(f"[WS-ACTION-{execution_id}] Hand continues after human action, explicitly advancing turn index from {poker_game.current_player_idx}")
+        # Acquire lock to update the turn index
+        if game_id not in service.game_locks:
+            service.game_locks[game_id] = asyncio.Lock()
+        game_lock = service.game_locks[game_id]
+        
+        async with game_lock:
+            # This is a critical line that was missing before - explicitly advance player turn
+            poker_game._advance_to_next_player()
+            logging.info(f"[WS-ACTION-{execution_id}] Turn index advanced to {poker_game.current_player_idx}")
         
         # Get active players and players who need to act
         active_players = [p for p in poker_game.players if p.status == PlayerStatus.ACTIVE]
         to_act_players = [p for p in active_players if p.player_id in poker_game.to_act]
         
-        logging.info(f"After player action, finding next player. Current index: {poker_game.current_player_idx}")
-        logging.info(f"Active players: {len(active_players)}, Players to act: {len(to_act_players)}")
+        logging.info(f"[WS-ACTION-{execution_id}] After explicit index advancement - Current index: {poker_game.current_player_idx}")
+        logging.info(f"[WS-ACTION-{execution_id}] Active players: {len(active_players)}, Players to act: {len(to_act_players)}")
         
-        # Check if the current player index is valid
+        # Check if the current player index is valid after advancement
         if poker_game.current_player_idx < len(poker_game.players):
             next_player = poker_game.players[poker_game.current_player_idx]
             
