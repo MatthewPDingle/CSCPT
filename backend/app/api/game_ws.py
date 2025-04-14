@@ -471,12 +471,33 @@ async def process_action_message(
     game_lock = service.game_locks[game_id]
     
     import logging
-    execution_id = f"{id(player):.6f}"
+    import time
+    execution_id = f"{time.time():.6f}"
     logging.info(f"[WS-ACTION-{execution_id}] Acquiring game lock for processing human action {action_type.name}")
+    
+    # Add detailed state logging before attempting to process the action
+    logging.info(f"[WS-ACTION-{execution_id}] Human player: {player.name} (ID: {player.player_id})")
+    logging.info(f"[WS-ACTION-{execution_id}] Current round: {poker_game.current_round.name}")
+    logging.info(f"[WS-ACTION-{execution_id}] Current bet: {poker_game.current_bet}")
+    logging.info(f"[WS-ACTION-{execution_id}] Current player idx: {poker_game.current_player_idx}")
+    logging.info(f"[WS-ACTION-{execution_id}] Current player: {poker_game.players[poker_game.current_player_idx].name if 0 <= poker_game.current_player_idx < len(poker_game.players) else 'INVALID'}")
+    
+    # Verify it really is the player's turn before acquiring the lock
+    if 0 <= poker_game.current_player_idx < len(poker_game.players):
+        expected_player = poker_game.players[poker_game.current_player_idx]
+        if expected_player.player_id != player.player_id:
+            logging.error(f"[WS-ACTION-{execution_id}] Turn mismatch BEFORE lock! Expected {expected_player.name}, but got action from {player.name}")
     
     async with game_lock:
         logging.info(f"[WS-ACTION-{execution_id}] Lock acquired - Processing {action_type.name} {action_amount if action_amount is not None else ''}")
         logging.info(f"[WS-ACTION-{execution_id}] Before process_action - to_act: {poker_game.to_act}")
+        
+        # Verify turn again after acquiring lock (index may have changed while waiting for lock)
+        if 0 <= poker_game.current_player_idx < len(poker_game.players):
+            expected_player = poker_game.players[poker_game.current_player_idx]
+            if expected_player.player_id != player.player_id:
+                logging.error(f"[WS-ACTION-{execution_id}] Turn mismatch AFTER lock! Expected {expected_player.name}, but got action from {player.name}")
+                # Don't actually fail here - the process_action will do validation
         
         # Process directly in poker game for current state
         success = poker_game.process_action(player, action_type, action_amount)

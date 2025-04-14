@@ -424,15 +424,26 @@ class PokerGame:
             
             for _ in range(num_players):
                 player_at_idx = self.players[current_check_idx]
+                
+                # Enhanced logging for first player determination
+                logging.info(f"[START_HAND_DEBUG] Checking index {current_check_idx}: Player {player_at_idx.name}, Status: {player_at_idx.status.name}, In to_act: {player_at_idx.player_id in self.to_act}")
+                
                 # Find the first player in sequence whose ID is in the 'to_act' set
-                if player_at_idx.player_id in self.to_act:
+                if player_at_idx.player_id in self.to_act and player_at_idx.status == PlayerStatus.ACTIVE:
                     first_player_to_act = player_at_idx
                     first_player_idx = current_check_idx # Store the index directly
                     logging.info(f"[HAND-{execution_id}] Found first player to act: {player_at_idx.name} at index {current_check_idx}")
+                    logging.info(f"[START_HAND_DEBUG] Selected index {current_check_idx} ({player_at_idx.name}) as first player")
                     break
-                # Log skipped players
+                # Log skipped players with detailed reason
                 elif player_at_idx.status != PlayerStatus.OUT:
-                    logging.debug(f"[HAND-{execution_id}] Skipping player {player_at_idx.name} (idx {current_check_idx}) as first actor. Status: {player_at_idx.status}, In to_act: {player_at_idx.player_id in self.to_act}")
+                    reason = ""
+                    if player_at_idx.player_id not in self.to_act:
+                        reason += "Not in to_act set. "
+                    if player_at_idx.status != PlayerStatus.ACTIVE:
+                        reason += f"Status is {player_at_idx.status.name}, not ACTIVE. "
+                    
+                    logging.info(f"[HAND-{execution_id}] Skipping player {player_at_idx.name} (idx {current_check_idx}) as first actor. Reason: {reason}")
                 
                 # Move to next player in circular fashion
                 current_check_idx = (current_check_idx + 1) % num_players
@@ -754,12 +765,19 @@ class PokerGame:
         for p in self.players:
             in_old_to_act = p.player_id in old_to_act
             is_active = p.status == PlayerStatus.ACTIVE
-            player_statuses.append(f"{p.name} (ID: {p.player_id}): active={is_active}, was_in_to_act={in_old_to_act}")
+            player_statuses.append(f"{p.name} (ID: {p.player_id}): active={is_active}, was_in_to_act={in_old_to_act}, position={p.position}")
         
         logging.info(f"[RESET-{execution_id}] Player statuses before reset: {', '.join(player_statuses)}")
         
         # Create the new to_act set with all active players
         self.to_act = {p.player_id for p in active_players}
+        
+        # Validate the to_act set to ensure no empty set race conditions
+        if not self.to_act and active_players:
+            logging.error(f"[RESET-{execution_id}] RACE CONDITION DETECTED: to_act set is empty but there are {len(active_players)} active players!")
+            # Fix the to_act set
+            logging.info(f"[RESET-{execution_id}] Adding all active players back to to_act set")
+            self.to_act = {p.player_id for p in active_players}
         
         logging.info(f"[RESET-{execution_id}] Updated to_act set: {self.to_act}")
         logging.info(f"[RESET-{execution_id}] Previous to_act set: {old_to_act}")
@@ -959,14 +977,19 @@ class PokerGame:
             True if the action was successful, False otherwise
         """
         import uuid
+        import time
         # Assign a unique execution ID for tracing this action through logs
-        execution_id = str(uuid.uuid4())[:8]
+        execution_id = f"{time.time():.6f}"
         
         logging.info(f"[ACTION-{execution_id}] Processing action: {player.name} -> {action.name} " 
                     f"(amount: {amount}, current player idx: {self.current_player_idx})")
         
         # ENHANCED VALIDATION: First check if the current player index is valid
         logging.info(f"[ACTION-{execution_id}] Validating turn for {player.name} (ID: {player.player_id}). Expected index: {self.current_player_idx}")
+        
+        # Log the full set of players and the to_act set to help debugging
+        logging.info(f"[ACTION-{execution_id}] All players: {[(p.name, p.player_id, p.status.name) for p in self.players]}")
+        logging.info(f"[ACTION-{execution_id}] Players in to_act: {self.to_act}")
         
         if not (0 <= self.current_player_idx < len(self.players)):
             logging.error(f"[ACTION-{execution_id}] CRITICAL: current_player_idx {self.current_player_idx} out of bounds for players list with length {len(self.players)}!")
@@ -976,6 +999,10 @@ class PokerGame:
         expected_player = self.players[self.current_player_idx]
         if expected_player.player_id != player.player_id:
             logging.error(f"[ACTION-{execution_id}] Turn mismatch! Expected player {expected_player.name} (ID: {expected_player.player_id}) at index {self.current_player_idx}, but received action from {player.name} (ID: {player.player_id}).")
+            # Print out the state of the players and turn information for debugging
+            logging.error(f"[ACTION-{execution_id}] Current betting round: {self.current_round.name}")
+            logging.error(f"[ACTION-{execution_id}] Button position: {self.button_position}")
+            logging.error(f"[ACTION-{execution_id}] Player positions: {[(p.name, p.position) for p in self.players]}")
             return False
         
         # Check if the player is allowed to act by being in the to_act set
@@ -1085,12 +1112,21 @@ class PokerGame:
                 self.to_act.remove(player.player_id)
                 logging.info(f"[ACTION-{execution_id}] Removed {player.name} from 'to_act' after call. Remaining: {self.to_act}")
             
+            # Important fix for the race condition in preflop betting
+            if self.current_round == BettingRound.PREFLOP:
+                # Get active players who haven't folded or gone all-in
+                active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+                
+                # Ensure any active player who hasn't acted yet is still in to_act
+                for p in active_players:
+                    if p.player_id != player.player_id:  # Skip the player who just acted
+                        if p.player_id not in self.to_act and p.player_id in to_act_before:
+                            logging.warning(f"[ACTION-{execution_id}] Active player {p.name} was incorrectly removed from to_act! Adding back.")
+                            self.to_act.add(p.player_id)
+            
             # Add additional logging to show all active players and their status
             active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
             logging.info(f"[ACTION-{execution_id}] Active players after CALL: {[(p.name, p.position, p.player_id in self.to_act) for p in active_players]}")
-            
-            # The problem is the to_act set might incorrectly exclude players who still need to act after a call.
-            # In preflop betting with blinds, when a player calls, all players between caller and blinds
             # should still be in the to_act set. Let's validate the to_act set:
             
             if self.current_round == BettingRound.PREFLOP:
@@ -2041,21 +2077,50 @@ class PokerGame:
     
     def _log_expected_action_order(self):
         """Log the expected order of action for the current round."""
-        active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
+        import uuid
+        execution_id = str(uuid.uuid4())[:8]
+        
+        # Log both active and to_act players for detailed debugging
+        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+        to_act_players = [p for p in self.players if p.player_id in self.to_act]
+        players_should_act = [p for p in active_players if p.player_id in self.to_act]
+        
+        logging.info(f"[ACTION_ORDER-{execution_id}] Current player index: {self.current_player_idx}")
+        logging.info(f"[ACTION_ORDER-{execution_id}] Active players: {len(active_players)}")
+        logging.info(f"[ACTION_ORDER-{execution_id}] Players in to_act: {len(to_act_players)}")
+        logging.info(f"[ACTION_ORDER-{execution_id}] Players who should act (active AND in to_act): {len(players_should_act)}")
+        
         if not active_players:
-            logging.warning("No active players to log expected action order")
+            logging.warning(f"[ACTION_ORDER-{execution_id}] No active players to log expected action order")
             return
         
         # Determine starting position based on the current round
         if self.current_round == BettingRound.PREFLOP:
             # Preflop: action starts with UTG (3 positions after button in full ring)
             start_relative_pos = 3 if len(active_players) > 2 else 0  # UTG or SB in heads-up
+            logging.info(f"[ACTION_ORDER-{execution_id}] Preflop betting - action starts at relative position {start_relative_pos}")
         else:
             # Postflop: action starts with first active player after the button
             start_relative_pos = 1  # SB position
+            logging.info(f"[ACTION_ORDER-{execution_id}] Postflop betting - action starts at relative position {start_relative_pos}")
         
         # Log the action order
-        logging.info(f"Expected action order for {self.current_round.name}:")
+        logging.info(f"[ACTION_ORDER-{execution_id}] Expected action order for {self.current_round.name}:")
+        
+        # First verify the current player is valid
+        if 0 <= self.current_player_idx < len(self.players):
+            current_player = self.players[self.current_player_idx]
+            logging.info(f"[ACTION_ORDER-{execution_id}] Current player set to: {current_player.name} (index {self.current_player_idx})")
+            logging.info(f"[ACTION_ORDER-{execution_id}] Current player status: {current_player.status.name}, in to_act: {current_player.player_id in self.to_act}")
+            
+            # Log detailed info about all active players in to_act
+            for p in players_should_act:
+                player_idx = self.players.index(p)
+                rel_pos = (p.position - self.button_position) % len(self.players)
+                pos_name = self._get_position_name(rel_pos)
+                logging.info(f"[ACTION_ORDER-{execution_id}] Should act: {p.name} [{pos_name}] (index {player_idx})")
+        else:
+            logging.error(f"[ACTION_ORDER-{execution_id}] Invalid current player index: {self.current_player_idx}")
         
         # Sort active players by their absolute position
         sorted_by_position = sorted(active_players, key=lambda p: p.position)
@@ -2069,7 +2134,7 @@ class PokerGame:
                 break
         
         if start_player_idx is None:
-            logging.warning(f"Could not find starting player at relative position {start_relative_pos}")
+            logging.warning(f"[ACTION_ORDER-{execution_id}] Could not find starting player at relative position {start_relative_pos}")
             return
         
         # Log the action order starting from the appropriate position
