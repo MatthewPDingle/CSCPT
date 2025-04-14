@@ -115,24 +115,61 @@ export const useGameWebSocket = (wsUrl: string) => {
   
   // Initialize sound effects
   useEffect(() => {
-    // Create audio elements
-    checkSoundRef.current = new Audio('/audio/check.wav');
-    chipsSoundRef.current = new Audio('/audio/chips.wav');
-    shuffleSoundRef.current = new Audio('/audio/shuffle.wav');
-    flopSoundRef.current = new Audio('/audio/3cards.wav');
-    cardSoundRef.current = new Audio('/audio/card.wav');
-    foldSoundRef.current = new Audio('/audio/fold.wav');
-    
-    // Preload the sounds
-    checkSoundRef.current.load();
-    chipsSoundRef.current.load();
-    shuffleSoundRef.current.load();
-    flopSoundRef.current.load();
-    cardSoundRef.current.load();
-    foldSoundRef.current.load();
+    try {
+      console.log('Initializing sound effects...');
+      
+      // Create audio elements with absolute URLs to ensure proper loading
+      const baseUrl = window.location.origin;
+      
+      console.log('Creating audio elements with base URL:', baseUrl);
+      
+      checkSoundRef.current = new Audio(`${baseUrl}/audio/check.wav`);
+      chipsSoundRef.current = new Audio(`${baseUrl}/audio/chips.wav`);
+      shuffleSoundRef.current = new Audio(`${baseUrl}/audio/shuffle.wav`);
+      flopSoundRef.current = new Audio(`${baseUrl}/audio/3cards.wav`);
+      cardSoundRef.current = new Audio(`${baseUrl}/audio/card.wav`);
+      foldSoundRef.current = new Audio(`${baseUrl}/audio/fold.wav`);
+      
+      // Debug logging for sound loading
+      console.log('Sound elements created, preloading sounds...');
+      
+      // Add event listeners to track loading status
+      checkSoundRef.current.addEventListener('canplaythrough', () => {
+        console.log('Check sound loaded successfully');
+      });
+      
+      chipsSoundRef.current.addEventListener('canplaythrough', () => {
+        console.log('Chips sound loaded successfully');
+      });
+      
+      foldSoundRef.current.addEventListener('canplaythrough', () => {
+        console.log('Fold sound loaded successfully');
+      });
+      
+      // Set volume to make sure it's audible
+      if (checkSoundRef.current) checkSoundRef.current.volume = 1.0;
+      if (chipsSoundRef.current) chipsSoundRef.current.volume = 1.0;
+      if (shuffleSoundRef.current) shuffleSoundRef.current.volume = 1.0;
+      if (flopSoundRef.current) flopSoundRef.current.volume = 1.0;
+      if (cardSoundRef.current) cardSoundRef.current.volume = 1.0;
+      if (foldSoundRef.current) foldSoundRef.current.volume = 1.0;
+      
+      // Preload the sounds
+      checkSoundRef.current.load();
+      chipsSoundRef.current.load();
+      shuffleSoundRef.current.load();
+      flopSoundRef.current.load();
+      cardSoundRef.current.load();
+      foldSoundRef.current.load();
+      
+      console.log('Sound preloading initiated.');
+    } catch (error) {
+      console.error('Error initializing sound effects:', error);
+    }
     
     // Clean up
     return () => {
+      // Clean up audio resources
       if (checkSoundRef.current) {
         checkSoundRef.current.pause();
       }
@@ -151,9 +188,55 @@ export const useGameWebSocket = (wsUrl: string) => {
       if (foldSoundRef.current) {
         foldSoundRef.current.pause();
       }
+      
+      // Clear any pending timeouts
+      if (aiTurnTimeoutRef.current) {
+        clearTimeout(aiTurnTimeoutRef.current);
+      }
+      if (postActionTimeoutRef.current) {
+        clearTimeout(postActionTimeoutRef.current);
+      }
     };
   }, []);
   
+  // Function to test audio playback and initialize audio context
+  const initializeAudio = useCallback(() => {
+    console.log('Initializing audio context and testing playback...');
+    try {
+      // Create a temporary silent audio context to unlock audio on iOS/Safari
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const audioCtx = new AudioContext();
+        
+        // Create a silent oscillator
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0; // Silent
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        // Start and stop (just to trigger audio system)
+        oscillator.start();
+        oscillator.stop(0.001);
+        
+        console.log('Audio context initialized successfully');
+      }
+      
+      // Test play a silent sound to enable audio
+      const testSound = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+      testSound.volume = 0.01; // Almost silent
+      testSound.play()
+        .then(() => {
+          console.log('Test sound played successfully, audio should now be enabled');
+        })
+        .catch(err => {
+          console.warn('Could not play test sound, audio may not work until user interaction:', err);
+        });
+    } catch (err) {
+      console.error('Error initializing audio:', err);
+    }
+  }, []);
+
   // Extract playerId from URL if present
   useEffect(() => {
     // Skip if URL isn't provided
@@ -168,11 +251,14 @@ export const useGameWebSocket = (wsUrl: string) => {
       if (playerIdParam) {
         setPlayerId(playerIdParam);
         console.log('Extracted player ID from WebSocket URL:', playerIdParam);
+        
+        // Try to initialize audio when we have a player ID (session is active)
+        initializeAudio();
       }
     } catch (e) {
       console.error('Error parsing WebSocket URL:', e);
     }
-  }, [wsUrl]);
+  }, [wsUrl, initializeAudio]);
   
   // State for different message types
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -182,6 +268,13 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
+  
+  // Player turn state for visual timing and highlighting
+  const [currentTurnPlayerId, setCurrentTurnPlayerId] = useState<string | null>(null);
+  const [showTurnHighlight, setShowTurnHighlight] = useState<boolean>(false);
+  const [processingAITurn, setProcessingAITurn] = useState<boolean>(false);
+  const aiTurnTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const postActionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   
   // Reference to track changes in community cards to play sounds at the right time
@@ -287,6 +380,53 @@ export const useGameWebSocket = (wsUrl: string) => {
               console.error('Error playing card sounds:', soundError);
             }
             
+            // Handle turn sequence
+            // Identify the current player whose turn it is
+            const currentPlayerId = message.data.current_player_idx >= 0 && message.data.current_player_idx < message.data.players.length
+              ? message.data.players[message.data.current_player_idx]?.player_id
+              : null;
+            
+            // Check if this is a new player's turn
+            if (currentPlayerId && currentPlayerId !== currentTurnPlayerId) {
+              console.log(`Turn changed to player: ${currentPlayerId} (isHuman: ${currentPlayerId === playerId})`);
+              
+              // Clear any existing timeouts
+              if (aiTurnTimeoutRef.current) {
+                clearTimeout(aiTurnTimeoutRef.current);
+                aiTurnTimeoutRef.current = null;
+              }
+              if (postActionTimeoutRef.current) {
+                clearTimeout(postActionTimeoutRef.current);
+                postActionTimeoutRef.current = null;
+              }
+              
+              // Store the current player ID
+              setCurrentTurnPlayerId(currentPlayerId);
+              
+              // Enable the golden highlight immediately for all players
+              setShowTurnHighlight(true);
+              
+              // If it's an AI player's turn, wait 0.5 seconds then signal the backend to process their action
+              const isAITurn = currentPlayerId !== playerId;
+              if (isAITurn) {
+                console.log('Starting AI turn sequence with visual delay');
+                setProcessingAITurn(true);
+                
+                // 1. Player already has golden highlight
+                // 2. Wait 0.5 seconds
+                aiTurnTimeoutRef.current = setTimeout(() => {
+                  // 3. AI's action will be processed by the backend after this delay
+                  console.log('AI turn visual delay completed, action should occur next');
+                  // The actual action will be processed by the backend
+                  // The resulting action will come back as a player_action message
+                }, 500);
+              } else {
+                // For human player, just highlight and wait for their input
+                console.log('Human player turn - awaiting action input');
+                setProcessingAITurn(false);
+              }
+            }
+            
             // Proceed with setting state after validation
             setGameState(message.data);
             break;
@@ -297,24 +437,106 @@ export const useGameWebSocket = (wsUrl: string) => {
               console.error('Invalid player action data');
               return;
             }
-            setLastAction(message.data);
             
-            // Play appropriate sound effect based on action
-            try {
-              const action = message.data.action.toUpperCase();
-              if (action === 'CHECK' && checkSoundRef.current) {
-                checkSoundRef.current.currentTime = 0;
-                checkSoundRef.current.play().catch(e => console.log('Sound play error:', e));
-              } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(action) && chipsSoundRef.current) {
-                chipsSoundRef.current.currentTime = 0;
-                chipsSoundRef.current.play().catch(e => console.log('Sound play error:', e));
-              } else if (action === 'FOLD' && foldSoundRef.current) {
-                foldSoundRef.current.currentTime = 0;
-                foldSoundRef.current.play().catch(e => console.log('Fold sound play error:', e));
+            // Check if this action belongs to the player who currently has the turn
+            const matchesCurrentTurn = message.data.player_id === currentTurnPlayerId;
+            const isHumanAction = message.data.player_id === playerId;
+            
+            if (matchesCurrentTurn) {
+              // Steps 3-6 of the turn sequence:
+              
+              // 3. Player made their play (this action message)
+              // Update the last action immediately
+              setLastAction(message.data);
+              
+              // 3a. If fold, give them the gray highlight - handled by PlayerSeat component
+              // based on player.status which will be updated from the game state
+              
+              // 4. Play sound effect based on action
+              try {
+                const action = message.data.action.toUpperCase();
+                console.log(`Playing sound for action: ${action}`);
+                
+                // Function to play sound with improved error handling and retry
+                const playSound = (audioRef: React.RefObject<HTMLAudioElement | null>, actionName: string) => {
+                  if (!audioRef.current) {
+                    console.error(`Cannot play ${actionName} sound - audio element not initialized`);
+                    return;
+                  }
+                  
+                  // Reset to beginning
+                  audioRef.current.currentTime = 0;
+                  
+                  // Ensure volume is set
+                  audioRef.current.volume = 1.0;
+                  
+                  // Play the sound with better error handling
+                  const playPromise = audioRef.current.play();
+                  
+                  if (playPromise !== undefined) {
+                    playPromise
+                      .then(() => {
+                        console.log(`${actionName} sound played successfully`);
+                      })
+                      .catch(err => {
+                        console.error(`Error playing ${actionName} sound:`, err);
+                        
+                        // If autoplay is prevented, try once more with user interaction simulation
+                        if (err.name === 'NotAllowedError') {
+                          console.log(`Autoplay prevented for ${actionName} sound, trying alternative approach`);
+                          
+                          // Create a temporary silent sound that may enable audio
+                          const temporaryAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+                          temporaryAudio.play()
+                            .then(() => {
+                              // Now try playing the original sound again
+                              if (audioRef.current) {
+                                audioRef.current.currentTime = 0;
+                                audioRef.current.play()
+                                  .then(() => console.log(`${actionName} sound played after retry`))
+                                  .catch(e => console.error(`Failed to play ${actionName} sound after retry:`, e));
+                              }
+                            })
+                            .catch(() => console.error(`Could not enable audio playback for ${actionName} sound`));
+                        }
+                      });
+                  }
+                };
+                
+                // Play appropriate sound based on action type
+                if (action === 'CHECK') {
+                  playSound(checkSoundRef, 'check');
+                } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(action)) {
+                  playSound(chipsSoundRef, 'chips');
+                } else if (action === 'FOLD') {
+                  playSound(foldSoundRef, 'fold');
+                }
+              } catch (e) {
+                console.error('Error in sound effect playback logic:', e);
               }
-            } catch (e) {
-              console.log('Error playing sound effect:', e);
+              
+              // 5. Pause 0.5 second before removing highlight
+              postActionTimeoutRef.current = setTimeout(() => {
+                // 6. Remove golden highlight and complete the turn
+                console.log(`${isHumanAction ? 'Human' : 'AI'} action post-delay completed, removing highlight`);
+                setShowTurnHighlight(false);
+                
+                // Reset processing state for AI turns
+                if (!isHumanAction) {
+                  setProcessingAITurn(false);
+                }
+                
+                // At this point the turn is complete and the backend will assign a new current player
+                // which will start the next player's turn sequence
+              }, 500);
+            } else {
+              // This is an action from a player who is not the current turn player
+              // May happen in certain game situations - still update last action but don't
+              // change the turn sequence
+              console.log('Received action from player who is not the current turn player');
+              setLastAction(message.data);
             }
+            
             break;
             
           case 'action_log':
@@ -686,6 +908,10 @@ export const useGameWebSocket = (wsUrl: string) => {
     reconnect,
     isPlayerTurn,
     lastMessage,
-    getConnectionHealth
+    getConnectionHealth,
+    // Turn highlighting states
+    currentTurnPlayerId,
+    showTurnHighlight,
+    processingAITurn
   };
 };
