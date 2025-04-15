@@ -25,6 +25,7 @@ interface PokerTableProps {
   showdownActive?: boolean;
   currentTurnPlayerId?: string | null;
   showTurnHighlight?: boolean;
+  foldedPlayerId?: string | null;
 }
 
 const TableContainer = styled.div`
@@ -171,7 +172,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
   pot, 
   showdownActive = false,
   currentTurnPlayerId = null,
-  showTurnHighlight = false
+  showTurnHighlight = false,
+  foldedPlayerId = null
 }) => {
   // Ensure players array is valid and handle potential undefined/null values
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
@@ -236,6 +238,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
             showdownActive={showdownActive}
             isCurrentTurn={false}
             showTurnHighlight={false}
+            isFolding={false}
           />
           
           {/* Player positions */}
@@ -266,6 +269,9 @@ const PokerTable: React.FC<PokerTableProps> = ({
               // Check if this player is the current turn player
               const isPlayerCurrentTurn = playerId === currentTurnPlayerId;
               
+              // Check if this player should have the fold highlight
+              const isFolding = playerId === foldedPlayerId;
+              
               return (
                 <PlayerSeat
                   key={playerId}
@@ -275,6 +281,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   showdownActive={showdownActive}
                   isCurrentTurn={isPlayerCurrentTurn}
                   showTurnHighlight={showTurnHighlight && isPlayerCurrentTurn}
+                  isFolding={isFolding}
                 />
               );
             } catch (error) {

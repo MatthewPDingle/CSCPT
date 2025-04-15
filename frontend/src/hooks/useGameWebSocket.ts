@@ -259,6 +259,9 @@ export const useGameWebSocket = (wsUrl: string) => {
     }
   }, []);
 
+  // Track audio initialization state
+  const [audioContextInitialized, setAudioContextInitialized] = useState(false);
+
   // Extract playerId from URL if present
   useEffect(() => {
     // Skip if URL isn't provided
@@ -274,13 +277,17 @@ export const useGameWebSocket = (wsUrl: string) => {
         setPlayerId(playerIdParam);
         console.log('Extracted player ID from WebSocket URL:', playerIdParam);
         
-        // Try to initialize audio when we have a player ID (session is active)
-        initializeAudio();
+        // Initialize audio context ONCE after player ID is confirmed
+        if (!audioContextInitialized) {
+          console.log('Attempting to initialize audio context after player ID confirmation...');
+          initializeAudio();
+          setAudioContextInitialized(true);
+        }
       }
     } catch (e) {
       console.error('Error parsing WebSocket URL:', e);
     }
-  }, [wsUrl, initializeAudio]);
+  }, [wsUrl, initializeAudio, audioContextInitialized]);
   
   // State for different message types
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -295,6 +302,8 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [currentTurnPlayerId, setCurrentTurnPlayerId] = useState<string | null>(null);
   const [showTurnHighlight, setShowTurnHighlight] = useState<boolean>(false);
   const [processingAITurn, setProcessingAITurn] = useState<boolean>(false);
+  // Track fold status separately to control highlight sequence
+  const [foldedPlayerId, setFoldedPlayerId] = useState<string | null>(null);
   const aiTurnTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const postActionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -489,10 +498,21 @@ export const useGameWebSocket = (wsUrl: string) => {
               // Update the last action immediately
               setLastAction(message.data);
               
-              // 3a. If fold, give them the gray highlight - handled by PlayerSeat component
-              // based on player.status which will be updated from the game state
+              // 3a. If fold, first show gold highlight, then set foldedPlayerId to
+              // trigger gray highlight after a delay but before removing the highlight completely
               const isFoldAction = message.data.action.toUpperCase() === 'FOLD';
               console.log(`Is FOLD action: ${isFoldAction}`);
+              
+              // For fold actions, control the fold styling sequence
+              if (isFoldAction) {
+                // Start with gold highlight (already set earlier)
+                // Then set the foldedPlayerId to show gray styling AFTER the action completes
+                setFoldedPlayerId(message.data.player_id);
+                console.log(`Setting foldedPlayerId: ${message.data.player_id} for fold action`);
+              } else {
+                // For non-fold actions, make sure no player has fold styling
+                setFoldedPlayerId(null);
+              }
               
               // If this is a fold, we'll use a flag in PlayerSeat component
               // We need the game_state update to actually update the player's status to FOLDED
@@ -533,6 +553,8 @@ export const useGameWebSocket = (wsUrl: string) => {
                       .catch(err => {
                         console.error(`Error playing ${actionName} sound:`, err);
                         console.log(`Error name: ${err.name}, message: ${err.message}`);
+                        console.log(`Sound readyState: ${audioRef.current?.readyState}`); 
+                        console.log(`Sound error property:`, audioRef.current?.error);
                         
                         // If autoplay is prevented, try once more with user interaction simulation
                         if (err.name === 'NotAllowedError') {
@@ -586,8 +608,20 @@ export const useGameWebSocket = (wsUrl: string) => {
                 // 6. Remove golden highlight and complete the turn
                 console.log(`${isHumanAction ? 'Human' : 'AI'} action post-delay completed, removing highlight`);
                 console.log(`Turn state before removing highlight - playerId: ${message.data.player_id}, action: ${message.data.action}`);
+                console.log(`Removing highlight for player ${message.data.player_id}. Current turn player state: ${currentTurnPlayerId}`);
                 
+                // First remove the highlight
                 setShowTurnHighlight(false);
+                
+                // Then after removing highlight, also clear the folded player ID to reset fold styling
+                // This timing is important - we want fold styling to persist in game state
+                // but our highlighting control should be reset
+                setTimeout(() => {
+                  if (foldedPlayerId === message.data.player_id) {
+                    console.log(`Clearing fold highlight state for ${foldedPlayerId}`);
+                    setFoldedPlayerId(null);
+                  }
+                }, 100);
                 
                 // Reset processing state for AI turns
                 if (!isHumanAction) {
@@ -596,7 +630,7 @@ export const useGameWebSocket = (wsUrl: string) => {
                 
                 // At this point the turn is complete and the backend will assign a new current player
                 // which will start the next player's turn sequence
-              }, 600); // Increased to 600ms to ensure game_state update arrives before highlight is removed
+              }, 700); // Increased to 700ms to ensure game_state update arrives before highlight is removed
             } else {
               // This is an action from a player who is not the current turn player
               // May happen in certain game situations - still update last action but don't
@@ -980,6 +1014,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     // Turn highlighting states
     currentTurnPlayerId,
     showTurnHighlight,
-    processingAITurn
+    processingAITurn,
+    foldedPlayerId
   };
 };

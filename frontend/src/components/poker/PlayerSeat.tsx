@@ -24,6 +24,7 @@ interface PlayerSeatProps {
   showdownActive?: boolean;
   isCurrentTurn?: boolean;
   showTurnHighlight?: boolean;
+  isFolding?: boolean;
 }
 
 interface PositionProps {
@@ -178,10 +179,16 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
   isHuman, 
   showdownActive = false,
   isCurrentTurn = false,
-  showTurnHighlight = false
+  showTurnHighlight = false,
+  isFolding = false
 }) => {
-  // Check if player is folded based on status
+  // Check if player is folded based on status or is currently folding
+  // Use status for permanent fold styling, isFolding for transitional gold->gray highlight
   const isFolded = player.status === 'FOLDED';
+  const shouldShowFoldStyle = isFolded || isFolding;
+  
+  // Debug logging for fold state and highlighting
+  console.log(`PlayerSeat ${player.name}: isFolded=${isFolded}, isFolding=${isFolding}, showTurnHighlight=${showTurnHighlight}, isCurrentTurn=${isCurrentTurn}`);
   
   return (
     <SeatContainer 
@@ -196,7 +203,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       <PlayerInfo 
         $isHuman={isHuman} 
         $isDealer={player.id === 'dealer'}
-        $isFolded={isFolded}
+        $isFolded={shouldShowFoldStyle}
       >
         <PlayerName $isHuman={isHuman}>{player.name}</PlayerName>
         <ChipCount $isHuman={isHuman}>${player.chips}</ChipCount>
@@ -211,7 +218,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
         )}
       </PlayerInfo>
       
-      <PlayerCards $isHuman={isHuman} $isFolded={isFolded}>
+      <PlayerCards $isHuman={isHuman} $isFolded={shouldShowFoldStyle}>
         {player.id === 'dealer' ? (
           // Empty div placeholders for dealer (invisible)
           <>
@@ -224,7 +231,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
             <Card 
               key={index} 
               card={card}
-              faceDown={!(isHuman || (showdownActive && !isFolded))} // Show cards if human player OR during showdown for non-folded players
+              faceDown={!(isHuman || (showdownActive && !shouldShowFoldStyle))} // Show cards if human player OR during showdown for non-folded players
             />
           ))
         )}

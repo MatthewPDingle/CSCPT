@@ -6,26 +6,7 @@ import CashGameControls from '../components/poker/CashGameControls';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGameWebSocket } from '../hooks/useGameWebSocket';
 
-// Audio initialization button styled component
-const AudioInitButton = styled.button`
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 15px 30px;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  font-size: 16px;
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  
-  &:hover {
-    background-color: #2980b9;
-  }
-`;
+// Audio initialization handled automatically in useGameWebSocket
 
 const GameContainer = styled.div`
   width: 100%;
@@ -329,7 +310,8 @@ const GamePage: React.FC = () => {
     // Turn highlighting states
     currentTurnPlayerId,
     showTurnHighlight,
-    processingAITurn
+    processingAITurn,
+    foldedPlayerId
   } = useGameWebSocket(wsUrl);
   
   // Store game state in local state when received
@@ -338,10 +320,7 @@ const GamePage: React.FC = () => {
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [connectionHealth, setConnectionHealth] = useState<any>(null);
   
-  // Audio initialization state
-  const [showAudioInit, setShowAudioInit] = useState(true);
-  const [audioInitialized, setAudioInitialized] = useState(false);
-  const audioInitButtonRef = useRef<HTMLButtonElement>(null);
+  // Audio initialization now handled automatically in useGameWebSocket
   
   // Update local game state when WebSocket state changes
   React.useEffect(() => {
@@ -849,99 +828,7 @@ const connectionIndicator = (
       {/* Add connection status indicator */}
       {connectionIndicator}
       
-      {/* Audio initialization button that requires explicit user interaction */}
-      {showAudioInit && !audioInitialized && (
-        <AudioInitButton 
-          ref={audioInitButtonRef}
-          onClick={() => {
-            // Play a silent sound to enable audio
-            try {
-              console.log('Audio initialization button clicked');
-              
-              // Create and play AudioContext to unlock audio on all browsers
-              try {
-                const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-                if (AudioContext) {
-                  const audioCtx = new AudioContext();
-                  // Create oscillator for a brief moment
-                  const oscillator = audioCtx.createOscillator();
-                  const gain = audioCtx.createGain();
-                  gain.gain.value = 0.01; // Very quiet
-                  oscillator.connect(gain);
-                  gain.connect(audioCtx.destination);
-                  oscillator.start(0);
-                  oscillator.stop(0.1);
-                  console.log('AudioContext initialized successfully');
-                }
-              } catch (audioCtxErr) {
-                console.warn('Could not initialize AudioContext:', audioCtxErr);
-              }
-              
-              // Play silent sound
-              const silentSound = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-              silentSound.volume = 0.01;
-              silentSound.play()
-                .then(() => {
-                  console.log('Audio initialized by user interaction');
-                  setAudioInitialized(true);
-                })
-                .catch(err => console.error('Failed to initialize audio:', err));
-                
-              // Also try to play each of our actual sound effects once with full paths
-              // This helps Safari and iOS devices that need user interaction for each audio source
-              setTimeout(() => {
-                try {
-                  const baseUrl = window.location.origin;
-                  console.log('Preloading game sounds from:', baseUrl);
-                  
-                  // Create and immediately play sounds to unlock them
-                  const checkSound = new Audio(`${baseUrl}/audio/check.wav`);
-                  const chipsSound = new Audio(`${baseUrl}/audio/chips.wav`);
-                  const foldSound = new Audio(`${baseUrl}/audio/fold.wav`);
-                  const shuffleSound = new Audio(`${baseUrl}/audio/shuffle.wav`);
-                  const cardSound = new Audio(`${baseUrl}/audio/card.wav`);
-                  const threecardSound = new Audio(`${baseUrl}/audio/3cards.wav`);
-                  
-                  // Set volume low for preloading
-                  checkSound.volume = 0.1;
-                  chipsSound.volume = 0.1;
-                  foldSound.volume = 0.1;
-                  shuffleSound.volume = 0.1;
-                  cardSound.volume = 0.1;
-                  threecardSound.volume = 0.1;
-                  
-                  // Play each sound to unlock them
-                  console.log('Attempting to preload all game sounds...');
-                  
-                  const preloadSound = (sound: HTMLAudioElement, name: string) => {
-                    console.log(`Preloading ${name} sound - src:`, sound.src);
-                    sound.play()
-                      .then(() => console.log(`${name} sound preloaded successfully`))
-                      .catch(e => console.warn(`Could not preload ${name} sound:`, e));
-                  };
-                  
-                  preloadSound(checkSound, 'check');
-                  preloadSound(chipsSound, 'chips');
-                  preloadSound(foldSound, 'fold');
-                  preloadSound(shuffleSound, 'shuffle');
-                  preloadSound(cardSound, 'card');
-                  preloadSound(threecardSound, 'three cards');
-                  
-                } catch (e) {
-                  console.log('Error pre-loading sounds:', e);
-                }
-              }, 100);
-              
-              // Hide the button
-              setShowAudioInit(false);
-            } catch (e) {
-              console.error('Error in audio init button:', e);
-            }
-          }}
-        >
-          Click to Enable Sound
-        </AudioInitButton>
-      )}
+      {/* Audio initialization now handled automatically in useGameWebSocket */}
       
       <PokerTable 
         players={transformPlayersForTable()}
@@ -952,6 +839,7 @@ const connectionIndicator = (
         showdownActive={isShowdown}
         currentTurnPlayerId={currentTurnPlayerId}
         showTurnHighlight={showTurnHighlight}
+        foldedPlayerId={foldedPlayerId}
       />
       
       <ActionControls 
