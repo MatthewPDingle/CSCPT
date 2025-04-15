@@ -449,22 +449,17 @@ export const useGameWebSocket = (wsUrl: string) => {
               console.log('Setting turn highlight to TRUE');
               setShowTurnHighlight(true);
               
-              // If it's an AI player's turn, wait 0.5 seconds then signal the backend to process their action
+              // For AI players, just highlight them and the backend will handle timing
               const isAITurn = currentPlayerId !== playerId;
               if (isAITurn) {
-                console.log('Starting AI turn sequence with visual delay');
+                console.log('Starting AI turn sequence - backend will handle timing');
                 setProcessingAITurn(true);
                 
-                // 1. Player already has golden highlight
-                // 2. Wait 0.5 seconds
-                console.log('Setting AI turn timeout for 500ms');
-                aiTurnTimeoutRef.current = setTimeout(() => {
-                  // 3. AI's action will be processed by the backend after this delay
-                  console.log('AI turn visual delay completed, action should occur next');
-                  console.log('Turn state at AI delay completion - playerId:', currentPlayerId);
-                  // The actual action will be processed by the backend
-                  // The resulting action will come back as a player_action message
-                }, 500);
+                // We no longer add our own delay for AI - the backend has a consistent delay
+                // Just set the visual state so the turn is highlighted correctly
+                
+                // The AI's action will be processed by the backend with its own timing
+                // The resulting action will come back as a player_action message
               } else {
                 // For human player, just highlight and wait for their input
                 console.log('Human player turn - awaiting action input');
@@ -613,15 +608,16 @@ export const useGameWebSocket = (wsUrl: string) => {
                 // First remove the highlight
                 setShowTurnHighlight(false);
                 
-                // Then after removing highlight, also clear the folded player ID to reset fold styling
-                // This timing is important - we want fold styling to persist in game state
-                // but our highlighting control should be reset
+                // We no longer need to clear the foldedPlayerId immediately
+                // The fold styling will now be controlled by the player's status from game state
+                // The foldedPlayerId is only used to transition from gold to gray during folding animation
+                // We'll use a longer timer to ensure the status update from the backend arrives first
                 setTimeout(() => {
                   if (foldedPlayerId === message.data.player_id) {
-                    console.log(`Clearing fold highlight state for ${foldedPlayerId}`);
+                    console.log(`Clearing fold transition state for ${foldedPlayerId}`);
                     setFoldedPlayerId(null);
                   }
-                }, 100);
+                }, 500);
                 
                 // Reset processing state for AI turns
                 if (!isHumanAction) {

@@ -568,36 +568,26 @@ async def process_action_message(
     if poker_game.current_round == BettingRound.SHOWDOWN:
         await game_notifier.notify_hand_result(game_id, poker_game)
     else:
-        # *** CRITICAL ADDITION: Explicitly advance to next player after human action ***
+        # FIXED: No longer need to explicitly advance the player here
+        # Turn advancement is now handled directly within poker_game.process_action
         import logging
         import time
         execution_id = f"{time.time():.6f}"
         
-        logging.info(f"[WS-ACTION-{execution_id}] Hand continues after human action, explicitly advancing turn index from {poker_game.current_player_idx}")
+        logging.info(f"[WS-ACTION-{execution_id}] Hand continues after human action - turn already advanced internally")
         
-        # CRITICAL FIX: Add enhanced debugging and validation of to_act set 
-        # before we try to advance the player
-        logging.info(f"[WS-ACTION-{execution_id}] Before advancing - current_player_idx: {poker_game.current_player_idx}")
-        logging.info(f"[WS-ACTION-{execution_id}] Before advancing - to_act set: {poker_game.to_act}")
+        # Log current state for monitoring
+        logging.info(f"[WS-ACTION-{execution_id}] Current player_idx: {poker_game.current_player_idx}")
+        logging.info(f"[WS-ACTION-{execution_id}] Current to_act set: {poker_game.to_act}")
         if 0 <= poker_game.current_player_idx < len(poker_game.players):
             current_p = poker_game.players[poker_game.current_player_idx]
-            logging.info(f"[WS-ACTION-{execution_id}] Before advancing - current player: {current_p.name}, in to_act: {current_p.player_id in poker_game.to_act}")
-        
-        # Acquire lock to update the turn index
-        if game_id not in service.game_locks:
-            service.game_locks[game_id] = asyncio.Lock()
-        game_lock = service.game_locks[game_id]
-        
-        async with game_lock:
-            # This is a critical line that was missing before - explicitly advance player turn
-            poker_game._advance_to_next_player()
-            logging.info(f"[WS-ACTION-{execution_id}] Turn index advanced to {poker_game.current_player_idx}")
+            logging.info(f"[WS-ACTION-{execution_id}] Current player is: {current_p.name}, in to_act: {current_p.player_id in poker_game.to_act}")
         
         # Get active players and players who need to act
         active_players = [p for p in poker_game.players if p.status == PlayerStatus.ACTIVE]
         to_act_players = [p for p in active_players if p.player_id in poker_game.to_act]
         
-        logging.info(f"[WS-ACTION-{execution_id}] After explicit index advancement - Current index: {poker_game.current_player_idx}")
+        logging.info(f"[WS-ACTION-{execution_id}] Current index after internal advancement: {poker_game.current_player_idx}")
         logging.info(f"[WS-ACTION-{execution_id}] Active players: {len(active_players)}, Players to act: {len(to_act_players)}")
         
         # Check if the current player index is valid after advancement

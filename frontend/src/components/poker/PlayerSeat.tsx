@@ -182,13 +182,19 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
   showTurnHighlight = false,
   isFolding = false
 }) => {
-  // Check if player is folded based on status or is currently folding
-  // Use status for permanent fold styling, isFolding for transitional gold->gray highlight
+  // Check if player is folded based on status (permanent) or is currently folding (transitional)
+  // The status-based fold styling persists after a hand, while isFolding is only for transitions
   const isFolded = player.status === 'FOLDED';
+  
+  // Apply fold style if either condition is true:
+  // 1. Status is FOLDED (permanent state from game)
+  // 2. isFolding flag is true (temporary transition state during fold animation)
   const shouldShowFoldStyle = isFolded || isFolding;
   
-  // Debug logging for fold state and highlighting
-  console.log(`PlayerSeat ${player.name}: isFolded=${isFolded}, isFolding=${isFolding}, showTurnHighlight=${showTurnHighlight}, isCurrentTurn=${isCurrentTurn}`);
+  // Debug logging for fold state and highlighting only in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`PlayerSeat ${player.name}: isFolded=${isFolded}, isFolding=${isFolding}, status=${player.status}, showTurnHighlight=${showTurnHighlight}, isCurrentTurn=${isCurrentTurn}`);
+  }
   
   return (
     <SeatContainer 

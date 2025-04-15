@@ -1629,13 +1629,11 @@ class PokerGame:
                 # Hand ended.
                 logging.info(f"[ACTION-{execution_id}] Hand ended after this action.")
         else:
-            # *** CRITICAL CHANGE: Don't auto-advance to next player here anymore ***
-            # Instead, log that the round continues but index will be advanced externally
-            logging.info(f"[ACTION-{execution_id}] Betting round continues, but not advancing player index from within process_action")
-            logging.info(f"[ACTION-{execution_id}] Current player index remains at {self.current_player_idx}")
+            # Betting round continues, advance to the next player
+            logging.info(f"[ACTION-{execution_id}] Betting round continues, advancing to next player")
+            self._advance_to_next_player()
+            logging.info(f"[ACTION-{execution_id}] Advanced player index to {self.current_player_idx}")
             logging.info(f"[ACTION-{execution_id}] Current to_act set: {self.to_act}")
-            
-            # This player's action is successfully processed, but the turn advancement
             # will now happen in the service layer after notifications are sent
                     
         logging.info(f"[ACTION-{execution_id}] Action processing complete for {player.name} {action.name}")

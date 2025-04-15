@@ -1132,8 +1132,9 @@ class GameService:
         
         logging.info(f"[AI-ACTION-START-{execution_id}] Starting AI Action for Player {player_id} in Game {game_id}")
         
-        # Add consistent initial delay for ALL AI actions
-        await asyncio.sleep(1.5)
+        # Add consistent 0.5s delay for ALL AI actions - reduced from 1.5s to make the timing better
+        # This delay is all we need - frontend no longer adds its own delay
+        await asyncio.sleep(0.5)
         
         logging.info(f"[AI-ACTION-{execution_id}] --- Starting AI Action for Player {player_id} in Game {game_id} ---")
         
@@ -1452,29 +1453,19 @@ class GameService:
                     # DO NOT trigger the first AI action of the new hand here!
                     # WebSocket will handle that after sending the initial game state
                 else:
-                    # Hand continues - CRITICAL ADDITION: Explicitly advance to next player after AI action
-                    logging.info(f"[AI-ACTION-{execution_id}] Hand continues after AI action, explicitly advancing turn index from {poker_game.current_player_idx}")
+                    # FIXED: No longer need to explicitly advance the player here
+                    # Turn advancement is now handled directly within poker_game.process_action
+                    logging.info(f"[AI-ACTION-{execution_id}] Hand continues after AI action - turn already advanced internally")
                     
-                    # Acquire the lock again to update the turn index
-                    if game_id not in self.game_locks:
-                        self.game_locks[game_id] = asyncio.Lock()
-                    game_lock = self.game_locks[game_id]
-                    
-                    # CRITICAL FIX: Add enhanced debugging and validation of to_act set 
-                    # before we try to advance the player
-                    logging.info(f"[AI-ACTION-{execution_id}] Before advancing - current_player_idx: {poker_game.current_player_idx}")
-                    logging.info(f"[AI-ACTION-{execution_id}] Before advancing - to_act set: {poker_game.to_act}")
+                    # Log current state for monitoring
+                    logging.info(f"[AI-ACTION-{execution_id}] Current player_idx: {poker_game.current_player_idx}")
+                    logging.info(f"[AI-ACTION-{execution_id}] Current to_act set: {poker_game.to_act}")
                     if 0 <= poker_game.current_player_idx < len(poker_game.players):
                         current_p = poker_game.players[poker_game.current_player_idx]
-                        logging.info(f"[AI-ACTION-{execution_id}] Before advancing - current player: {current_p.name}, in to_act: {current_p.player_id in poker_game.to_act}")
+                        logging.info(f"[AI-ACTION-{execution_id}] Current player is: {current_p.name}, in to_act: {current_p.player_id in poker_game.to_act}")
                     
-                    async with game_lock:
-                        # This is a critical line that was missing before - explicitly advance player turn
-                        poker_game._advance_to_next_player()
-                        logging.info(f"[AI-ACTION-{execution_id}] Turn index advanced to {poker_game.current_player_idx}")
-                    
-                    # Now check next player after advancing the turn
-                    logging.info(f"[AI-ACTION-{execution_id}] Checking next player after explicit turn advancement")
+                    # Now check the current player
+                    logging.info(f"[AI-ACTION-{execution_id}] Checking current player after AI action")
                     
                     # Get the next player using the newly advanced index
                     if poker_game.current_player_idx < len(poker_game.players):
