@@ -2316,12 +2316,43 @@ class PokerGame:
             logging.info(f"  {i+1}. {player.name} - {pos_name} (seat {player.position})")
     
     def move_button(self):
-        """Move the button to the next active player for the next hand."""
+        """
+        Move the button to the next active player in clockwise order.
+        This operates on seat positions, not player list indices.
+        """
         active_players = [p for p in self.players if p.status != PlayerStatus.OUT]
         if not active_players:
+            logging.error("No active players to move button to!")
+            return
+        
+        # Get the current button seat position
+        current_button_pos = self.button_position
+        logging.info(f"Moving button from seat {current_button_pos}")
+        
+        # Get all occupied seat positions in ascending order
+        occupied_seats = sorted([p.position for p in active_players])
+        if not occupied_seats:
+            logging.error("No occupied seats found!")
             return
             
-        self.button_position = (self.button_position + 1) % len(active_players)
+        logging.info(f"Occupied seats: {occupied_seats}")
+        
+        # Find the next seat position clockwise from the current button
+        next_button_pos = None
+        
+        # First try to find a seat with higher position number
+        for seat in occupied_seats:
+            if seat > current_button_pos:
+                next_button_pos = seat
+                break
+                
+        # If no higher seat found, wrap around to the lowest seat
+        if next_button_pos is None:
+            next_button_pos = occupied_seats[0]
+            
+        # Set the new button position
+        self.button_position = next_button_pos
+        logging.info(f"Button moved to seat {self.button_position}")
     
     @property
     def pot(self) -> int:

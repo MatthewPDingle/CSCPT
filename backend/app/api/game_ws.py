@@ -38,6 +38,44 @@ async def websocket_endpoint(
         player_id: The ID of the player connecting (None for observers)
         service: The game service
     """
+    # Utility function to check for showdown state and start next hand if needed
+    async def _check_and_start_next_hand(game_id: str, service: GameService):
+        import logging
+        await asyncio.sleep(2.0)  # Give time for last action processing
+        try:
+            # Check if the game is in showdown state
+            poker_game = service.poker_games.get(game_id)
+            if poker_game and poker_game.current_round == BettingRound.SHOWDOWN:
+                logging.info("Found game in SHOWDOWN state, automatically starting next hand")
+                
+                # Move the button before starting a new hand
+                poker_game.move_button()
+                logging.info(f"Auto-next hand: Moved button to position {poker_game.button_position}")
+                
+                # Start a new hand
+                game = service.get_game(game_id)
+                if game:
+                    service._start_new_hand(game)
+                    logging.info("Auto-next hand: Started new hand successfully")
+                    
+                    # Notify clients
+                    await game_notifier.notify_game_update(game_id, poker_game)
+                    
+                    # Trigger first AI action if needed
+                    if 0 <= poker_game.current_player_idx < len(poker_game.players):
+                        first_player = poker_game.players[poker_game.current_player_idx]
+                        first_player_domain = next((p for p in game.players if p.id == first_player.player_id), None)
+                        
+                        if first_player_domain and not first_player_domain.is_human:
+                            logging.info(f"Auto-next hand: Triggering first AI player {first_player.name}")
+                            await service._request_and_process_ai_action(game_id, first_player.player_id)
+                        else:
+                            logging.info(f"Auto-next hand: First player {first_player.name} is human, requesting action")
+                            await game_notifier.notify_action_request(game_id, poker_game)
+        except Exception as e:
+            logging.error(f"Error in _check_and_start_next_hand: {str(e)}")
+            import traceback
+            logging.error(traceback.format_exc())
     # Add logging for debugging
     import logging
     logging.warning(f"WebSocket connection attempt - game_id: {game_id}, player_id: {player_id}")
@@ -142,6 +180,9 @@ async def websocket_endpoint(
                                 await service._request_and_process_ai_action(game_id, current_player_domain.id)
                             else:
                                 logging.warning(f"WebSocket connected: First player is Human ({current_player_domain.name}). Will request action normally.")
+                            
+                            # Start a timer to check for showdown state and auto-start next hand if needed
+                            asyncio.create_task(_check_and_start_next_hand(game_id, service))
             
         except Exception as e:
             logging.error(f"Error sending initial game state: {str(e)}")
@@ -567,6 +608,9 @@ async def process_action_message(
     # If hand is complete, notify about results
     if poker_game.current_round == BettingRound.SHOWDOWN:
         await game_notifier.notify_hand_result(game_id, poker_game)
+        
+        # Start a timer to auto-start the next hand
+        asyncio.create_task(_check_and_start_next_hand(game_id, service))
     else:
         # FIXED: No longer need to explicitly advance the player here
         # Turn advancement is now handled directly within poker_game.process_action

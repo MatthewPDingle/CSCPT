@@ -495,6 +495,9 @@ class GameService:
         Returns:
             The new Hand entity
         """
+        import logging
+        logging.info(f"Starting new hand #{len(game.hand_history) + 1}")
+        
         # Determine hand number
         hand_number = len(game.hand_history) + 1
         
@@ -1437,6 +1440,11 @@ class GameService:
                     
                     # Start a new hand
                     logging.info("AI Action: Starting new hand.")
+                    
+                    # Move the button before starting a new hand
+                    poker_game.move_button()
+                    logging.info(f"AI Action: Moved button to position {poker_game.button_position}")
+                    
                     self._start_new_hand(game)
 
                     # Update game in repository again after starting new hand
@@ -1447,11 +1455,21 @@ class GameService:
                     if new_poker_game:
                         logging.info("AI Action: Notifying clients about the *new* hand state.")
                         await game_notifier.notify_game_update(game_id, new_poker_game)
+                        
+                        # Trigger the first AI player to act in the new hand
+                        if 0 <= new_poker_game.current_player_idx < len(new_poker_game.players):
+                            first_player = new_poker_game.players[new_poker_game.current_player_idx]
+                            first_player_domain = next((p for p in game.players if p.id == first_player.player_id), None)
+                            
+                            if first_player_domain and not first_player_domain.is_human:
+                                logging.info(f"AI Action: Triggering first AI player {first_player.name} to act in new hand")
+                                # Create a separate task to avoid waiting here
+                                asyncio.create_task(self._request_and_process_ai_action(game_id, first_player.player_id))
+                            else:
+                                logging.info(f"AI Action: First player {first_player.name} in new hand is human, requesting action")
+                                await game_notifier.notify_action_request(game_id, new_poker_game)
                     else:
                         logging.error("AI Action: Could not find poker game instance after starting new hand to notify clients.")
-
-                    # DO NOT trigger the first AI action of the new hand here!
-                    # WebSocket will handle that after sending the initial game state
                 else:
                     # FIXED: No longer need to explicitly advance the player here
                     # Turn advancement is now handled directly within poker_game.process_action
