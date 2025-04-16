@@ -1018,8 +1018,22 @@ class PokerGame:
                     logging.info(f"[RESET-{execution_id}] First player for {self.current_round.name}: " 
                                 f"{player.name} [{pos_name}] (index {self.current_player_idx})")
                     logging.info(f"[RESET-{execution_id}] Player status: {player.status.name}, in to_act: {player.player_id in self.to_act}")
-                    found_first_player = True
-                    break
+                    
+                    # CRITICAL FIX: Ensure the player is truly eligible to act
+                    # Double-check that the player is active and in to_act
+                    if player.status == PlayerStatus.ACTIVE and player.player_id in self.to_act:
+                        # Ensure this player is properly set as the current player
+                        player_idx_check = self.players.index(player)
+                        if player_idx_check != self.current_player_idx:
+                            logging.warning(f"[RESET-{execution_id}] Critical mismatch in player indexes! Fixing...")
+                            self.current_player_idx = player_idx_check
+                            
+                        logging.info(f"[RESET-{execution_id}] Confirmed first player {player.name} is eligible")
+                        found_first_player = True
+                        break
+                    else:
+                        logging.warning(f"[RESET-{execution_id}] Player {player.name} is no longer eligible to act")
+                        continue
         
         # If we still haven't found a player (should be rare)
         if not found_first_player:

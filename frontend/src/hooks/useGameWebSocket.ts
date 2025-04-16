@@ -655,12 +655,97 @@ export const useGameWebSocket = (wsUrl: string) => {
             break;
             
           case 'action_request':
-            console.log('Action request received:', message.data);
+            if (process.env.NODE_ENV !== "production") {
+              console.log('Action request received:', message.data);
+            }
+            
             if (!message.data?.player_id || !message.data?.options) {
               console.error('Invalid action request data');
               return;
             }
-            setActionRequest(message.data);
+            
+            // Log action request details before setting state
+            if (process.env.NODE_ENV !== "production") {
+              console.log('Processing action_request for player_id:', message.data.player_id);
+              console.log('Current actionRequest state BEFORE update:', actionRequest);
+              console.log('Current playerId:', playerId);
+              console.log('Is this action request for this player?', message.data.player_id === playerId);
+            }
+            
+            // Store a reference to the request data locally before using setState
+            const actionRequestData = {...message.data};
+            
+            // Play a subtle sound effect to indicate it's the player's turn if this request is for this player
+            if (message.data.player_id === playerId) {
+              try {
+                if (process.env.NODE_ENV !== "production") {
+                  console.log("🔴 ACTION REQUEST IS FOR THIS PLAYER - ADDING VISUAL FEEDBACK");
+                }
+                
+                // Try to play a sound if available (use check sound as "your turn" indicator)
+                const soundRef = checkSoundRef.current;
+                if (soundRef) {
+                  // Store original volume
+                  const originalVolume = soundRef.volume;
+                  // Set notification volume
+                  soundRef.volume = 0.5;
+                  soundRef.currentTime = 0;
+                  
+                  // Play sound with proper error handling
+                  soundRef.play().catch(error => {
+                    console.log('Turn notification sound error:', error);
+                  }).finally(() => {
+                    // Reset volume after playing or error
+                    setTimeout(() => {
+                      if (soundRef) {
+                        soundRef.volume = originalVolume;
+                      }
+                    }, 500);
+                  });
+                }
+              } catch (err) {
+                console.error("Error providing turn notification:", err);
+              }
+            }
+            
+            // Set the action request state
+            setActionRequest(actionRequestData);
+            
+            // Log post-update (will be async, just for tracking call completed)
+            if (process.env.NODE_ENV !== "production") {
+              console.log('Action request state update called, options:', actionRequestData.options);
+            }
+            
+            // After a brief delay, verify state was updated properly
+            // Use actionRequestData explicitly since state update is async
+            const verifyStateUpdate = () => {
+              if (process.env.NODE_ENV !== "production") {
+                console.log('Action request state AFTER update (delayed check):', actionRequest);
+                console.log('Expected action request data:', actionRequestData);
+                console.log('Is this player?', actionRequestData.player_id === playerId);
+              }
+              
+              // Force a refresh of action controls if this action request is for this player
+              if (actionRequestData.player_id === playerId && !isPlayerTurn()) {
+                if (process.env.NODE_ENV !== "production") {
+                  console.log("🔴 WARNING: isPlayerTurn() returning false despite action request for this player!");
+                  console.log("ActionRequest should be:", actionRequestData);
+                  console.log("Actual actionRequest state:", actionRequest);
+                }
+                
+                // Try to force a refresh by setting state again
+                setActionRequest({...actionRequestData});
+                
+                if (process.env.NODE_ENV !== "production") {
+                  console.log("Attempted state refresh with actionRequestData copy");
+                }
+              }
+            };
+            
+            // Use setTimeout without creating cleanup function within switch
+            // This is okay since this context will be long gone before component unmounts
+            setTimeout(verifyStateUpdate, 200);
+            
             break;
             
           case 'hand_result':
@@ -953,11 +1038,31 @@ export const useGameWebSocket = (wsUrl: string) => {
   
   // Check if it's the player's turn
   const isPlayerTurn = useCallback(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("isPlayerTurn check - gameState exists:", !!gameState, 
+                "playerId exists:", !!playerId, 
+                "actionRequest exists:", !!actionRequest);
+    }
+    
     if (!gameState || !playerId || !actionRequest) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("isPlayerTurn returning false because:", 
+                  !gameState ? "no gameState" : 
+                  !playerId ? "no playerId" : 
+                  "no actionRequest");
+      }
       return false;
     }
     
-    return actionRequest.player_id === playerId;
+    const result = actionRequest.player_id === playerId;
+    
+    if (process.env.NODE_ENV !== "production") {
+      console.log("isPlayerTurn check - actionRequest.player_id:", actionRequest.player_id, 
+                "playerId:", playerId, 
+                "result:", result);
+    }
+    
+    return result;
   }, [gameState, playerId, actionRequest]);
   
   // Clear action request when it's no longer the player's turn

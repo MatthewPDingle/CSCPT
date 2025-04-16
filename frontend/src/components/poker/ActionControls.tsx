@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 
 interface ActionRequest {
@@ -109,6 +109,20 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   isPlayerTurn,
   actionRequest
 }) => {
+  // Debug logging on props change using useEffect
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("ActionControls props updated:", {
+        currentBet,
+        playerChips,
+        isPlayerTurn,
+        "actionRequest exists": !!actionRequest,
+        "actionRequest?.player_id": actionRequest?.player_id,
+        "actionRequest?.options": actionRequest?.options
+      });
+    }
+  }, [currentBet, playerChips, isPlayerTurn, actionRequest]);
+  
   // Use action request data if available, otherwise use defaults
   const callAmount = actionRequest?.callAmount ?? Math.min(currentBet, playerChips);
   const minRaiseAmount = actionRequest?.minRaise ?? currentBet * 2;

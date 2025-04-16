@@ -192,24 +192,28 @@ async def websocket_endpoint(
         # If it's this player's turn, send action request
         if player_id:
             try:
-                active_players = [
-                    p
-                    for p in poker_game.players
-                    if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}
-                ]
-                if (
-                    active_players
-                    and poker_game.current_player_idx < len(active_players)
-                    and active_players[poker_game.current_player_idx].player_id == player_id
-                ):
-                    logging.warning(f"Requesting action from player {player_id}")
+                # First check if the player needs to act based on to_act set (more reliable)
+                is_in_to_act = player_id in poker_game.to_act
+                
+                # Find the player in the poker game
+                poker_player = next((p for p in poker_game.players if p.player_id == player_id), None)
+                if poker_player and poker_player.status == PlayerStatus.ACTIVE and is_in_to_act:
+                    # The player is active and needs to act - send action request directly
+                    logging.warning(f"Player {player_id} is in to_act set and active - sending initial action request")
+                    
+                    # Add detailed logging
+                    logging.warning(f"WebSocket initial action request: player_id={player_id}")
+                    logging.warning(f"Current round: {poker_game.current_round.name}")
+                    logging.warning(f"Button position: {poker_game.button_position}")
+                    if poker_player:
+                        logging.warning(f"Player position: {poker_player.position}, status: {poker_player.status}")
                     
                     # Add retry mechanism for action request
                     max_retries = 3
                     for retry in range(max_retries):
                         try:
                             await game_notifier.notify_action_request(game_id, poker_game)
-                            logging.warning(f"Action request successfully sent to player {player_id}")
+                            logging.warning(f"WebSocket: Initial action request successfully sent to player {player_id}")
                             break
                         except Exception as retry_error:
                             if retry < max_retries - 1:
@@ -217,9 +221,34 @@ async def websocket_endpoint(
                                 await asyncio.sleep(1.0)  # Wait before retrying
                             else:
                                 raise  # Re-raise the last exception if all retries fail
+                
+                # Also check the traditional way (current_player_idx)
+                active_players = [
+                    p
+                    for p in poker_game.players
+                    if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}
+                ]
+                is_current_player = (
+                    active_players
+                    and poker_game.current_player_idx < len(poker_game.players)
+                    and poker_game.players[poker_game.current_player_idx].player_id == player_id
+                )
+                
+                if is_current_player and not is_in_to_act:
+                    logging.warning(f"Anomaly detected: player {player_id} is current player but not in to_act set")
                     
+                    # Try to fix the to_act set if there's a mismatch
+                    if poker_player and poker_player.status == PlayerStatus.ACTIVE:
+                        logging.warning(f"Fixing to_act set by adding player {player_id}")
+                        poker_game.to_act.add(player_id)
+                        
+                        # Now send the action request
+                        logging.warning(f"Sending action request after fixing to_act set")
+                        await game_notifier.notify_action_request(game_id, poker_game)
+                        logging.warning(f"Action request successfully sent after fixing to_act set")
+                
             except Exception as e:
-                logging.error(f"Error sending action request after {max_retries} attempts: {str(e)}")
+                logging.error(f"Error handling initial action request: {str(e)}")
                 logging.error(traceback.format_exc())
                 # Continue despite error - don't terminate the connection
 
@@ -612,6 +641,23 @@ async def process_action_message(
         # Start a timer to auto-start the next hand
         asyncio.create_task(_check_and_start_next_hand(game_id, service))
     else:
+        # Check if the next player is a human player
+        if 0 <= poker_game.current_player_idx < len(poker_game.players):
+            next_player = poker_game.players[poker_game.current_player_idx]
+            if next_player.player_id in poker_game.to_act and next_player.status == PlayerStatus.ACTIVE:
+                # Check if this is a human player
+                game = service.get_game(game_id)
+                if game:
+                    next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+                    if next_player_domain and next_player_domain.is_human:
+                        logging.info(f"Explicitly sending action request to human player {next_player.name} after game update")
+                        # Short delay to ensure game state update is processed first
+                        await asyncio.sleep(0.1)
+                        # Send action request with detailed logging
+                        logging.info(f"Sending delayed action request: player={next_player.name}, position={next_player.position}")
+                        await game_notifier.notify_action_request(game_id, poker_game)
+                        logging.info(f"Delayed action request sent successfully to {next_player.name}")
+        
         # FIXED: No longer need to explicitly advance the player here
         # Turn advancement is now handled directly within poker_game.process_action
         import logging
@@ -666,7 +712,16 @@ async def process_action_message(
                 else:
                     # Human player's turn - send action request
                     logging.info(f"Requesting action from human player: {next_player.name}")
+                    # Add detailed logging before sending request
+                    logging.info(f"Human player action request: player_id={next_player.player_id}, name={next_player.name}")
+                    logging.info(f"Current round: {poker_game.current_round.name}, Button: {poker_game.button_position}")
+                    logging.info(f"Human player position: {next_player.position}, status: {next_player.status}")
+                    
+                    # Send the action request
                     await game_notifier.notify_action_request(game_id, poker_game)
+                    
+                    # Verify the action request was sent
+                    logging.info(f"Action request sent to human player {next_player.name}")
             else:
                 # If the current next player isn't valid, find the first player who still needs to act
                 if poker_game.to_act:
@@ -693,7 +748,16 @@ async def process_action_message(
                         else:
                             # Human player's turn
                             logging.info(f"Requesting action from alternate human player: {next_active_player.name}")
+                            # Add detailed logging before sending request
+                            logging.info(f"Alternate human player request: player_id={next_active_player.player_id}, name={next_active_player.name}")
+                            logging.info(f"Current round: {poker_game.current_round.name}, Button: {poker_game.button_position}")
+                            logging.info(f"Alternate human player position: {next_active_player.position}, status: {next_active_player.status}")
+                            
+                            # Send the action request
                             await game_notifier.notify_action_request(game_id, poker_game)
+                            
+                            # Verify the action request was sent
+                            logging.info(f"Action request sent to alternate human player {next_active_player.name}")
                 else:
                     # No players need to act - we should be moving to the next round
                     logging.info("No more players need to act in this round")

@@ -246,6 +246,8 @@ const GamePage: React.FC = () => {
   const [isShowdown, setIsShowdown] = useState<boolean>(false);
   const showdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // We'll add a debug logging useEffect later after useGameWebSocket is called
+  
   // Extract required data from location state, only after mounting
   useEffect(() => {
     if (location.state) {
@@ -321,6 +323,14 @@ const GamePage: React.FC = () => {
   const [connectionHealth, setConnectionHealth] = useState<any>(null);
   
   // Audio initialization now handled automatically in useGameWebSocket
+  
+  // Debug logging for turn state and action requests
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("GamePage debug - isPlayerTurn result:", isPlayerTurn());
+      console.log("GamePage debug - actionRequest state:", actionRequest);
+    }
+  }, [isPlayerTurn, actionRequest]);
   
   // Update local game state when WebSocket state changes
   React.useEffect(() => {
@@ -842,6 +852,7 @@ const connectionIndicator = (
         foldedPlayerId={foldedPlayerId}
       />
       
+      {/* Debug logging handled before the return statement */}
       <ActionControls 
         onAction={(action, amount) => sendAction(action, amount)}
         currentBet={currentBet}
