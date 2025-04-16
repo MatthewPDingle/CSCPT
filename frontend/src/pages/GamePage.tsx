@@ -329,8 +329,38 @@ const GamePage: React.FC = () => {
     if (process.env.NODE_ENV !== "production") {
       console.log("GamePage debug - isPlayerTurn result:", isPlayerTurn());
       console.log("GamePage debug - actionRequest state:", actionRequest);
+      
+      // More detailed debugging for action request state
+      if (actionRequest) {
+        console.log("GamePage debug - Action request details:", {
+          player_id: actionRequest.player_id,
+          options: actionRequest.options,
+          timestamp: actionRequest.timestamp
+        });
+        
+        // Check if this action request should be for the current player
+        if (initData && actionRequest.player_id === initData.playerId) {
+          console.log("🔔 GamePage debug - This action request is for the current player!");
+        } else if (initData) {
+          console.log("⚠️ GamePage debug - Action request is NOT for current player:", 
+            actionRequest.player_id, "vs", initData.playerId);
+        }
+      }
+      
+      // Check game state for current player
+      if (gameState && initData) {
+        const currentPlayerIdx = gameState.current_player_idx;
+        if (currentPlayerIdx >= 0 && currentPlayerIdx < gameState.players.length) {
+          const currentPlayer = gameState.players[currentPlayerIdx];
+          console.log("GamePage debug - Current player according to game state:", {
+            name: currentPlayer?.name,
+            id: currentPlayer?.player_id,
+            isThisPlayer: currentPlayer?.player_id === initData.playerId
+          });
+        }
+      }
     }
-  }, [isPlayerTurn, actionRequest]);
+  }, [isPlayerTurn, actionRequest, gameState, initData]);
   
   // Update local game state when WebSocket state changes
   React.useEffect(() => {

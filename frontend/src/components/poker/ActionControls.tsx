@@ -109,20 +109,6 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   isPlayerTurn,
   actionRequest
 }) => {
-  // Debug logging on props change using useEffect
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "production") {
-      console.log("ActionControls props updated:", {
-        currentBet,
-        playerChips,
-        isPlayerTurn,
-        "actionRequest exists": !!actionRequest,
-        "actionRequest?.player_id": actionRequest?.player_id,
-        "actionRequest?.options": actionRequest?.options
-      });
-    }
-  }, [currentBet, playerChips, isPlayerTurn, actionRequest]);
-  
   // Use action request data if available, otherwise use defaults
   const callAmount = actionRequest?.callAmount ?? Math.min(currentBet, playerChips);
   const minRaiseAmount = actionRequest?.minRaise ?? currentBet * 2;
@@ -143,6 +129,46 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   const canRaise = availableOptions.includes('RAISE') || (playerChips > minRaiseAmount && currentBet > 0);
   const canBet = availableOptions.includes('BET') || (playerChips > 0 && currentBet === 0);
   const canFold = availableOptions.includes('FOLD') || !canCheck;
+  
+  // Debug logging on props change using useEffect
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("ActionControls props updated:", {
+        currentBet,
+        playerChips,
+        isPlayerTurn,
+        "actionRequest exists": !!actionRequest,
+        "actionRequest?.player_id": actionRequest?.player_id,
+        "actionRequest?.options": actionRequest?.options
+      });
+      
+      // Log more detailed information about action request and available options
+      if (actionRequest) {
+        console.log("ACTION CONTROLS - Action request details:", {
+          player_id: actionRequest.player_id,
+          options: actionRequest.options,
+          callAmount: actionRequest.callAmount,
+          minRaise: actionRequest.minRaise,
+          maxRaise: actionRequest.maxRaise,
+          handId: actionRequest.handId,
+          timestamp: actionRequest.timestamp
+        });
+        
+        // Log calculated available actions
+        console.log("ACTION CONTROLS - Calculated available actions:", {
+          canCheck,
+          canCall,
+          canBet,
+          canRaise,
+          canFold
+        });
+      }
+      
+      // Log if the control container should be active
+      console.log("ACTION CONTROLS - Container active:", isPlayerTurn);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentBet, playerChips, isPlayerTurn, actionRequest]);
   
   return (
     <ControlsContainer $isActive={isPlayerTurn}>

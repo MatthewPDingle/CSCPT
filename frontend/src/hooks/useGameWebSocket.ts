@@ -670,12 +670,17 @@ export const useGameWebSocket = (wsUrl: string) => {
               console.log('Current actionRequest state BEFORE update:', actionRequest);
               console.log('Current playerId:', playerId);
               console.log('Is this action request for this player?', message.data.player_id === playerId);
+              console.log('Current game state:', gameState ? {
+                current_round: gameState.current_round,
+                button_position: gameState.button_position,
+                current_player_idx: gameState.current_player_idx
+              } : 'No game state');
             }
             
             // Store a reference to the request data locally before using setState
             const actionRequestData = {...message.data};
             
-            // Play a subtle sound effect to indicate it's the player's turn if this request is for this player
+            // Play a sound effect when it's the player's turn
             if (message.data.player_id === playerId) {
               try {
                 if (process.env.NODE_ENV !== "production") {
@@ -688,12 +693,41 @@ export const useGameWebSocket = (wsUrl: string) => {
                   // Store original volume
                   const originalVolume = soundRef.volume;
                   // Set notification volume
-                  soundRef.volume = 0.5;
+                  soundRef.volume = 0.7;  // Increased volume for better notification
                   soundRef.currentTime = 0;
                   
                   // Play sound with proper error handling
                   soundRef.play().catch(error => {
                     console.log('Turn notification sound error:', error);
+                    
+                    // Try alternative approach if the first attempt fails
+                    try {
+                      // Create a temporary silent audio context to unlock audio
+                      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                      if (AudioContext) {
+                        const audioCtx = new AudioContext();
+                        const oscillator = audioCtx.createOscillator();
+                        const gainNode = audioCtx.createGain();
+                        gainNode.gain.value = 0; // Silent
+                        oscillator.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+                        oscillator.start();
+                        oscillator.stop(0.001);
+                        
+                        // Try again after unlocking
+                        if (soundRef) {
+                          setTimeout(() => {
+                            if (soundRef) {
+                              soundRef.play().catch(e => 
+                                console.log('Second attempt turn notification error:', e)
+                              );
+                            }
+                          }, 100);
+                        }
+                      }
+                    } catch (retryError) {
+                      console.log('Audio system unlock error:', retryError);
+                    }
                   }).finally(() => {
                     // Reset volume after playing or error
                     setTimeout(() => {
@@ -716,13 +750,13 @@ export const useGameWebSocket = (wsUrl: string) => {
               console.log('Action request state update called, options:', actionRequestData.options);
             }
             
-            // After a brief delay, verify state was updated properly
-            // Use actionRequestData explicitly since state update is async
+            // Verify state update after a delay and force refresh if needed
             const verifyStateUpdate = () => {
               if (process.env.NODE_ENV !== "production") {
                 console.log('Action request state AFTER update (delayed check):', actionRequest);
                 console.log('Expected action request data:', actionRequestData);
                 console.log('Is this player?', actionRequestData.player_id === playerId);
+                console.log('isPlayerTurn() result:', isPlayerTurn());
               }
               
               // Force a refresh of action controls if this action request is for this player
@@ -733,17 +767,21 @@ export const useGameWebSocket = (wsUrl: string) => {
                   console.log("Actual actionRequest state:", actionRequest);
                 }
                 
-                // Try to force a refresh by setting state again
-                setActionRequest({...actionRequestData});
+                // Force a state update with a deep copy of the request data
+                setActionRequest(JSON.parse(JSON.stringify(actionRequestData)));
                 
                 if (process.env.NODE_ENV !== "production") {
-                  console.log("Attempted state refresh with actionRequestData copy");
+                  console.log("Attempted state refresh with deep copy of actionRequestData");
+                  
+                  // Schedule another check to verify the state update worked
+                  setTimeout(() => {
+                    console.log("Second verification check - isPlayerTurn():", isPlayerTurn());
+                    console.log("Second verification check - actionRequest:", actionRequest);
+                  }, 200);
                 }
               }
             };
             
-            // Use setTimeout without creating cleanup function within switch
-            // This is okay since this context will be long gone before component unmounts
             setTimeout(verifyStateUpdate, 200);
             
             break;
@@ -1042,8 +1080,34 @@ export const useGameWebSocket = (wsUrl: string) => {
       console.log("isPlayerTurn check - gameState exists:", !!gameState, 
                 "playerId exists:", !!playerId, 
                 "actionRequest exists:", !!actionRequest);
+      
+      // Log more detailed state information for debugging
+      if (gameState && playerId) {
+        // Find the current player in the game state
+        const currentPlayerIndex = gameState.current_player_idx;
+        const currentPlayer = currentPlayerIndex >= 0 && currentPlayerIndex < gameState.players.length 
+          ? gameState.players[currentPlayerIndex] 
+          : null;
+          
+        console.log("Game state details:", {
+          current_round: gameState.current_round,
+          current_player_idx: currentPlayerIndex,
+          current_player_id: currentPlayer?.player_id,
+          button_position: gameState.button_position,
+          this_player_id: playerId
+        });
+      }
+      
+      if (actionRequest) {
+        console.log("Action request details:", {
+          request_player_id: actionRequest.player_id,
+          options: actionRequest.options,
+          timestamp: actionRequest.timestamp
+        });
+      }
     }
     
+    // Basic validation first
     if (!gameState || !playerId || !actionRequest) {
       if (process.env.NODE_ENV !== "production") {
         console.log("isPlayerTurn returning false because:", 
@@ -1054,12 +1118,22 @@ export const useGameWebSocket = (wsUrl: string) => {
       return false;
     }
     
+    // Check if the action request is for this player
     const result = actionRequest.player_id === playerId;
     
     if (process.env.NODE_ENV !== "production") {
       console.log("isPlayerTurn check - actionRequest.player_id:", actionRequest.player_id, 
                 "playerId:", playerId, 
                 "result:", result);
+                
+      // If this should be the player's turn but result is false, log a warning
+      if (!result && gameState.current_player_idx >= 0) {
+        const currentPlayer = gameState.players[gameState.current_player_idx];
+        if (currentPlayer && currentPlayer.player_id === playerId) {
+          console.warn("❗ TURN MISMATCH: Game state indicates it's this player's turn, but actionRequest is for different player!");
+          console.warn("This might indicate an issue with action request handling.");
+        }
+      }
     }
     
     return result;

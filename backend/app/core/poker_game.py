@@ -1028,7 +1028,11 @@ class PokerGame:
                             logging.warning(f"[RESET-{execution_id}] Critical mismatch in player indexes! Fixing...")
                             self.current_player_idx = player_idx_check
                             
+                        # Log more detailed information about the first player for debugging
+                        rel_pos = (player.position - self.button_position) % max(9, len(self.players))
                         logging.info(f"[RESET-{execution_id}] Confirmed first player {player.name} is eligible")
+                        logging.info(f"[RESET-{execution_id}] Player position: {player.position}, button: {self.button_position}, relative: {rel_pos}")
+                        logging.info(f"[RESET-{execution_id}] Current round: {self.current_round.name}, is_heads_up: {is_heads_up}")
                         found_first_player = True
                         break
                     else:

@@ -652,11 +652,26 @@ async def process_action_message(
                     if next_player_domain and next_player_domain.is_human:
                         logging.info(f"Explicitly sending action request to human player {next_player.name} after game update")
                         # Short delay to ensure game state update is processed first
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(0.2)  # Increased to 0.2s for better reliability
                         # Send action request with detailed logging
                         logging.info(f"Sending delayed action request: player={next_player.name}, position={next_player.position}")
-                        await game_notifier.notify_action_request(game_id, poker_game)
-                        logging.info(f"Delayed action request sent successfully to {next_player.name}")
+                        logging.info(f"Current round: {poker_game.current_round.name}, Button: {poker_game.button_position}")
+                        logging.info(f"Player ID: {next_player.player_id}, is in to_act: {next_player.player_id in poker_game.to_act}")
+                            
+                        # Attempt to send action request with retry logic
+                        max_retries = 2
+                        for retry in range(max_retries):
+                            try:
+                                await game_notifier.notify_action_request(game_id, poker_game)
+                                logging.info(f"Delayed action request sent successfully to {next_player.name}")
+                                break
+                            except Exception as e:
+                                if retry < max_retries - 1:
+                                    logging.warning(f"Error sending action request (retry {retry+1}/{max_retries}): {str(e)}")
+                                    await asyncio.sleep(0.5)  # Wait before retry
+                                else:
+                                    logging.error(f"Failed to send action request after {max_retries} attempts: {str(e)}")
+                                    logging.error(traceback.format_exc())
         
         # FIXED: No longer need to explicitly advance the player here
         # Turn advancement is now handled directly within poker_game.process_action
