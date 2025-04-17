@@ -634,20 +634,35 @@ async def process_action_message(
     # Notify about updated game state
     await game_notifier.notify_game_update(game_id, poker_game)
 
-    # If hand is complete, notify about results
+    # If hand is complete, notify about results and start next hand
     if poker_game.current_round == BettingRound.SHOWDOWN:
-        await game_notifier.notify_hand_result(game_id, poker_game)
-        
-        # Start a timer to auto-start the next hand
-        asyncio.create_task(_check_and_start_next_hand(game_id, service))
+        try:
+            # Broadcast hand results
+            await game_notifier.notify_hand_result(game_id, poker_game)
+            # Start next hand via GameService
+            from app.services.game_service import GameService
+            import logging
+            svc = service  # alias
+            game_model = svc.get_game(game_id)
+            if game_model:
+                new_hand = svc._start_new_hand(game_model)
+                # Notify clients of new hand start
+                await game_notifier.notify_new_hand(game_id, new_hand.hand_number)
+                # Refresh game state to clients
+                updated_poker = svc.poker_games.get(game_id)
+                if updated_poker:
+                    await game_notifier.notify_game_update(game_id, updated_poker)
+        except Exception as e:
+            import logging
+            logging.error(f"Error auto-starting next hand: {e}")
     else:
-        # Check if the next player is a human player
+        # Check if the next player is a human player and send action request
         if 0 <= poker_game.current_player_idx < len(poker_game.players):
             next_player = poker_game.players[poker_game.current_player_idx]
             if next_player.player_id in poker_game.to_act and next_player.status == PlayerStatus.ACTIVE:
-                # Check if this is a human player
-                game = service.get_game(game_id)
-                if game:
+                # If human, send action request
+                game_model = service.get_game(game_id)
+                if game_model:
                     next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
                     if next_player_domain and next_player_domain.is_human:
                         logging.info(f"Explicitly sending action request to human player {next_player.name} after game update")
