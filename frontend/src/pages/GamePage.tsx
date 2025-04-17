@@ -961,24 +961,6 @@ const connectionIndicator = (
         </DebugButton>
       </div>
       
-      {/* Show hand result overlay if available */}
-      {handResult && (
-        <StatusOverlay>
-          <StatusText>Hand Complete</StatusText>
-          <div>
-            {handResult.winners.map((winner, index) => (
-              <div key={index}>
-                {winner.name} wins ${winner.amount} with {winner.hand_rank}
-              </div>
-            ))}
-          </div>
-          <BackButton onClick={() => {
-            // Reset UI state without page refresh
-            setConnectionStatus("connecting");
-            reconnect();
-          }}>Play Next Hand</BackButton>
-        </StatusOverlay>
-      )}
       
       {/* Show error overlay if any errors */}
       {errors.length > 0 && (

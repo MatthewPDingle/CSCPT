@@ -663,7 +663,8 @@ async def process_action_message(
                 # If human, send action request
                 game_model = service.get_game(game_id)
                 if game_model:
-                    next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+                    # Lookup the domain model from the fetched game_model
+                    next_player_domain = next((p for p in game_model.players if p.id == next_player.player_id), None)
                     if next_player_domain and next_player_domain.is_human:
                         logging.info(f"Explicitly sending action request to human player {next_player.name} after game update")
                         # Short delay to ensure game state update is processed first
@@ -733,7 +734,6 @@ async def process_action_message(
                 if not next_player_domain.is_human:
                     # AI player's turn - trigger AI action asynchronously
                     logging.info(f"Triggering AI action for next player: {next_player.name}")
-                    import asyncio
                     logging.info(f"Triggering AI action for next player: Using await to ensure sequential execution")
                     await service._request_and_process_ai_action(
                         game_id, next_player.player_id
@@ -769,7 +769,6 @@ async def process_action_message(
                         if next_player_domain and not next_player_domain.is_human:
                             # AI player's turn
                             logging.info(f"Triggering AI action for alternate next player: {next_active_player.name}")
-                            import asyncio
                             logging.info(f"Triggering AI action for alternate next player: Using await to ensure sequential execution")
                             await service._request_and_process_ai_action(
                                 game_id, next_active_player.player_id

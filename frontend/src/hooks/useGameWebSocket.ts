@@ -836,14 +836,15 @@ export const useGameWebSocket = (wsUrl: string) => {
             
             // Add detailed hand result to action log
             if (message.data.winners && message.data.winners.length > 0) {
-              message.data.winners.forEach((winner: HandResultWinner) => {
+            message.data.winners.forEach((winner: HandResultWinner) => {
                 const winningPlayer = winner.name || `Player ${winner.player_id}`;
                 const handType = winner.hand_rank || 'Unknown hand';
-                const winAmount = winner.amount || 'unknown amount';
+                // Only treat undefined or null as unknown; allow zero
+                const winAmount = typeof winner.amount === 'number' ? winner.amount : 'unknown amount';
                 
                 // Add hand result to action log with emoji for visibility
                 setActionLog(prev => [
-                  ...prev, 
+                  ...prev,
                   `🏆 ${winningPlayer} wins ${winAmount} chips with ${handType}!`
                 ]);
               });

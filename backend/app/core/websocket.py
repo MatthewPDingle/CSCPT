@@ -769,10 +769,17 @@ class GameStateNotifier:
         import asyncio
         import logging
         
-        if game.current_hand_id is None:
-            return
+        # Always notify hand results, even if current_hand_id has been cleared by the game engine
+        # Note: game.current_hand_id may be None after the showdown; we still proceed to broadcast winners
+        # (hand_result data will include None for handId in that case)
         
         logging.info(f"Notifying hand result for game {game_id}, hand {game.current_hand_id}")
+        # Compute hand evaluations for human-readable descriptions
+        try:
+            evaluations = game.evaluate_hands()
+        except Exception as e:
+            logging.error(f"Error evaluating hands for hand result: {e}")
+            evaluations = {}
             
         result_message = {
             "type": "hand_result",
@@ -785,28 +792,33 @@ class GameStateNotifier:
             }
         }
         
-        # Add winner information
+        # Add winner information per pot
         for pot_id, winners in game.hand_winners.items():
-            # Find pot amount
+            # Determine pot amount by index parsed from pot_id (e.g., 'pot_0')
             pot_amount = 0
-            for pot in game.pots:
-                if pot.name == pot_id or f"pot_{pot_id}" == pot_id:
-                    pot_amount = pot.amount
-                    break
-            
-            # Add each winner
+            try:
+                idx = int(pot_id.split('_', 1)[1])
+                if 0 <= idx < len(game.pots):
+                    pot_amount = game.pots[idx].amount
+            except (ValueError, IndexError):
+                pot_amount = 0
+            # Split pot and record each winner
+            split_amount = pot_amount // len(winners) if winners else 0
             for winner in winners:
                 winner_info = {
                     "player_id": winner.player_id,
                     "name": winner.name,
-                    "amount": pot_amount // len(winners),  # Split pot evenly
+                    "amount": split_amount,
                 }
                 
-                # Add hand information if available
+                # Add human-readable hand description
+                if winner in evaluations:
+                    rank, kickers = evaluations[winner]
+                    desc = game._format_hand_description(rank, kickers)
+                    winner_info["hand_rank"] = desc
+                # Include hole cards if available
                 if hasattr(winner, 'hand') and winner.hand:
                     winner_info["cards"] = [str(card) for card in winner.hand.cards]
-                    if hasattr(winner.hand, 'hand_rank'):
-                        winner_info["hand_rank"] = str(winner.hand.hand_rank)
                 
                 result_message["data"]["winners"].append(winner_info)
         
