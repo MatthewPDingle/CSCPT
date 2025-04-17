@@ -1118,8 +1118,12 @@ export const useGameWebSocket = (wsUrl: string) => {
       return false;
     }
     
-    // Check if the action request is for this player
-    const result = actionRequest.player_id === playerId;
+    // Determine if it's this player's turn by actionRequest or by gameState index
+    let result = actionRequest.player_id === playerId;
+    if (!result && gameState && typeof gameState.current_player_idx === 'number' && gameState.current_player_idx >= 0) {
+        const turnPlayer = gameState.players[gameState.current_player_idx];
+        result = turnPlayer?.player_id === playerId;
+    }
     
     if (process.env.NODE_ENV !== "production") {
       console.log("isPlayerTurn check - actionRequest.player_id:", actionRequest.player_id, 
@@ -1136,6 +1140,14 @@ export const useGameWebSocket = (wsUrl: string) => {
       }
     }
     
+    // Debug final decision
+    if (process.env.NODE_ENV !== "production") {
+        console.log("isPlayerTurn final result:", result, {
+            playerId,
+            "actionRequest.player_id": actionRequest.player_id,
+            "gameState.current_player_idx": gameState?.current_player_idx
+        });
+    }
     return result;
   }, [gameState, playerId, actionRequest]);
   

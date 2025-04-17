@@ -506,6 +506,16 @@ class GameStateNotifier:
         }
         
         await self.connection_manager.broadcast_to_game(game_id, message)
+        # After new round, automatically send action request to the next player
+        try:
+            from app.services.game_service import GameService
+            game = GameService.get_instance().poker_games.get(game_id)
+            if game:
+                import asyncio
+                asyncio.create_task(self.notify_action_request(game_id, game))
+        except Exception as e:
+            import logging
+            logging.error(f"Error scheduling action request after new round: {e}")
         
     async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func=None):
         """
