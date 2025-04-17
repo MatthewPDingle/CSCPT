@@ -642,14 +642,58 @@ export const useGameWebSocket = (wsUrl: string) => {
             if (message.data?.text) {
               setActionLog(prev => [...prev.slice(-50), message.data.text]); // Keep last 50 logs
               
-              // Only play shuffle sound from action log (more reliable for new hand)
-              if (message.data.text.includes('Starting Hand #') && shuffleSoundRef.current) {
+              // Play sounds based on log text
+              const text = message.data.text;
+              // New hand shuffle
+              if (text.includes('Starting Hand #') && shuffleSoundRef.current) {
                 try {
                   shuffleSoundRef.current.currentTime = 0;
                   shuffleSoundRef.current.play().catch(e => console.log('Shuffle sound play error:', e));
                 } catch (e) {
                   console.log('Error playing shuffle sound:', e);
                 }
+              }
+              // Flop dealt
+              if (text.includes('Dealing the Flop') && flopSoundRef.current) {
+                try {
+                  flopSoundRef.current.currentTime = 0;
+                  flopSoundRef.current.play().catch(e => console.log('Flop sound play error:', e));
+                } catch (e) {
+                  console.log('Error playing flop sound:', e);
+                }
+              }
+              // Turn dealt
+              if (text.includes('Dealing the Turn') && cardSoundRef.current) {
+                try {
+                  cardSoundRef.current.currentTime = 0;
+                  cardSoundRef.current.play().catch(e => console.log('Turn sound play error:', e));
+                } catch (e) {
+                  console.log('Error playing turn sound:', e);
+                }
+              }
+              // River dealt
+              if (text.includes('Dealing the River') && cardSoundRef.current) {
+                try {
+                  cardSoundRef.current.currentTime = 0;
+                  cardSoundRef.current.play().catch(e => console.log('River sound play error:', e));
+                } catch (e) {
+                  console.log('Error playing river sound:', e);
+                }
+              }
+              // Player actions: check, call/bet/raise/all in, fold
+              try {
+                if (/\bcheck\b/i.test(text) && checkSoundRef.current) {
+                  checkSoundRef.current.currentTime = 0;
+                  checkSoundRef.current.play().catch(e => console.log('Check sound play error:', e));
+                } else if (/(?:\bcall\b|\bbet\b|\braise\b|\ball in\b)/i.test(text) && chipsSoundRef.current) {
+                  chipsSoundRef.current.currentTime = 0;
+                  chipsSoundRef.current.play().catch(e => console.log('Chips sound play error:', e));
+                } else if (/\bfold\b/i.test(text) && foldSoundRef.current) {
+                  foldSoundRef.current.currentTime = 0;
+                  foldSoundRef.current.play().catch(e => console.log('Fold sound play error:', e));
+                }
+              } catch (e) {
+                console.error('Error playing action log sound:', e);
               }
             }
             break;
