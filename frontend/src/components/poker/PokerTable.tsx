@@ -229,7 +229,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   return (
     <TableContainer>
       <TableFelt>
-        <PotDisplay flash={flashPot}>Pot: ${validPot}</PotDisplay>
+        <PotDisplay flash={flashPot}>Pot: {validPot}</PotDisplay>
         
         <CommunityCardsArea>
           {paddedCommunityCards.slice(0, 5).map((card, index) => (
