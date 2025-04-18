@@ -893,7 +893,7 @@ const connectionIndicator = (
       />
 
       {/* Chips count now appears at the bottom center */}
-      <ChipCount>Your Chips: ${chips}</ChipCount>
+      <ChipCount>Your Chips: {chips}</ChipCount>
 
       {/* Only show cash game controls for cash games - now positioned at bottom */}
       {initData?.gameMode === 'cash' && effectiveGameState && (

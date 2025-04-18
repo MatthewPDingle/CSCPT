@@ -212,7 +212,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
         $isFolded={shouldShowFoldStyle}
       >
         <PlayerName $isHuman={isHuman}>{player.name}</PlayerName>
-        <ChipCount $isHuman={isHuman}>${player.chips}</ChipCount>
+        <ChipCount $isHuman={isHuman}>{player.chips}</ChipCount>
         
         {/* Container for all markers */}
         {(player.isButton || player.isSB || player.isBB) && (

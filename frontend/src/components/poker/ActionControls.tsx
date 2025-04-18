@@ -194,7 +194,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
           onClick={() => onAction('CALL')}
           disabled={!canCall || !isPlayerTurn}
         >
-          Call ${callAmount}
+          Call {callAmount}
         </ActionButton>
       )}
       
@@ -207,7 +207,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
             value={betAmount}
             onChange={handleSliderChange}
           />
-          <BetAmount>${betAmount}</BetAmount>
+          <BetAmount>{betAmount}</BetAmount>
           <ActionButton 
             $action="bet" 
             onClick={() => onAction('BET', betAmount)}
@@ -225,7 +225,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
             value={betAmount}
             onChange={handleSliderChange}
           />
-          <BetAmount>${betAmount}</BetAmount>
+          <BetAmount>{betAmount}</BetAmount>
           <ActionButton 
             $action="raise" 
             onClick={() => onAction('RAISE', betAmount)}
@@ -242,7 +242,7 @@ const ActionControls: React.FC<ActionControlsProps> = ({
           onClick={() => onAction('ALL_IN', playerChips)}
           disabled={playerChips === 0 || !isPlayerTurn}
         >
-          All In (${playerChips})
+          All In ({playerChips})
         </ActionButton>
       )}
     </ControlsContainer>
