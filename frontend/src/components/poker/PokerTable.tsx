@@ -1,5 +1,5 @@
-import React from 'react';
-import styled from 'styled-components';
+import React, { useState, useRef, useEffect } from 'react';
+import styled, { css } from 'styled-components';
 import PlayerSeat from './PlayerSeat';
 import Card from './Card';
 
@@ -23,6 +23,7 @@ interface PokerTableProps {
   communityCards: (string | null)[];
   pot: number;
   showdownActive?: boolean;
+  handResultPlayers?: { player_id: string; cards?: string[] }[];
   currentTurnPlayerId?: string | null;
   showTurnHighlight?: boolean;
   foldedPlayerId?: string | null;
@@ -61,7 +62,7 @@ const TableFelt = styled.div`
   box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.4);
 `;
 
-const PotDisplay = styled.div`
+const PotDisplay = styled.div<{ flash?: boolean }>`
   position: absolute;
   top: 40px;
   background-color: rgba(0, 0, 0, 0.8);
@@ -73,6 +74,25 @@ const PotDisplay = styled.div`
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   z-index: 2;
+  /* Pulse animation when pot increases */
+  ${props => props.flash && css`
+    animation: potFlash 0.6s ease-out;
+  `}
+
+  @keyframes potFlash {
+    0% {
+      transform: scale(1);
+      color: white;
+    }
+    50% {
+      transform: scale(1.2);
+      color: #ffd700;
+    }
+    100% {
+      transform: scale(1);
+      color: white;
+    }
+  }
 `;
 
 const CommunityCardsArea = styled.div`
@@ -171,10 +191,22 @@ const PokerTable: React.FC<PokerTableProps> = ({
   communityCards, 
   pot, 
   showdownActive = false,
+  handResultPlayers,
   currentTurnPlayerId = null,
   showTurnHighlight = false,
   foldedPlayerId = null
 }) => {
+  // Flash pot display when pot increases
+  const [flashPot, setFlashPot] = useState<boolean>(false);
+  const prevPotRef = useRef<number>(pot);
+  useEffect(() => {
+    if (pot > prevPotRef.current) {
+      setFlashPot(true);
+      const timer = setTimeout(() => setFlashPot(false), 600);
+      return () => clearTimeout(timer);
+    }
+    prevPotRef.current = pot;
+  }, [pot]);
   // Ensure players array is valid and handle potential undefined/null values
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
   console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
@@ -197,7 +229,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   return (
     <TableContainer>
       <TableFelt>
-        <PotDisplay>Pot: ${validPot}</PotDisplay>
+        <PotDisplay flash={flashPot}>Pot: ${validPot}</PotDisplay>
         
         <CommunityCardsArea>
           {paddedCommunityCards.slice(0, 5).map((card, index) => (
@@ -248,7 +280,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
               const playerId = player.id || `player_${index}`;
               
               // Create sanitized player object with fallback values
-              const sanitizedPlayer = {
+              const sanitizedPlayer: Player = {
                 ...player,
                 id: playerId,
                 name: player.name || `Player ${index}`,
@@ -262,6 +294,13 @@ const PokerTable: React.FC<PokerTableProps> = ({
                 isSB: !!player.isSB,
                 isBB: !!player.isBB
               };
+              // If showdown, override cards from handResultPlayers for this player
+              if (showdownActive && handResultPlayers) {
+                const hr = handResultPlayers.find(h => h.player_id === playerId);
+                if (hr && Array.isArray(hr.cards)) {
+                  sanitizedPlayer.cards = hr.cards;
+                }
+              }
               
               // Get position - use player's actual position from the game state
               const position = getPlayerPosition(sanitizedPlayer);

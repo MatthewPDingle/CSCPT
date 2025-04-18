@@ -1,0 +1,19 @@
+/* Flash animation for pot box when the pot increases */
+.total-pot.pot-flash {
+  animation: potFlash 0.6s ease-out;
+}
+
+@keyframes potFlash {
+  0% {
+    transform: scale(1);
+    color: inherit;
+  }
+  50% {
+    transform: scale(1.2);
+    color: #ffd700;
+  }
+  100% {
+    transform: scale(1);
+    color: inherit;
+  }
+}

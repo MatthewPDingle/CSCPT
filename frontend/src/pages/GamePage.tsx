@@ -485,7 +485,7 @@ const GamePage: React.FC = () => {
       showdownTimerRef.current = setTimeout(() => {
         console.log('Showdown timer expired - hiding cards');
         setIsShowdown(false);
-      }, 1500); // Display cards for 1.5 seconds
+      }, 1000); // Display cards for 1 second
     }
     
     // Cleanup timer on unmount
@@ -876,6 +876,7 @@ const connectionIndicator = (
           card ? `${card.rank}${card.suit}` : null
         )}
         pot={effectiveGameState?.total_pot || 0}
+        handResultPlayers={handResult?.players}
         showdownActive={isShowdown}
         currentTurnPlayerId={currentTurnPlayerId}
         showTurnHighlight={showTurnHighlight}

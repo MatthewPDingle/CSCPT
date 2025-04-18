@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useEffect, useRef } from 'react';
+import './GameWebSocket.css';
 import { useGameWebSocket } from '../../hooks/useGameWebSocket';
 
 interface GameWebSocketProps {
@@ -38,6 +40,20 @@ const GameWebSocket: React.FC<GameWebSocketProps> = ({ gameId, playerId }) => {
 
   const [betAmount, setBetAmount] = useState<number>(0);
   const [chatText, setChatText] = useState<string>('');
+  // Flash pot when total_pot increases
+  const [flashPot, setFlashPot] = useState<boolean>(false);
+  const prevPotRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!gameState) return;
+    const prev = prevPotRef.current;
+    const current = gameState.total_pot;
+    if (prev !== undefined && current > prev) {
+      setFlashPot(true);
+      const timer = setTimeout(() => setFlashPot(false), 600);
+      return () => clearTimeout(timer);
+    }
+    prevPotRef.current = current;
+  }, [gameState?.total_pot]);
 
   // Format card for display
   const formatCard = (card: { rank: string; suit: string }) => {
@@ -91,7 +107,7 @@ const GameWebSocket: React.FC<GameWebSocketProps> = ({ gameId, playerId }) => {
           <div className="game-info">
             <p>Game ID: {gameState.game_id}</p>
             <p>Round: {gameState.current_round}</p>
-            <p>Total Pot: ${gameState.total_pot}</p>
+            <p className={`total-pot${flashPot ? ' pot-flash' : ''}`}>Total Pot: ${gameState.total_pot}</p>
             <p>Current Bet: ${gameState.current_bet}</p>
           </div>
 
