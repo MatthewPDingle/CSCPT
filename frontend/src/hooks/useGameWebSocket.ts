@@ -644,15 +644,6 @@ export const useGameWebSocket = (wsUrl: string) => {
               
               // Play sounds based on log text
               const text = message.data.text;
-              // New hand shuffle
-              if (text.includes('Starting Hand #') && shuffleSoundRef.current) {
-                try {
-                  shuffleSoundRef.current.currentTime = 0;
-                  shuffleSoundRef.current.play().catch(e => console.log('Shuffle sound play error:', e));
-                } catch (e) {
-                  console.log('Error playing shuffle sound:', e);
-                }
-              }
               // Flop dealt
               if (text.includes('Dealing the Flop') && flopSoundRef.current) {
                 try {

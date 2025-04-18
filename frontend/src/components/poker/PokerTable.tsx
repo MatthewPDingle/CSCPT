@@ -24,6 +24,8 @@ interface PokerTableProps {
   pot: number;
   showdownActive?: boolean;
   handResultPlayers?: { player_id: string; cards?: string[] }[];
+  /** IDs of players who won the last hand */
+  handWinners?: string[];
   currentTurnPlayerId?: string | null;
   showTurnHighlight?: boolean;
   foldedPlayerId?: string | null;
@@ -186,12 +188,13 @@ const getPlayerPosition = (player: Player) => {
   return seatPositions[5];
 };
 
-const PokerTable: React.FC<PokerTableProps> = ({ 
-  players, 
-  communityCards, 
-  pot, 
+const PokerTable: React.FC<PokerTableProps> = ({
+  players,
+  communityCards,
+  pot,
   showdownActive = false,
   handResultPlayers,
+  handWinners = [],
   currentTurnPlayerId = null,
   showTurnHighlight = false,
   foldedPlayerId = null
@@ -321,6 +324,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   isCurrentTurn={isPlayerCurrentTurn}
                   showTurnHighlight={showTurnHighlight && isPlayerCurrentTurn}
                   isFolding={isFolding}
+                  // highlight winning player's cards
+                  isWinner={showdownActive && handWinners.includes(playerId)}
                 />
               );
             } catch (error) {

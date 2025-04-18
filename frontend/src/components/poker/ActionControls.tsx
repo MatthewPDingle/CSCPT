@@ -18,6 +18,8 @@ interface ActionControlsProps {
   playerChips: number;
   isPlayerTurn: boolean;
   actionRequest: ActionRequest | null;
+  /** Amount of big blind to step bet slider */
+  bigBlind: number;
 }
 
 const ControlsContainer = styled.div<{ $isActive: boolean }>`
@@ -93,13 +95,20 @@ const BetSlider = styled.input`
   width: 200px;
 `;
 
-const BetAmount = styled.div`
+// Editable input for bet amount
+const BetAmountInput = styled.input.attrs({ type: 'number' })`
   background-color: #34495e;
   color: white;
   padding: 0.5rem;
   border-radius: 4px;
   min-width: 80px;
   text-align: center;
+  font-size: 1rem;
+  border: none;
+  /* hide number spinners */
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  &[type='number'] { -moz-appearance: textfield; }
 `;
 
 const ActionControls: React.FC<ActionControlsProps> = ({
@@ -107,28 +116,42 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   currentBet,
   playerChips,
   isPlayerTurn,
-  actionRequest
+  actionRequest,
+  bigBlind
 }) => {
   // Use action request data if available, otherwise use defaults
   const callAmount = actionRequest?.callAmount ?? Math.min(currentBet, playerChips);
   const minRaiseAmount = actionRequest?.minRaise ?? currentBet * 2;
   const maxRaiseAmount = actionRequest?.maxRaise ?? playerChips;
-  
-  // Initialize bet amount based on action request data or defaults
-  const [betAmount, setBetAmount] = useState(minRaiseAmount || playerChips * 0.1);
-  
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setBetAmount(parseInt(e.target.value));
-  };
-  
-  // Determine available actions based on action request or game state
+
+  // Determine available actions based on action request
   const availableOptions = actionRequest?.options ?? [];
-  
   const canCheck = availableOptions.includes('CHECK') || currentBet === 0;
   const canCall = availableOptions.includes('CALL') || (currentBet > 0 && playerChips > 0);
   const canRaise = availableOptions.includes('RAISE') || (playerChips > minRaiseAmount && currentBet > 0);
   const canBet = availableOptions.includes('BET') || (playerChips > 0 && currentBet === 0);
   const canFold = availableOptions.includes('FOLD') || !canCheck;
+
+  // Initialize bet amount: start at big blind or minimum raise
+  const [betAmount, setBetAmount] = useState(() =>
+    canBet ? bigBlind : minRaiseAmount
+  );
+  
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseInt(e.target.value, 10);
+    if (!isNaN(v)) setBetAmount(v);
+  };
+  // Manual input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = parseInt(e.target.value, 10);
+    if (isNaN(v) || v < (canBet ? bigBlind : minRaiseAmount)) {
+      v = canBet ? bigBlind : minRaiseAmount;
+    }
+    if (v > (canBet ? playerChips : maxRaiseAmount)) {
+      v = canBet ? playerChips : maxRaiseAmount;
+    }
+    setBetAmount(v);
+  };
   
   // Debug logging on props change using useEffect
   useEffect(() => {
@@ -200,16 +223,22 @@ const ActionControls: React.FC<ActionControlsProps> = ({
       
       {canBet ? (
         <BetControls>
-          <BetSlider 
-            type="range" 
-            min={Number((playerChips * 0.05).toFixed(0))}
+          <BetSlider
+            type="range"
+            min={bigBlind}
             max={playerChips}
+            step={bigBlind}
             value={betAmount}
             onChange={handleSliderChange}
           />
-          <BetAmount>{betAmount}</BetAmount>
-          <ActionButton 
-            $action="bet" 
+          <BetAmountInput
+            value={betAmount}
+            min={bigBlind}
+            max={playerChips}
+            onChange={handleInputChange}
+          />
+          <ActionButton
+            $action="bet"
             onClick={() => onAction('BET', betAmount)}
             disabled={!isPlayerTurn}
           >
@@ -218,16 +247,22 @@ const ActionControls: React.FC<ActionControlsProps> = ({
         </BetControls>
       ) : canRaise ? (
         <BetControls>
-          <BetSlider 
-            type="range" 
+          <BetSlider
+            type="range"
             min={minRaiseAmount}
             max={maxRaiseAmount}
+            step={bigBlind}
             value={betAmount}
             onChange={handleSliderChange}
           />
-          <BetAmount>{betAmount}</BetAmount>
-          <ActionButton 
-            $action="raise" 
+          <BetAmountInput
+            value={betAmount}
+            min={minRaiseAmount}
+            max={maxRaiseAmount}
+            onChange={handleInputChange}
+          />
+          <ActionButton
+            $action="raise"
             onClick={() => onAction('RAISE', betAmount)}
             disabled={!isPlayerTurn}
           >

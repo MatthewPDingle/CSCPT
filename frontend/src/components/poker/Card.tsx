@@ -1,13 +1,15 @@
 import React from 'react';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 
 interface CardProps {
   card: string | null;
   faceDown?: boolean;
   isCommunity?: boolean;
+  /** Pulse animation when this card wins */
+  flash?: boolean;
 }
 
-const CardContainer = styled.div<{ $faceDown: boolean; $isCommunity: boolean }>`
+const CardContainer = styled.div<{ $faceDown: boolean; $isCommunity: boolean; $flash?: boolean }>`
   width: ${props => props.$isCommunity ? '80px' : '70px'};
   height: ${props => props.$isCommunity ? '115px' : '100px'};
   border-radius: 8px;
@@ -51,6 +53,10 @@ const CardContainer = styled.div<{ $faceDown: boolean; $isCommunity: boolean }>`
       from { box-shadow: 0 3px 15px rgba(0, 0, 0, 0.4), 0 0 5px rgba(255, 255, 255, 0.3); }
       to { box-shadow: 0 3px 15px rgba(0, 0, 0, 0.4), 0 0 15px rgba(255, 255, 255, 0.7); }
     }
+  `}
+  /* Flash animation for winning cards */
+  ${props => props.$flash && css`
+    animation: potFlash 0.6s ease-out;
   `}
 `;
 
@@ -119,7 +125,7 @@ const parseCard = (cardString: string) => {
   return { value: displayValue, suit: suitSymbol, color };
 };
 
-const Card: React.FC<CardProps> = ({ card, faceDown = false, isCommunity = false }) => {
+const Card: React.FC<CardProps> = ({ card, faceDown = false, isCommunity = false, flash = false }) => {
   if (!card) {
     return <EmptyCard $isCommunity={!!isCommunity} />;
   }
@@ -127,7 +133,7 @@ const Card: React.FC<CardProps> = ({ card, faceDown = false, isCommunity = false
   const { value, suit, color } = parseCard(card);
   
   return (
-    <CardContainer $faceDown={!!faceDown} $isCommunity={!!isCommunity}>
+    <CardContainer $faceDown={!!faceDown} $isCommunity={!!isCommunity} $flash={!!flash}>
       <CardValue color={color} $isCommunity={!!isCommunity}>{value}</CardValue>
       <CardSymbol color={color} $isCommunity={!!isCommunity}>{suit}</CardSymbol>
     </CardContainer>

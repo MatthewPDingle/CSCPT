@@ -481,7 +481,7 @@ const GamePage: React.FC = () => {
         clearTimeout(showdownTimerRef.current);
       }
       
-      // Set timer to hide cards after delay
+      // Set timer to hide cards after delay (1 second)
       showdownTimerRef.current = setTimeout(() => {
         console.log('Showdown timer expired - hiding cards');
         setIsShowdown(false);
@@ -870,13 +870,15 @@ const connectionIndicator = (
       
       {/* Audio initialization now handled automatically in useGameWebSocket */}
       
-      <PokerTable 
+      <PokerTable
         players={transformPlayersForTable()}
-        communityCards={(effectiveGameState?.community_cards || []).map(card => 
+        communityCards={(effectiveGameState?.community_cards || []).map(card =>
           card ? `${card.rank}${card.suit}` : null
         )}
         pot={effectiveGameState?.total_pot || 0}
         handResultPlayers={handResult?.players}
+        // IDs of winning players for pulsing their cards
+        handWinners={handResult?.winners.map(w => w.player_id) ?? []}
         showdownActive={isShowdown}
         currentTurnPlayerId={currentTurnPlayerId}
         showTurnHighlight={showTurnHighlight}
@@ -884,12 +886,13 @@ const connectionIndicator = (
       />
       
       {/* Debug logging handled before the return statement */}
-      <ActionControls 
+      <ActionControls
         onAction={(action, amount) => sendAction(action, amount)}
         currentBet={currentBet}
         playerChips={chips}
         isPlayerTurn={isPlayerTurn()}
         actionRequest={actionRequest}
+        bigBlind={effectiveGameState?.big_blind || 1}
       />
 
       {/* Chips count now appears at the bottom center */}

@@ -25,6 +25,8 @@ interface PlayerSeatProps {
   isCurrentTurn?: boolean;
   showTurnHighlight?: boolean;
   isFolding?: boolean;
+  /** Whether this player won the last hand */
+  isWinner?: boolean;
 }
 
 interface PositionProps {
@@ -173,14 +175,15 @@ const BigBlindMarker = styled(PositionMarker)`
   background-color: #e74c3c; // Red
 `;
 
-const PlayerSeat: React.FC<PlayerSeatProps> = ({ 
-  player, 
-  position, 
-  isHuman, 
+const PlayerSeat: React.FC<PlayerSeatProps> = ({
+  player,
+  position,
+  isHuman,
   showdownActive = false,
   isCurrentTurn = false,
   showTurnHighlight = false,
-  isFolding = false
+  isFolding = false,
+  isWinner = false
 }) => {
   // Check if player is folded based on status (permanent) or is currently folding (transitional)
   // The status-based fold styling persists after a hand, while isFolding is only for transitions
@@ -206,8 +209,8 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       $showTurnHighlight={showTurnHighlight}
       $isHuman={isHuman}
     >
-      <PlayerInfo 
-        $isHuman={isHuman} 
+      <PlayerInfo
+        $isHuman={isHuman}
         $isDealer={player.id === 'dealer'}
         $isFolded={shouldShowFoldStyle}
       >
@@ -235,13 +238,19 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
           </>
         ) : (
           // Regular cards for players
-          player.cards.map((card, index) => (
-            <Card 
-              key={index} 
-              card={card}
-              faceDown={!(isHuman || (showdownActive && !shouldShowFoldStyle))} // Show cards if human player OR during showdown for non-folded players
-            />
-          ))
+          player.cards.map((card, index) => {
+            const cardFaceDown = !(isHuman || (showdownActive && !shouldShowFoldStyle));
+            return (
+              <Card
+                key={index}
+                card={card}
+                faceDown={cardFaceDown}
+                isCommunity={false}
+                // Flash hole cards when player wins
+                flash={!cardFaceDown && isWinner}
+              />
+            );
+          })
         )}
       </PlayerCards>
     </SeatContainer>
