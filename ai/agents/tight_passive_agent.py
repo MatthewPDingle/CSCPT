@@ -24,7 +24,8 @@ class TightPassiveAgent(PokerAgent):
         provider: Optional[str] = None,
         intelligence_level: str = "expert",
         temperature: float = 0.4,  # Lower temperature for predictable, conservative play
-        extended_thinking: bool = True
+        extended_thinking: bool = True,
+        use_persistent_memory: bool = True
     ):
         """
         Initialize a Tight-Passive agent.
@@ -41,7 +42,8 @@ class TightPassiveAgent(PokerAgent):
             provider=provider,
             intelligence_level=intelligence_level,
             temperature=temperature,
-            extended_thinking=extended_thinking
+            extended_thinking=extended_thinking,
+            use_persistent_memory=use_persistent_memory
         )
     
     def get_system_prompt(self) -> str:

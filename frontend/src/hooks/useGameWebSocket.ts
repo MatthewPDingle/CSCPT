@@ -587,7 +587,10 @@ export const useGameWebSocket = (wsUrl: string) => {
                 // Play appropriate sound based on action type
                 if (action === 'CHECK') {
                   playSound(checkSoundRef, 'check');
-                } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(action)) {
+                } else if (['BET', 'RAISE', 'CALL'].includes(action)) {
+                  playSound(chipsSoundRef, 'chips');
+                } else if (action.includes('ALL')) {
+                  // Treat any all-in action as a chips sound
                   playSound(chipsSoundRef, 'chips');
                 } else if (action === 'FOLD') {
                   playSound(foldSoundRef, 'fold');

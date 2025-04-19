@@ -52,8 +52,22 @@ class MemoryService:
                 try:
                     with open(file_path, "r") as f:
                         data = json.load(f)
-                        profile = OpponentProfile.parse_obj(data)
-                        self.active_profiles[profile.player_id] = profile
+                    profile = OpponentProfile.parse_obj(data)
+                    self.active_profiles[profile.player_id] = profile
+                except json.JSONDecodeError as e:
+                    # Handle empty or corrupted JSON profile files
+                    try:
+                        file_size = Path(file_path).stat().st_size
+                    except Exception:
+                        file_size = None
+                    if file_size == 0:
+                        logger.debug(f"Skipping empty profile file {file_path}")
+                    else:
+                        logger.warning(f"Invalid JSON in profile {file_path}, removing corrupted file: {e}")
+                    try:
+                        os.remove(file_path)
+                    except Exception as rm_err:
+                        logger.error(f"Error removing profile file {file_path}: {rm_err}")
                 except Exception as e:
                     logger.error(f"Error loading profile from {file_path}: {str(e)}")
         except Exception as e:
@@ -71,8 +85,12 @@ class MemoryService:
         """
         try:
             file_path = self._get_profile_path(profile.player_id)
+            # Serialize via dict to avoid Pydantic dumps_kwargs issues
+            data = profile.dict()
+            # Use default=str to handle datetime serialization
+            json_str = json.dumps(data, indent=2, default=str)
             with open(file_path, "w") as f:
-                f.write(profile.json(indent=2))
+                f.write(json_str)
             return True
         except Exception as e:
             logger.error(f"Error saving profile for player {profile.player_id}: {str(e)}")

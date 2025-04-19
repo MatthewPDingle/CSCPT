@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 from app.core.cards import Suit, Rank
 from app.core.poker_game import BettingRound, PlayerStatus, PlayerAction
+from datetime import datetime
+from typing import Optional
 
 
 class CardModel(BaseModel):
@@ -52,6 +54,16 @@ class PlayerModel(BaseModel):
         }
 
 
+class ActionHistoryModel(BaseModel):
+    """API model representing a single player action in the hand history."""
+    player_id: str
+    action: str
+    amount: Optional[int] = None
+    round: str
+    # ISO8601 timestamp string of when the action occurred
+    timestamp: str
+
+
 class PotModel(BaseModel):
     """API model representing a pot in the game."""
     name: str
@@ -85,6 +97,8 @@ class GameStateModel(BaseModel):
     # Optional fields for cash games
     max_buy_in: Optional[int] = None
     min_buy_in: Optional[int] = None
+    # History of all actions taken so far in the current hand
+    action_history: List['ActionHistoryModel'] = Field(default_factory=list)
     
     class Config:
         schema_extra = {

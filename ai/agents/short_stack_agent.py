@@ -25,7 +25,8 @@ class ShortStackAgent(PokerAgent):
         provider: Optional[str] = None,
         intelligence_level: str = "advanced",
         temperature: float = 0.5,  # More consistent/formulaic play
-        extended_thinking: bool = True
+        extended_thinking: bool = True,
+        use_persistent_memory: bool = True
     ):
         """
         Initialize a Short Stack agent.
@@ -42,7 +43,8 @@ class ShortStackAgent(PokerAgent):
             provider=provider,
             intelligence_level=intelligence_level,
             temperature=temperature,
-            extended_thinking=extended_thinking
+            extended_thinking=extended_thinking,
+            use_persistent_memory=use_persistent_memory
         )
     
     def get_system_prompt(self) -> str:

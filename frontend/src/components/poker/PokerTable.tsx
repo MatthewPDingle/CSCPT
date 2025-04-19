@@ -290,7 +290,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
                 chips: typeof player.chips === 'number' ? player.chips : 1000,
                 position: typeof player.position === 'number' ? player.position : index,
                 cards: Array.isArray(player.cards) ? player.cards : [null, null],
-                isActive: !!player.isActive,
+                // Consider both ACTIVE and ALL_IN as active states
+                isActive: player.status === 'ACTIVE' || player.status === 'ALL_IN',
                 isCurrent: !!player.isCurrent,
                 isDealer: !!player.isDealer,
                 isButton: !!player.isButton,

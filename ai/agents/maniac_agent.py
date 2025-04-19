@@ -26,7 +26,8 @@ class ManiacAgent(PokerAgent):
         provider: Optional[str] = None,
         intelligence_level: str = "intermediate",  # Can be clever but not disciplined
         temperature: float = 0.9,  # High temperature for unpredictable play
-        extended_thinking: bool = True
+        extended_thinking: bool = True,
+        use_persistent_memory: bool = True
     ):
         """
         Initialize a Maniac agent.
@@ -43,7 +44,8 @@ class ManiacAgent(PokerAgent):
             provider=provider,
             intelligence_level=intelligence_level,
             temperature=temperature,
-            extended_thinking=extended_thinking
+            extended_thinking=extended_thinking,
+            use_persistent_memory=use_persistent_memory
         )
     
     def get_system_prompt(self) -> str:

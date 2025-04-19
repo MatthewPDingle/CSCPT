@@ -25,7 +25,8 @@ class BeginnerAgent(PokerAgent):
         provider: Optional[str] = None,
         intelligence_level: str = "basic",  # Low intelligence by default
         temperature: float = 0.7,  # Somewhat random play
-        extended_thinking: bool = False  # No extended thinking (doesn't think deeply)
+        extended_thinking: bool = False,  # No extended thinking (doesn't think deeply)
+        use_persistent_memory: bool = True
     ):
         """
         Initialize a Beginner agent.
@@ -42,7 +43,8 @@ class BeginnerAgent(PokerAgent):
             provider=provider,
             intelligence_level=intelligence_level,
             temperature=temperature,
-            extended_thinking=extended_thinking
+            extended_thinking=extended_thinking,
+            use_persistent_memory=use_persistent_memory
         )
     
     def get_system_prompt(self) -> str:

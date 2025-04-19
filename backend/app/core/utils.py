@@ -188,6 +188,31 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             logging.error(traceback.format_exc())
             # Continue without domain-specific fields
         
+        # Attach action history from domain hand model
+        try:
+            from app.services.game_service import GameService
+            from app.models.game_models import ActionHistoryModel
+            svc = GameService.get_instance()
+            domain_game = svc.get_game(game_id)
+            current_hand = getattr(domain_game, 'current_hand', None)
+            if current_hand and hasattr(current_hand, 'actions'):
+                game_state.action_history = []
+                for ah in current_hand.actions:
+                    # Convert timestamp to ISO string to ensure JSON serializability
+                    ts = ah.timestamp.isoformat() if hasattr(ah, 'timestamp') else None
+                    game_state.action_history.append(
+                        ActionHistoryModel(
+                            player_id=ah.player_id,
+                            action=ah.action.value if hasattr(ah.action, 'value') else str(ah.action),
+                            amount=ah.amount,
+                            round=ah.round.value if hasattr(ah.round, 'value') else str(ah.round),
+                            timestamp=ts
+                        )
+                    )
+        except Exception as history_error:
+            logging.error(f"Error attaching action history: {history_error}")
+            logging.error(traceback.format_exc())
+        
         logging.debug(f"Successfully converted game to model: {game_id}")
         return game_state
         
