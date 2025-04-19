@@ -67,6 +67,39 @@ class OpenAIProvider(LLMProvider):
             "uses_responses_endpoint": True,
             "supports_temperature": False,  # o3-mini doesn't support temperature
             "has_native_reasoning": True
+        },
+        "gpt-4.1": {
+            "id": "gpt-4.1",
+            "supports_reasoning": False,
+            "max_tokens_param": "max_output_tokens",
+            "supports_json_schema": True,
+            "uses_responses_endpoint": True,
+            "supports_temperature": True
+        },
+        "gpt-4.1-mini": {
+            "id": "gpt-4.1-mini",
+            "supports_reasoning": False,
+            "max_tokens_param": "max_output_tokens",
+            "supports_json_schema": True,
+            "uses_responses_endpoint": True,
+            "supports_temperature": True
+        },
+        "gpt-4.1-nano": {
+            "id": "gpt-4.1-nano",
+            "supports_reasoning": False,
+            "max_tokens_param": "max_output_tokens",
+            "supports_json_schema": True,
+            "uses_responses_endpoint": True,
+            "supports_temperature": True
+        },
+        "o4-mini": {
+            "id": "o4-mini",
+            "supports_reasoning": True,
+            "max_tokens_param": "max_output_tokens",
+            "supports_json_schema": True,
+            "uses_responses_endpoint": True,
+            "supports_temperature": False,
+            "has_native_reasoning": True
         }
     }
     

@@ -134,7 +134,7 @@ decision = await llm_service.complete_json(
 ## Available Providers
 
 - **Anthropic Claude** - `anthropic` - Supporting Claude 3.7 Sonnet with native Extended Thinking
-- **OpenAI** - `openai` - Supporting GPT-4o (default), GPT-4o-mini, GPT-4.5-preview, o3-mini with structured JSON thinking, and o1-pro with advanced reasoning via Responses API
+- **OpenAI** - `openai` - Supporting GPT-4o (default), GPT-4o-mini, GPT-4.1, GPT-4.1-mini, GPT-4.1-nano, GPT-4.5-preview, o3-mini, o4-mini with structured JSON thinking, and o1-pro with advanced reasoning via Responses API
 - **Google Gemini** - `gemini` - Supporting Gemini 2.5 Pro, Gemini 2.0 Flash, and Gemini 2.0 Flash Thinking with prompt-engineered reasoning
 
 ## Poker Agents

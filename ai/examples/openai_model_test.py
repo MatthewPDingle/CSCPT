@@ -33,9 +33,13 @@ load_dotenv()
 OPENAI_MODELS = [
     "gpt-4o",
     "gpt-4o-mini",
-    "o1-pro",  # Now supported using the Responses API
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
     "gpt-4.5-preview",
-    "o3-mini"
+    "o1-pro",  # Now supported using the Responses API
+    "o3-mini",
+    "o4-mini"
 ]
 
 # Which model tests to run (set via command line argument)
@@ -56,7 +60,7 @@ async def test_model(model_name):
     
     try:
         # Initialize the provider directly with low reasoning level for reasoning models
-        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini"] else "medium"
+        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini", "o4-mini"] else "medium"
         provider = OpenAIProvider(
             api_key=api_key,
             model=model_name,
@@ -73,7 +77,7 @@ async def test_model(model_name):
         response = await provider.complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.7 if model_name != "o3-mini" else None
+            temperature=0.7 if model_name not in ["o3-mini", "o4-mini"] else None
         )
         
         logger.info(f"Model: {model_name} - Response: {response}")
@@ -94,7 +98,7 @@ async def test_json_response(model_name):
     
     try:
         # Initialize the provider directly with low reasoning level for reasoning models
-        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini"] else "medium"
+        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini", "o4-mini"] else "medium"
         provider = OpenAIProvider(
             api_key=api_key,
             model=model_name,
@@ -123,7 +127,7 @@ async def test_json_response(model_name):
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             json_schema=json_schema,
-            temperature=0.7 if model_name != "o3-mini" else None
+            temperature=0.7 if model_name not in ["o3-mini", "o4-mini"] else None
         )
         
         logger.info(f"Model: {model_name} - JSON Response: {json.dumps(response, indent=2)}")
@@ -144,7 +148,7 @@ async def test_extended_thinking(model_name):
     
     try:
         # Initialize the provider directly with low reasoning level for reasoning models
-        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini"] else "medium"
+        reasoning_level = "low" if model_name in ["o1-pro", "o3-mini", "o4-mini"] else "medium"
         provider = OpenAIProvider(
             api_key=api_key,
             model=model_name,
@@ -162,7 +166,7 @@ async def test_extended_thinking(model_name):
         response = await provider.complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.7 if model_name != "o3-mini" else None,
+            temperature=0.7 if model_name not in ["o3-mini", "o4-mini"] else None,
             extended_thinking=True
         )
         
