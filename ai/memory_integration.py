@@ -139,6 +139,7 @@ class MemoryIntegration:
         import logging
         from ai.llm_service import LLMService
         import importlib
+        import re
         
         # Initialize LLM service
         llm_service = LLMService()
@@ -166,8 +167,14 @@ class MemoryIntegration:
         agent_class_name = archetype_map.get(archetype, "TAGAgent")  # Default to TAG if not found
         
         try:
-            # Dynamically import the appropriate agent class
-            agent_module = importlib.import_module(f"ai.agents.{agent_class_name.lower()}")
+            # Dynamically import the appropriate agent class from ai.agents
+            # Convert CamelCase class name (without 'Agent') to snake_case module name
+            base_name = agent_class_name[:-5]  # strip 'Agent'
+            # Insert underscores between camel-case boundaries
+            snake = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', base_name)
+            snake = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', snake).lower()
+            module_path = f"ai.agents.{snake}_agent"
+            agent_module = importlib.import_module(module_path)
             agent_class = getattr(agent_module, agent_class_name)
             
             # Create agent instance
