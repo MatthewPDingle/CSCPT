@@ -1925,7 +1925,29 @@ class PokerGame:
                 }
                 self.hand_history_recorder.record_pot_results(self.pots, hand_evaluations)
         else:
-            # Multiple all-in players, handle showdown
+            # Multiple all-in players, deal remaining community cards before showdown
+            # Ensure there are 5 community cards to evaluate
+            while len(self.community_cards) < 5:
+                if len(self.community_cards) == 0:
+                    # Burn and deal the flop
+                    self.deck.draw()
+                    for _ in range(3):
+                        card = self.deck.draw()
+                        if card:
+                            self.community_cards.append(card)
+                elif len(self.community_cards) == 3:
+                    # Burn and deal the turn
+                    self.deck.draw()
+                    card = self.deck.draw()
+                    if card:
+                        self.community_cards.append(card)
+                elif len(self.community_cards) == 4:
+                    # Burn and deal the river
+                    self.deck.draw()
+                    card = self.deck.draw()
+                    if card:
+                        self.community_cards.append(card)
+            # Now perform showdown with full board
             self._handle_showdown()
             
         self.current_round = BettingRound.SHOWDOWN

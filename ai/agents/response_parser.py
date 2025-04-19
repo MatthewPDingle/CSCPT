@@ -104,8 +104,8 @@ class AgentResponseParser:
     
     @staticmethod
     def apply_game_rules(
-        action: str, 
-        amount: Optional[int], 
+        action: str,
+        amount: Optional[int],
         game_state: Dict[str, Any]
     ) -> Tuple[str, Optional[int]]:
         """
@@ -119,10 +119,17 @@ class AgentResponseParser:
         Returns:
             Potentially modified (action, amount) tuple that conforms to game rules
         """
-        # Get player stack and current bet
-        stack = game_state.get("stack_sizes", {}).get("0", 0)  # Player's stack
-        current_bet = game_state.get("current_bet", 0)  # Current bet to call
-        min_raise = game_state.get("min_raise", current_bet * 2)  # Minimum raise amount
+        # Determine the player's stack based on the current player index
+        players = game_state.get("players", [])
+        current_idx = game_state.get("current_player_idx", 0)
+        try:
+            stack = int(players[current_idx].get("chips", 0))
+        except Exception:
+            stack = 0
+        # Current bet to call
+        current_bet = int(game_state.get("current_bet", 0))
+        # Minimum raise amount (default to double the current bet)
+        min_raise = int(game_state.get("min_raise", current_bet * 2))
         
         # Log the current state for debugging
         logger.info(f"Applying game rules for action: {action}, amount: {amount}")
@@ -141,18 +148,29 @@ class AgentResponseParser:
                 action = "all-in"
                 amount = stack
                 
-        elif action == "raise" or action == "bet":
+        elif action in ["raise", "bet"]:
             # Handle raise/bet amounts
             if amount is None:
                 amount = min_raise  # Default to min raise if not specified
                 logger.info(f"No amount specified for {action}, using min raise: {amount}")
-                
-            # Ensure min raise
-            if amount < min_raise and action == "raise":
-                logger.warning(f"Raise amount {amount} below min raise {min_raise}. Adjusting.")
-                amount = min_raise
-                
-            # Cap at stack size
+
+            # If raise amount below minimum, use pot-sized raise
+            if action == "raise" and amount < min_raise:
+                # Compute pot-sized raise: current_bet + total_pot
+                total_pot = int(game_state.get("total_pot", 0))
+                new_amount = current_bet + total_pot
+                # Ensure at least min_raise
+                if new_amount < min_raise:
+                    new_amount = min_raise
+                # Cap at stack as all-in
+                if new_amount >= stack:
+                    logger.info(f"Pot-sized raise {new_amount} exceeds stack {stack}, using all-in {stack}")
+                    action = "all-in"
+                    amount = stack
+                else:
+                    logger.info(f"Adjusted raise to pot-sized amount {new_amount}")
+                    amount = new_amount
+            # Cap at stack size for any bet/raise
             if amount > stack:
                 logger.info(f"Adjusting {action} amount from {amount} to {stack} (all-in)")
                 amount = stack
