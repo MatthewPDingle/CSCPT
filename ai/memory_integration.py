@@ -11,11 +11,11 @@ from pprint import pprint
 from datetime import datetime
 
 # Import our local modules
-from agents.models.opponent_profile import OpponentProfile, StatisticValue, OpponentNote
-from agents.models.memory_service import MemoryService
-from agents.models.memory_connector import MemoryConnector
-from llm_service import LLMService
-import prompts
+from ai.agents.models.opponent_profile import OpponentProfile, StatisticValue, OpponentNote
+from ai.agents.models.memory_service import MemoryService
+from ai.agents.models.memory_connector import MemoryConnector
+from ai.llm_service import LLMService
+# 'prompts' module unused in this integration; removed to fix import errors
 
 # Import agent definitions if available
 try:
