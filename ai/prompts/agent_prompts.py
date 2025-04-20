@@ -18,7 +18,7 @@ POKER_ACTION_SCHEMA = {
         },
         "amount": {
             "type": ["number", "null"],
-            "description": "The amount to bet or raise, or null for fold/check/call actions"
+            "description": "The amount to bet or raise relative to the current bet (incremental amount over the current bet), or null for fold/check/call actions"
         },
         "reasoning": {
             "type": "object",

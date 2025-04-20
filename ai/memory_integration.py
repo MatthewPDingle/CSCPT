@@ -177,12 +177,10 @@ class MemoryIntegration:
             agent_module = importlib.import_module(module_path)
             agent_class = getattr(agent_module, agent_class_name)
             
-            # Create agent instance
+            # Create agent instance using each archetype's own defaults
             agent = agent_class(
                 llm_service=llm_service,
                 provider=provider,
-                intelligence_level=intelligence_level,
-                temperature=0.7,
                 extended_thinking=True,
                 use_persistent_memory=use_memory
             )

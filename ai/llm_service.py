@@ -11,6 +11,19 @@ import logging
 from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
+# Configure file logging for all LLM messages
+import os
+_llm_log_path = os.environ.get(
+    "LLM_LOG_PATH",
+    os.path.join(os.path.expanduser("~"), ".cscpt", "llm_messages.log")
+)
+os.makedirs(os.path.dirname(_llm_log_path), exist_ok=True)
+_file_handler = logging.FileHandler(_llm_log_path)
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+)
+logger.addHandler(_file_handler)
 
 class LLMService:
     """
@@ -43,8 +56,15 @@ class LLMService:
         Returns:
             Generated completion
         """
+        # Log prompts to file
+        logger.debug("LLMService.complete request - provider=%s, max_tokens=%s", provider, max_tokens)
+        logger.debug("System prompt:\n%s", system_prompt)
+        logger.debug("User prompt:\n%s", user_prompt)
         # Mock implementation that returns a fixed response
-        return "This is a mock response from the LLM service."
+        response = "This is a mock response from the LLM service."
+        # Log response to file
+        logger.debug("LLMService.complete response: %s", response)
+        return response
     
     async def complete_json(
         self,
@@ -69,6 +89,11 @@ class LLMService:
         Returns:
             JSON response
         """
+        # Log JSON-completion prompts to file
+        logger.debug("LLMService.complete_json request - provider=%s, temperature=%s, extended_thinking=%s", provider, temperature, extended_thinking)
+        logger.debug("System prompt:\n%s", system_prompt)
+        logger.debug("User prompt:\n%s", user_prompt)
+        logger.debug("JSON schema:\n%s", json.dumps(json_schema, indent=2))
         # Extract archetype from the system prompt to customize the response
         archetype = "TAG"  # Default
         if "TAG player" in system_prompt:
@@ -172,4 +197,6 @@ class LLMService:
                 "estimated_equity": "65%"
             }
         
+        # Log JSON response to file
+        logger.debug("LLMService.complete_json response: %s", json.dumps(response, indent=2))
         return response
