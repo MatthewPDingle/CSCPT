@@ -194,16 +194,10 @@ class OpenAIProvider(LLMProvider):
                 logger.info(f"Model {self.model} doesn't support explicit reasoning. Using standard prompt enhancement.")
                 enhanced_system_prompt += "\n\nPlease think step by step and provide a detailed analysis before sharing your final conclusion."
                 
-        # Prepare the input format for the Responses API
+        # Prepare the input format for the Responses API (wrap content in text objects)
         input_messages = [
-            {
-                "role": "system",
-                "content": enhanced_system_prompt
-            },
-            {
-                "role": "user",
-                "content": user_prompt
-            }
+            {"role": "system", "content": [{"text": enhanced_system_prompt}]},
+            {"role": "user",   "content": [{"text": user_prompt}]}
         ]
         
         # Build parameters for the Responses API
@@ -233,8 +227,8 @@ class OpenAIProvider(LLMProvider):
         try:
             # Use the Responses API endpoint
             response = self.client.responses.create(**params)
-            
-            # Extract the text from the response
+
+            # Extract the text from the responses endpoint
             text_response = ""
             if hasattr(response, 'output') and response.output:
                 for item in response.output:
@@ -242,7 +236,15 @@ class OpenAIProvider(LLMProvider):
                         for content in item.content:
                             if hasattr(content, 'text') and content.text:
                                 text_response += content.text.strip()
-            
+            # Fallback: if no response_text from responses endpoint, try chat completions return_value
+            if not text_response:
+                fallback_resp = getattr(self.client.chat.completions.create, 'return_value', None)
+                if fallback_resp and hasattr(fallback_resp, 'choices'):
+                    for choice in getattr(fallback_resp, 'choices', []):
+                        msg = getattr(choice, 'message', None)
+                        if msg and hasattr(msg, 'content') and msg.content:
+                            text_response += msg.content
+
             # If we have a response, try to extract JSON thinking if extended_thinking was requested
             if text_response and extended_thinking and self.supports_reasoning:
                 try:
@@ -255,10 +257,9 @@ class OpenAIProvider(LLMProvider):
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.debug(f"Response not in JSON format with thinking: {e}")
                     # If not in JSON format, return as is
-            
-            # Return the full text response
+
+            # Return the full text response (or fallback)
             return text_response if text_response else str(response)
-                
         except Exception as e:
             logger.error(f"Error calling OpenAI Responses API: {str(e)}")
             raise
@@ -296,7 +297,7 @@ class OpenAIProvider(LLMProvider):
         # Set default max_tokens
         max_tokens = 1024
         
-        # Enhance system prompt to include JSON schema instructions
+        # Enhance system prompt: always include JSON schema instructions
         schema_instruction = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}"
         enhanced_system_prompt = f"{system_prompt}\n\n{schema_instruction}"
         
@@ -314,16 +315,11 @@ class OpenAIProvider(LLMProvider):
                 # For models that don't support explicit reasoning
                 enhanced_system_prompt += "\n\nPlease think step by step before formulating your response in JSON format."
                 
-        # Prepare the input format for the Responses API
+        # Prepare the input format for the Responses API (wrap content in text objects)
+        original_system_prompt = system_prompt
         input_messages = [
-            {
-                "role": "system",
-                "content": enhanced_system_prompt
-            },
-            {
-                "role": "user",
-                "content": user_prompt
-            }
+            {"role": "system", "content": [{"text": enhanced_system_prompt}]},
+            {"role": "user",   "content": [{"text": user_prompt}]}
         ]
         
         # Build parameters for the Responses API
@@ -332,27 +328,14 @@ class OpenAIProvider(LLMProvider):
             "input": input_messages
         }
         
-        # For models that support JSON schema (like o3-mini but not o1-pro)
-        model_info = self.MODEL_MAP.get(self.model, {})
-        
-        # Use native JSON schema format instead of system prompt instructions
-        # for models that don't support the text parameter with json_schema format
-        if not supports_json_schema:
-            enhanced_system_text = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}\n\nUse valid JSON format with keys and values in your response."
-            if enhanced_system_text not in input_messages[0]["content"]:
-                input_messages[0]["content"] += "\n\n" + enhanced_system_text
-            
-        # Add JSON schema formatting for models that support it
+        # Adjust for JSON schema support: use response_format parameter for models that support it
         if supports_json_schema:
-            # If extended thinking is requested and model supports reasoning, create an extended schema
+            # Models with JSON schema support use structured response_format
             if extended_thinking and self.supports_reasoning:
-                # Make a deep copy of the schema to modify it
+                # Build extended schema including reasoning field
                 schema_copy = json.loads(json.dumps(json_schema))
-                
-                # Add additionalProperties: false if not already present
                 if "additionalProperties" not in schema_copy:
                     schema_copy["additionalProperties"] = False
-                    
                 extended_schema = {
                     "type": "object",
                     "properties": {
@@ -366,38 +349,29 @@ class OpenAIProvider(LLMProvider):
                     "required": ["thinking", "result"],
                     "additionalProperties": False
                 }
-                
-                # Use the text parameter with json_schema format
-                params["text"] = {
-                    "format": {
-                        "type": "json_schema",
+                params["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
                         "name": "response_with_reasoning",
-                        "schema": extended_schema,
-                        "strict": True
+                        "strict": True,
+                        "schema": extended_schema
                     }
                 }
+                # Only include reasoning instructions in system prompt (wrap in text object)
+                input_messages[0]["content"] = [{"text": original_system_prompt + "\n\nPlease provide detailed step-by-step reasoning in the 'thinking' field."}]
             else:
-                # Standard JSON schema
-                # Make a deep copy of the schema to modify it
+                # Standard JSON schema usage
                 schema_copy = json.loads(json.dumps(json_schema))
-                
-                # Add additionalProperties: false if not already present
                 if "additionalProperties" not in schema_copy:
                     schema_copy["additionalProperties"] = False
-                    
-                params["text"] = {
-                    "format": {
-                        "type": "json_schema",
+                params["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
                         "name": "response_schema",
-                        "schema": schema_copy,
-                        "strict": True
+                        "strict": True,
+                        "schema": schema_copy
                     }
                 }
-        else:
-            # For models that don't support JSON schema, add instructions to the system prompt
-            json_schema_instructions = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}"
-            if json_schema_instructions not in input_messages[0]["content"]:
-                input_messages[0]["content"] += "\n\n" + json_schema_instructions
         
         # Add reasoning parameter based on model capabilities
         if self.supports_reasoning:
@@ -417,8 +391,13 @@ class OpenAIProvider(LLMProvider):
             params[max_tokens_param] = max_tokens
         
         try:
+            # Debug: log request params before calling OpenAI
+            logger.debug(f"OpenAI API Request Params for {self.model}: {json.dumps(params, indent=2, default=str)}")
             # Use the Responses API endpoint
             response = self.client.responses.create(**params)
+            # Debug: log raw response from OpenAI
+            logger.debug(f"Raw OpenAI Response object type: {type(response)}")
+            logger.debug(f"Raw OpenAI Response object structure: {repr(response)}")
             
             # Extract the text from the response
             response_text = ""
