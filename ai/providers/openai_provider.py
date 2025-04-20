@@ -179,9 +179,9 @@ class OpenAIProvider(LLMProvider):
         if temperature is None:
             temperature = self.reasoning_config["temperature"]
         
-        # Set default max_tokens if not specified
+        # Set default max_tokens if not specified (increase to allow longer responses)
         if max_tokens is None:
-            max_tokens = 1024
+            max_tokens = 8192
             
         # Prepare system prompt with extended thinking if requested
         enhanced_system_prompt = system_prompt
@@ -194,10 +194,10 @@ class OpenAIProvider(LLMProvider):
                 logger.info(f"Model {self.model} doesn't support explicit reasoning. Using standard prompt enhancement.")
                 enhanced_system_prompt += "\n\nPlease think step by step and provide a detailed analysis before sharing your final conclusion."
                 
-        # Prepare the input format for the Responses API (wrap content in text objects)
+        # Prepare the input format for the Responses API (wrap content in multimodal blocks)
         input_messages = [
-            {"role": "system", "content": [{"text": enhanced_system_prompt}]},
-            {"role": "user",   "content": [{"text": user_prompt}]}
+            {"role": "system", "content": [{"type": "input_text", "text": enhanced_system_prompt}]},
+            {"role": "user",   "content": [{"type": "input_text", "text": user_prompt}]}
         ]
         
         # Build parameters for the Responses API
@@ -294,8 +294,8 @@ class OpenAIProvider(LLMProvider):
         if temperature is None:
             temperature = self.reasoning_config["temperature"]
         
-        # Set default max_tokens
-        max_tokens = 1024
+        # Set default max_tokens (increase to allow longer responses)
+        max_tokens = 8192
         
         # Enhance system prompt: always include JSON schema instructions
         schema_instruction = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}"
@@ -315,11 +315,11 @@ class OpenAIProvider(LLMProvider):
                 # For models that don't support explicit reasoning
                 enhanced_system_prompt += "\n\nPlease think step by step before formulating your response in JSON format."
                 
-        # Prepare the input format for the Responses API (wrap content in text objects)
+        # Prepare the input format for the Responses API (wrap content in multimodal blocks)
         original_system_prompt = system_prompt
         input_messages = [
-            {"role": "system", "content": [{"text": enhanced_system_prompt}]},
-            {"role": "user",   "content": [{"text": user_prompt}]}
+            {"role": "system", "content": [{"type": "input_text", "text": enhanced_system_prompt}]},
+            {"role": "user",   "content": [{"type": "input_text", "text": user_prompt}]}
         ]
         
         # Build parameters for the Responses API
@@ -328,50 +328,7 @@ class OpenAIProvider(LLMProvider):
             "input": input_messages
         }
         
-        # Adjust for JSON schema support: use response_format parameter for models that support it
-        if supports_json_schema:
-            # Models with JSON schema support use structured response_format
-            if extended_thinking and self.supports_reasoning:
-                # Build extended schema including reasoning field
-                schema_copy = json.loads(json.dumps(json_schema))
-                if "additionalProperties" not in schema_copy:
-                    schema_copy["additionalProperties"] = False
-                extended_schema = {
-                    "type": "object",
-                    "properties": {
-                        "thinking": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "A detailed step-by-step analysis"
-                        },
-                        "result": schema_copy
-                    },
-                    "required": ["thinking", "result"],
-                    "additionalProperties": False
-                }
-                params["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "response_with_reasoning",
-                        "strict": True,
-                        "schema": extended_schema
-                    }
-                }
-                # Only include reasoning instructions in system prompt (wrap in text object)
-                input_messages[0]["content"] = [{"text": original_system_prompt + "\n\nPlease provide detailed step-by-step reasoning in the 'thinking' field."}]
-            else:
-                # Standard JSON schema usage
-                schema_copy = json.loads(json.dumps(json_schema))
-                if "additionalProperties" not in schema_copy:
-                    schema_copy["additionalProperties"] = False
-                params["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "response_schema",
-                        "strict": True,
-                        "schema": schema_copy
-                    }
-                }
+        # Removed response_format parameter due to Python SDK compatibility; relying on prompt injection only
         
         # Add reasoning parameter based on model capabilities
         if self.supports_reasoning:

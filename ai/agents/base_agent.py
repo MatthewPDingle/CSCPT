@@ -3,6 +3,7 @@ Base poker agent implementation.
 """
 
 import logging
+import json
 import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Tuple
@@ -339,13 +340,21 @@ Stack Sizes: {self._format_stack_sizes(stack_sizes)}
         if self.intelligence_level != "basic":
             self._update_opponent_profiles(game_state)
         
-        # Format the game state and opponent profiles
+        # Format the game state summary and include raw JSON for completeness
         formatted_state = self._format_game_state(game_state)
+        try:
+            raw_state = json.dumps(game_state, indent=2)
+        except Exception:
+            raw_state = str(game_state)
         opponent_profiles = self._build_opponent_profile_string()
-        
-        # Build user prompt
+
+        # Build user prompt including summary, full JSON state, and opponent profiles
         user_prompt = f"""
+GAME STATE SUMMARY:
 {formatted_state}
+
+FULL GAME STATE JSON:
+{raw_state}
 
 OPPONENT PROFILES:
 {opponent_profiles}
