@@ -2,9 +2,29 @@
 Main entry point for the FastAPI application.
 """
 import os
+import sys
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load environment variables from AI .env file first, before any other imports
+from dotenv import load_dotenv
+
+# Determine the project root based on the current file's location
+project_root = Path(__file__).parent.parent.parent
+ai_env_path = project_root / 'ai' / '.env'
+
+# Explicitly load the .env file from the ai directory
+if ai_env_path.is_file():
+    print(f"Loading environment variables from: {ai_env_path}")
+    load_dotenv(dotenv_path=ai_env_path, override=True)
+else:
+    print(f"Warning: .env file not found at {ai_env_path}")
+
+# Log relevant env vars AFTER loading to confirm
+print(f"OPENAI_API_KEY loaded: {'Yes' if os.environ.get('OPENAI_API_KEY') else 'No'}")
+print(f"OPENAI_MODEL loaded: {os.environ.get('OPENAI_MODEL', 'Not Set')}")
 
 from app.api.game import router as game_router
 from app.api.history_api import router as history_router
@@ -17,7 +37,6 @@ from app.repositories.in_memory import (
 )
 
 # Import and update system configuration
-import sys
 from app.core.config import MEMORY_SYSTEM_AVAILABLE
 import app.core.config as app_config
 
