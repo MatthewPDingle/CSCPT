@@ -5,9 +5,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, List, Optional, Any, Union
 import asyncio
 import json
+import os
+import sys
 from datetime import datetime
 import logging
 from pydantic import BaseModel, Field
+
+# Ensure the parent directory (containing ai module) is in the path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+    logging.info(f"Added parent directory to sys.path in ai_connector.py: {parent_dir}")
 
 # Import memory integration using the global flag from config
 from app.core.config import MEMORY_SYSTEM_AVAILABLE
@@ -16,6 +24,7 @@ if MEMORY_SYSTEM_AVAILABLE:
     try:
         from ai.memory_integration import MemoryIntegration
         from ai.agents.response_parser import AgentResponseParser
+        logging.info("Successfully imported AI modules in ai_connector.py")
     except ImportError as e:
         logging.error(f"Failed to import AI modules in ai_connector.py: {e}")
         import traceback
