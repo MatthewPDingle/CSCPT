@@ -24,7 +24,9 @@ os.makedirs(os.path.dirname(_log_path), exist_ok=True)
 _fh = logging.FileHandler(_log_path)
 _fh.setLevel(logging.DEBUG)
 _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+# Add file handler to this logger and prevent propagation to avoid duplicate entries
 logger.addHandler(_fh)
+logger.propagate = False
 # Also attach the same handler to the top-level 'ai' logger to capture provider logs,
 # but stop propagation so they don’t bubble up to the console.
 ai_root_logger = logging.getLogger('ai')

@@ -184,6 +184,8 @@ class MemoryIntegration:
                 extended_thinking=True,
                 use_persistent_memory=use_memory
             )
+            # Attach player_id to agent for game state formatting
+            agent.player_id = player_id
             
             # Get the decision from the agent
             logging.info(f"Requesting decision from {agent_class_name} with provider {provider}")
