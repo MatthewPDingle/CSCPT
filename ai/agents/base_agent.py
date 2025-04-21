@@ -134,11 +134,24 @@ class PokerAgent(ABC):
         action_history = game_state.get("action_history", [])
         stack_sizes = game_state.get("stack_sizes", {})
         
+        # Normalize card representations into strings
+        hand_cards: List[str] = []
+        for h in hand:
+            if isinstance(h, dict):
+                hand_cards.append(h.get('rank', '') + h.get('suit', ''))
+            else:
+                hand_cards.append(str(h))
+        comm_cards: List[str] = []
+        for c in community_cards:
+            if isinstance(c, dict):
+                comm_cards.append(c.get('rank', '') + c.get('suit', ''))
+            else:
+                comm_cards.append(str(c))
         # Format the state as a string
         formatted_state = f"""
 GAME STATE:
-Your Hand: {' '.join(hand)}
-Community Cards: {' '.join(community_cards) if community_cards else 'None'}
+Your Hand: {' '.join(hand_cards)}
+Community Cards: {' '.join(comm_cards) if comm_cards else 'None'}
 Position: {position}
 Pot Size: {pot}
 Action History: {self._format_action_history(action_history)}

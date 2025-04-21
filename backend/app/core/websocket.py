@@ -588,6 +588,8 @@ class GameStateNotifier:
                 continue
                 
             try:
+                # Derive player name for clearer logging
+                player_name = next((p.name for p in game_state.players if p.player_id == player_id), player_id)
                 filtered_state = copy.deepcopy(game_state)
                 
                 # Filter cards - only show this player's cards
@@ -603,11 +605,11 @@ class GameStateNotifier:
                     "data": state_dict
                 }
                 
-                logging.warning(f"Sending game state to player {player_id}")
+                logging.warning(f"Sending game state to player {player_name}")
                 
                 for socket in player_sockets:
                     if socket in processed_sockets:
-                        logging.warning(f"Skipping already processed socket for player {player_id}")
+                        logging.warning(f"Skipping already processed socket for player {player_name}")
                         continue
                         
                     try:
@@ -617,10 +619,10 @@ class GameStateNotifier:
                         if socket in connections:
                             connections.remove(socket)
                     except Exception as e:
-                        logging.error(f"Error sending to player {player_id}: {str(e)}")
+                        logging.error(f"Error sending to player {player_name}: {str(e)}")
                         logging.error(traceback.format_exc())
             except Exception as e:
-                logging.error(f"Error preparing game state message for player {player_id}: {str(e)}")
+                logging.error(f"Error preparing game state message for player {player_name}: {str(e)}")
                 logging.error(traceback.format_exc())
                 # Continue with other players despite error
         

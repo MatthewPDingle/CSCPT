@@ -11,8 +11,10 @@ from ai.providers.anthropic_provider import AnthropicProvider
 from ai.providers.openai_provider import OpenAIProvider
 from ai.providers.gemini_provider import GeminiProvider
 
+import logging
 # Logger for LLM messages
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 # Configure file logging for LLM requests/responses
 _log_path = os.environ.get(
     'LLM_LOG_PATH',
@@ -23,6 +25,13 @@ _fh = logging.FileHandler(_log_path)
 _fh.setLevel(logging.DEBUG)
 _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 logger.addHandler(_fh)
+# Also attach the same handler to the top-level 'ai' logger to capture provider logs,
+# but stop propagation so they don’t bubble up to the console.
+ai_root_logger = logging.getLogger('ai')
+ai_root_logger.setLevel(logging.DEBUG)
+ai_root_logger.addHandler(_fh)
+# Prevent ai.* log records from propagating to the root logger (which prints to console)
+ai_root_logger.propagate = False
 
 class LLMService:
     """Dispatcher that selects and invokes real LLM providers based on config."""
