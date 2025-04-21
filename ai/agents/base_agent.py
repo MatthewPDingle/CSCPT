@@ -5,6 +5,7 @@ Base poker agent implementation.
 import logging
 import json
 import os
+from datetime import datetime
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -147,6 +148,13 @@ class PokerAgent(ABC):
                 comm_cards.append(c.get('rank', '') + c.get('suit', ''))
             else:
                 comm_cards.append(str(c))
+        # Prepare mapping of player IDs to names for readable logs
+        names_map = game_state.get('player_names', {})
+        # Format stack sizes using player names
+        stack_str = ", ".join([
+            f"{names_map.get(pid, pid)}: {stack}"
+            for pid, stack in stack_sizes.items()
+        ])
         # Format the state as a string
         formatted_state = f"""
 GAME STATE:
@@ -155,7 +163,7 @@ Community Cards: {' '.join(comm_cards) if comm_cards else 'None'}
 Position: {position}
 Pot Size: {pot}
 Action History: {self._format_action_history(action_history)}
-Stack Sizes: {self._format_stack_sizes(stack_sizes)}
+Stack Sizes: {stack_str}
 """
         return formatted_state
     
@@ -349,16 +357,34 @@ Stack Sizes: {self._format_stack_sizes(stack_sizes)}
         Returns:
             Decision object with action, amount, and reasoning
         """
+        # --- Prepare nested and flattened game states ---
+        # Keep the raw nested state for full JSON
+        nested_state = game_state
+        # Build flattened state for formatting
+        players = nested_state.get('players', []) or []
+        # Identify this agent's player entry
+        player_entry = next((p for p in players if p.get('player_id') == getattr(self, 'player_id', None)), None)
+        hand = player_entry.get('cards', []) if player_entry else []
+        position = player_entry.get('position') if player_entry else None
+        flat_state = {
+            'hand': hand,
+            'community_cards': nested_state.get('community_cards', []),
+            'position': position,
+            'pot': nested_state.get('total_pot', 0),
+            'action_history': nested_state.get('action_history', []),
+            'stack_sizes': {p.get('player_id'): p.get('chips', 0) for p in players},
+            'round': nested_state.get('current_round'),
+            'current_bet': nested_state.get('current_bet', 0)
+        }
         # Update opponent profiles based on game state
         if self.intelligence_level != "basic":
-            self._update_opponent_profiles(game_state)
-        
-        # Format the game state summary and include raw JSON for completeness
-        formatted_state = self._format_game_state(game_state)
+            self._update_opponent_profiles(flat_state)
+        # Format state summary and full JSON
+        formatted_state = self._format_game_state(flat_state)
         try:
-            raw_state = json.dumps(game_state, indent=2)
+            raw_state = json.dumps(nested_state, indent=2)
         except Exception:
-            raw_state = str(game_state)
+            raw_state = str(nested_state)
         opponent_profiles = self._build_opponent_profile_string()
 
         # Build user prompt including summary, full JSON state, and opponent profiles
@@ -382,6 +408,26 @@ Based on the current situation, what action will you take? Analyze the hand, con
         
         # Get the system prompt for this agent
         system_prompt = self.get_system_prompt()
+        # Log system and user prompts to per-player logs
+        try:
+            # Determine agent name for logging
+            players_list = nested_state.get('players', [])
+            agent_name = next(
+                (p.get('name') for p in players_list if p.get('player_id') == getattr(self, 'player_id', None)),
+                getattr(self, 'player_id', 'unknown')
+            )
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            logs_dir = os.path.expanduser("~/.cscpt/player_logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            # Write prompts to file
+            to_path = os.path.join(logs_dir, f"{timestamp}_{agent_name}_to.log")
+            with open(to_path, 'w') as f:
+                f.write("SYSTEM PROMPT:\n")
+                f.write(system_prompt + "\n\n")
+                f.write("USER PROMPT:\n")
+                f.write(user_prompt)
+        except Exception:
+            logger.warning("Failed to write per-player prompt log", exc_info=True)
         
         # Make the API call
         try:
@@ -395,6 +441,13 @@ Based on the current situation, what action will you take? Analyze the hand, con
             )
             
             logger.debug(f"Agent decision: {response}")
+            # Log response to per-player log
+            try:
+                from_path = os.path.join(logs_dir, f"{timestamp}_{agent_name}_from.log")
+                with open(from_path, 'w') as f:
+                    f.write(json.dumps(response, indent=2))
+            except Exception:
+                logger.warning("Failed to write per-player response log", exc_info=True)
             return response
             
         except Exception as e:
