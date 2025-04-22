@@ -171,22 +171,30 @@ Stack Sizes: {stack_str}
         action_history: List[Dict[str, Any]],
         names_map: Dict[str, str]
     ) -> str:
-        """Format the action history into a readable string, replacing IDs with names."""
+        """Format the action history into a readable string with round markers, replacing IDs with names."""
         if not action_history:
             return "No actions yet."
 
-        formatted_actions = []
+        formatted_actions: List[str] = []
+        last_round: Optional[str] = None
         for action in action_history:
-            pid = action.get("player_id", "Unknown")
-            name = names_map.get(pid, pid)
+            # Insert a round marker when the betting round changes
+            round_name = action.get("round", "").upper()
+            if round_name and round_name != last_round:
+                formatted_actions.append(f"[{round_name}]")
+                last_round = round_name
+
+            pid = action.get("player_id", None)
+            name = names_map.get(pid, pid) if pid is not None else "Unknown"
             action_type = action.get("action", "Unknown")
             amount = action.get("amount", None)
-
+            # Build the action string
             if amount is not None:
                 formatted_actions.append(f"{name} {action_type} {amount}")
             else:
                 formatted_actions.append(f"{name} {action_type}")
 
+        # Join with arrows for readability
         return " → ".join(formatted_actions)
     
     def _format_stack_sizes(self, stack_sizes: Dict[str, int]) -> str:
