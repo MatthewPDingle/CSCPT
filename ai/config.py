@@ -58,10 +58,10 @@ class AIConfig:
         
         # OpenAI configuration
         if os.environ.get("OPENAI_API_KEY"):
-            # Default to gpt-4.1-nano for AI opponents
+            # Default to gpt-4.1 for AI opponents
             self.config["openai"] = {
                 "api_key": os.environ.get("OPENAI_API_KEY"),
-                "model": os.environ.get("OPENAI_MODEL", "gpt-4.1-nano"),
+                "model": os.environ.get("OPENAI_MODEL", "gpt-4.1"),
                 "reasoning_level": os.environ.get("OPENAI_REASONING_LEVEL", "medium"),
                 "organization_id": os.environ.get("OPENAI_ORGANIZATION_ID")
             }
