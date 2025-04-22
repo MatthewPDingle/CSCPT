@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional, List, Tuple
 from ..llm_service import LLMService
 from ..prompts import POKER_ACTION_SCHEMA
 from .models import MemoryService
+from pathlib import Path
+project_root = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger(__name__)
 
@@ -455,11 +457,15 @@ Based on the current situation, what action will you take? Analyze the hand, con
                 getattr(self, 'player_id', 'unknown')
             )
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            logs_dir = os.path.expanduser("~/.cscpt/player_logs")
+            # Determine logs directory: override with PLAYER_LOG_PATH or use DATA_DIR/player_logs
+            data_dir = os.environ.get('DATA_DIR', str(project_root / 'data'))
+            logs_dir = os.environ.get('PLAYER_LOG_PATH', os.path.join(data_dir, 'player_logs'))
             os.makedirs(logs_dir, exist_ok=True)
+            # Inform where per-player logs will be written
+            print(f"Per-player logs directory: {logs_dir}")
             # Write prompts to file
             to_path = os.path.join(logs_dir, f"{timestamp}_{agent_name}_to.log")
-            with open(to_path, 'w') as f:
+            with open(to_path, 'w', encoding='utf-8') as f:
                 f.write("SYSTEM PROMPT:\n")
                 f.write(system_prompt + "\n\n")
                 f.write("USER PROMPT:\n")
@@ -495,9 +501,10 @@ Based on the current situation, what action will you take? Analyze the hand, con
             logger.debug(f"Agent decision: {response}")
             # Log response to per-player log
             try:
+                # Write LLM response to per-player log
                 from_path = os.path.join(logs_dir, f"{timestamp}_{agent_name}_from.log")
-                with open(from_path, 'w') as f:
-                    f.write(json.dumps(response, indent=2))
+                with open(from_path, 'w', encoding='utf-8') as f:
+                    f.write(json.dumps(response, indent=2, ensure_ascii=False))
             except Exception:
                 logger.warning("Failed to write per-player response log", exc_info=True)
             return response

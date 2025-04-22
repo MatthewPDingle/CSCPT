@@ -82,10 +82,11 @@ class AIConfig:
                 generation_config["top_k"] = int(os.environ.get("GEMINI_TOP_K"))
             if os.environ.get("GEMINI_MAX_OUTPUT_TOKENS"):
                 generation_config["max_output_tokens"] = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS"))
-            
+
             self.config["gemini"] = {
                 "api_key": os.environ.get("GEMINI_API_KEY"),
-                "model": os.environ.get("GEMINI_MODEL", "gemini-2.5-pro"),
+                # Default to 2.5 Pro Preview model for higher quotas
+                "model": os.environ.get("GEMINI_MODEL", "gemini-2.5-pro-preview"),
                 "generation_config": generation_config
             }
             logger.info("Loaded Gemini configuration from environment variables")
@@ -93,7 +94,8 @@ class AIConfig:
             logger.warning("No Gemini API key found in environment variables")
         
         # Settings for provider selection
-        self.config["default_provider"] = os.environ.get("DEFAULT_LLM_PROVIDER", "anthropic")
+        # Default to Gemini provider if not specified
+        self.config["default_provider"] = os.environ.get("DEFAULT_LLM_PROVIDER", "gemini")
     
     def get_provider_config(self, provider_name: str) -> Dict[str, Any]:
         """

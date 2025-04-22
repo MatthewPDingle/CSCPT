@@ -144,8 +144,8 @@ class MemoryIntegration:
         # Initialize LLM service
         llm_service = LLMService()
         
-        # Default to OpenAI provider (GPT-4o) per requirements
-        provider = "openai"
+        # Use configured default provider (env DEFAULT_LLM_PROVIDER or config default)
+        provider = llm_service.default_provider
         
         # Map archetype strings to agent classes
         archetype_map = {

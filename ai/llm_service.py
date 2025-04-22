@@ -15,12 +15,27 @@ import logging
 # Logger for LLM messages
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-# Configure file logging for LLM requests/responses
+"""
+Configure file logging for LLM requests/responses.
+By default, logs go to DATA_DIR/llm_messages.log if DATA_DIR is set (or cwd/data),
+or to ~/.cscpt/llm_messages.log when neither DATA_DIR nor LLM_LOG_PATH is provided.
+"""
+# Determine AI module directory and default data directory
+from pathlib import Path
+ai_dir = Path(__file__).resolve().parent
+# Default data directory: use DATA_DIR env or fallback to ai/data
+default_data_dir = os.environ.get(
+    'DATA_DIR',
+    str(ai_dir / 'data')
+)
+# Final log path: override via LLM_LOG_PATH env or use default_data_dir/llm_messages.log
 _log_path = os.environ.get(
     'LLM_LOG_PATH',
-    os.path.join(os.path.expanduser('~'), '.cscpt', 'llm_messages.log')
+    os.path.join(default_data_dir, 'llm_messages.log')
 )
 os.makedirs(os.path.dirname(_log_path), exist_ok=True)
+# Inform where LLM logs will be written
+print(f"LLM messages log path: {_log_path}")
 _fh = logging.FileHandler(_log_path)
 _fh.setLevel(logging.DEBUG)
 _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
@@ -108,6 +123,8 @@ class LLMService:
             max_tokens,
             extended_thinking
         )
+        # Log which model is being used for this completion
+        logger.debug("Model: %s", prov.model)
         logger.debug("System prompt:\n%s", system_prompt)
         logger.debug("User prompt:\n%s", user_prompt)
         resp = await prov.complete(
@@ -141,6 +158,8 @@ class LLMService:
             temperature,
             extended_thinking
         )
+        # Log which model is being used for this JSON completion
+        logger.debug("Model: %s", prov.model)
         logger.debug("System prompt:\n%s", system_prompt)
         logger.debug("User prompt:\n%s", user_prompt)
         logger.debug("JSON schema:\n%s", json.dumps(json_schema, indent=2))
@@ -151,5 +170,6 @@ class LLMService:
             temperature=temperature,
             extended_thinking=extended_thinking
         )
-        logger.debug("JSON Response: %s", json.dumps(resp, indent=2))
+        # Log raw JSON response with unicode unescaped for readability
+        logger.debug("JSON Response: %s", json.dumps(resp, indent=2, ensure_ascii=False))
         return resp

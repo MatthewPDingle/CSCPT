@@ -175,8 +175,8 @@ class ConnectionManager:
             connection_count = len(connections_to_broadcast)
             logging.warning(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
             
-        # Convert message to JSON string
-        json_message = json.dumps(message)
+        # Convert message to JSON string (preserve unicode characters)
+        json_message = json.dumps(message, ensure_ascii=False)
         
         # Send to all connections in the game (outside the lock to avoid blocking)
         disconnected = []
@@ -272,7 +272,8 @@ class ConnectionManager:
                 logging.warning(f"Message is not a dict, it's a {type(message)}")
                 message = {"type": "error", "data": {"message": "Internal error: Invalid message format"}}
                 
-            json_message = json.dumps(message)
+            # Serialize message preserving unicode characters
+            json_message = json.dumps(message, ensure_ascii=False)
             message_preview = json_message[:100] + ('...' if len(json_message) > 100 else '')
             logging.debug(f"Serialized message: {message_preview}")
         except Exception as e:

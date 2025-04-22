@@ -62,16 +62,16 @@ class TestGeminiProvider(unittest.TestCase):
         self.module_patcher.stop()
     
     def test_init_with_defaults(self):
-        """Test initialization with default parameters."""
+        """Test initialization with default parameters (flash model)."""
         provider = GeminiProvider(api_key=self.api_key)
-        
+
         # Check that the API was configured
         self.genai_mock.configure.assert_called_once_with(api_key=self.api_key)
-        
-        # Check that the model was initialized correctly
+
+        # Check that the model was initialized correctly (preview model ID)
         self.genai_mock.GenerativeModel.assert_called_once()
         model_call_kwargs = self.genai_mock.GenerativeModel.call_args[1]
-        self.assertEqual(model_call_kwargs['model_name'], "gemini-2.5-pro-exp-03-25")
+        self.assertEqual(model_call_kwargs['model_name'], "gemini-2.5-pro-preview-03-25")
     
     def test_all_model_configurations(self):
         """Test initialization with all supported model configurations."""
@@ -133,10 +133,10 @@ class TestGeminiProvider(unittest.TestCase):
         """Test initialization with an invalid model name."""
         invalid_model = "nonexistent-model"
         provider = GeminiProvider(api_key=self.api_key, model=invalid_model)
-        
-        # Should fall back to the default model
+
+        # Should fall back to the default preview model
         model_call_kwargs = self.genai_mock.GenerativeModel.call_args[1]
-        self.assertEqual(model_call_kwargs['model_name'], "gemini-2.5-pro-exp-03-25")
+        self.assertEqual(model_call_kwargs['model_name'], "gemini-2.5-pro-preview-03-25")
     
     def test_complete(self):
         """Test the complete method."""

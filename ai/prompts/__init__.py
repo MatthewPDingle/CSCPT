@@ -58,15 +58,18 @@ POKER_ACTION_SCHEMA = {
     }
 }
 
-# Archetype system prompts
-TAG_SYSTEM_PROMPT = """You are a Tight-Aggressive (TAG) poker player."""
-LAG_SYSTEM_PROMPT = """You are a Loose-Aggressive (LAG) poker player."""
-TIGHT_PASSIVE_SYSTEM_PROMPT = """You are a Tight-Passive (Rock/Nit) poker player."""
-CALLING_STATION_SYSTEM_PROMPT = """You are a Calling Station poker player."""
-LOOSE_PASSIVE_SYSTEM_PROMPT = """You are a Loose-Passive (Fish) poker player."""
-MANIAC_SYSTEM_PROMPT = """You are a Maniac poker player."""
-BEGINNER_SYSTEM_PROMPT = """You are a Beginner poker player."""
-ADAPTABLE_SYSTEM_PROMPT = """You are an Adaptable poker player."""
-GTO_SYSTEM_PROMPT = """You are a GTO (Game Theory Optimal) poker player."""
-SHORT_STACK_SYSTEM_PROMPT = """You are a Short Stack specialist poker player."""
-TRAPPY_SYSTEM_PROMPT = """You are a Trappy (Slow-Player) poker player."""
+# Archetype system prompts (import full prompts from agent_prompts)
+from .agent_prompts import (
+    TAG_SYSTEM_PROMPT,
+    LAG_SYSTEM_PROMPT,
+    TIGHT_PASSIVE_SYSTEM_PROMPT,
+    CALLING_STATION_SYSTEM_PROMPT,
+    LOOSE_PASSIVE_SYSTEM_PROMPT,
+    MANIAC_SYSTEM_PROMPT,
+    BEGINNER_SYSTEM_PROMPT,
+    ADAPTABLE_SYSTEM_PROMPT,
+    GTO_SYSTEM_PROMPT,
+    SHORT_STACK_SYSTEM_PROMPT,
+    TRAPPY_SYSTEM_PROMPT,
+    POKER_ACTION_SCHEMA  # ensure schema is available
+)
