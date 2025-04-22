@@ -1273,12 +1273,13 @@ class GameService:
                     from ai.agents.response_parser import AgentResponseParser
 
                     # Request decision from AI
+                    # Request decision from AI (session-only memory)
                     ai_decision = await MemoryIntegration.get_agent_decision(
                         archetype=archetype,
                         game_state=game_state_dict,
                         context=context,
                         player_id=player_id,
-                        use_memory=True,
+                        use_memory=False,               # disable persistent memory, use in-session profiles only
                         intelligence_level=intelligence_level
                     )
                     logging.info(f"AI Action: Received decision: {ai_decision}")

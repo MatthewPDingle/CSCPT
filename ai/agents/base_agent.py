@@ -82,39 +82,38 @@ class PokerAgent(ABC):
         """
         pass
     
-    def _build_opponent_profile_string(self) -> str:
+    def _build_opponent_profile_string(self, names_map: Optional[Dict[str, str]] = None) -> str:
         """
-        Build a string representation of opponent profiles.
-        
+        Build a string representation of opponent profiles, using player names when provided.
+
+        Args:
+            names_map: Optional mapping from player_id to player name
+
         Returns:
             Formatted string of opponent profiles
         """
         # If using persistent memory, get profiles from the memory service
         if self.use_persistent_memory and self.memory_service:
-            # Get current player ID to exclude self from profiles
-            my_player_id = None
-            # We could add a player_id attribute to the agent in the future
-            
-            return self.memory_service.get_formatted_profiles(skip_players=[my_player_id] if my_player_id else None)
-        
+            # Fallback to memory_service output (IDs may appear here)
+            return self.memory_service.get_formatted_profiles()
         # Otherwise, use in-session opponent profiles
         if not self.opponent_profiles:
             return "No opponent data available yet."
-        
         profile_strings = []
         for player_id, profile in self.opponent_profiles.items():
+            # Determine display name
+            display = names_map.get(player_id, f"Player{player_id}") if names_map else f"Player{player_id}"
+            # Stats
             stats = []
             for stat_name, stat_value in profile.get("stats", {}).items():
                 stats.append(f"[{stat_name}:{stat_value}]")
-            
+            # Notes
             notes = profile.get("notes", [])
             notes_str = f"[Noted:{','.join(notes)}]" if notes else ""
-            
+            # Exploits
             exploits = profile.get("exploits", [])
             exploits_str = f"[Exploits:{','.join(exploits)}]" if exploits else ""
-            
-            profile_strings.append(f"Player{player_id}: {''.join(stats)} {exploits_str} {notes_str}")
-        
+            profile_strings.append(f"{display}: {''.join(stats)} {exploits_str} {notes_str}".strip())
         return "\n".join(profile_strings)
     
     def _format_game_state(self, game_state: Dict[str, Any]) -> str:
@@ -162,27 +161,32 @@ Your Hand: {' '.join(hand_cards)}
 Community Cards: {' '.join(comm_cards) if comm_cards else 'None'}
 Position: {position}
 Pot Size: {pot}
-Action History: {self._format_action_history(action_history)}
+Action History: {self._format_action_history(action_history, names_map)}
 Stack Sizes: {stack_str}
 """
         return formatted_state
     
-    def _format_action_history(self, action_history: List[Dict[str, Any]]) -> str:
-        """Format the action history into a readable string."""
+    def _format_action_history(
+        self,
+        action_history: List[Dict[str, Any]],
+        names_map: Dict[str, str]
+    ) -> str:
+        """Format the action history into a readable string, replacing IDs with names."""
         if not action_history:
             return "No actions yet."
-        
+
         formatted_actions = []
         for action in action_history:
-            player_id = action.get("player_id", "Unknown")
+            pid = action.get("player_id", "Unknown")
+            name = names_map.get(pid, pid)
             action_type = action.get("action", "Unknown")
             amount = action.get("amount", None)
-            
+
             if amount is not None:
-                formatted_actions.append(f"Player{player_id} {action_type} {amount}")
+                formatted_actions.append(f"{name} {action_type} {amount}")
             else:
-                formatted_actions.append(f"Player{player_id} {action_type}")
-        
+                formatted_actions.append(f"{name} {action_type}")
+
         return " → ".join(formatted_actions)
     
     def _format_stack_sizes(self, stack_sizes: Dict[str, int]) -> str:
@@ -360,8 +364,10 @@ Stack Sizes: {stack_str}
         # --- Prepare nested and flattened game states ---
         # Keep the raw nested state for full JSON
         nested_state = game_state
-        # Build flattened state for formatting
+        # Build flattened state for formatting, include a name map so we can show player names
         players = nested_state.get('players', []) or []
+        # Map player IDs to names for logging
+        player_names = {p.get('player_id'): p.get('name') for p in players if p.get('player_id')}
         # Identify this agent's player entry
         player_entry = next((p for p in players if p.get('player_id') == getattr(self, 'player_id', None)), None)
         hand = player_entry.get('cards', []) if player_entry else []
@@ -373,6 +379,7 @@ Stack Sizes: {stack_str}
             'pot': nested_state.get('total_pot', 0),
             'action_history': nested_state.get('action_history', []),
             'stack_sizes': {p.get('player_id'): p.get('chips', 0) for p in players},
+            'player_names': player_names,
             'round': nested_state.get('current_round'),
             'current_bet': nested_state.get('current_bet', 0)
         }
@@ -382,14 +389,37 @@ Stack Sizes: {stack_str}
         # Format state summary and full JSON
         formatted_state = self._format_game_state(flat_state)
         try:
-            raw_state = json.dumps(nested_state, indent=2)
+            # Prepare JSON for full game state: rename current_bet, substitute IDs with names in pots and action history
+            raw_nested = dict(nested_state)
+            # Build ID → name map from players list
+            players_list = raw_nested.get('players', []) or []
+            id_to_name = {p.get('player_id'): p.get('name') for p in players_list if p.get('player_id') and p.get('name')}
+            # Rename top-level current_bet to to_call
+            if 'current_bet' in raw_nested:
+                raw_nested['to_call'] = raw_nested.pop('current_bet')
+            # Replace eligible_player_ids with names in each pot
+            pots = raw_nested.get('pots')
+            if isinstance(pots, list):
+                for pot in pots:
+                    if 'eligible_player_ids' in pot:
+                        ids = pot.pop('eligible_player_ids') or []
+                        pot['eligible_player_names'] = [id_to_name.get(pid, pid) for pid in ids]
+            # Replace player_id with name in action history entries
+            history = raw_nested.get('action_history')
+            if isinstance(history, list):
+                for entry in history:
+                    pid = entry.pop('player_id', None)
+                    if pid is not None:
+                        entry['name'] = id_to_name.get(pid, pid)
+            raw_state = json.dumps(raw_nested, indent=2)
         except Exception:
             raw_state = str(nested_state)
-        opponent_profiles = self._build_opponent_profile_string()
+        # Build opponent profiles string, using player names where available
+        names_map = flat_state.get('player_names', {}) if isinstance(flat_state, dict) else {}
+        opponent_profiles = self._build_opponent_profile_string(names_map)
 
-        # Build user prompt including summary, full JSON state, and opponent profiles
+        # Build user prompt including formatted state, full JSON, opponent profiles, and context
         user_prompt = f"""
-GAME STATE SUMMARY:
 {formatted_state}
 
 FULL GAME STATE JSON:
@@ -440,6 +470,20 @@ Based on the current situation, what action will you take? Analyze the hand, con
                 extended_thinking=self.extended_thinking
             )
             
+            # Reorder fields for clearer human output: thinking, calculations, reasoning, action, amount
+            try:
+                ordered = {}
+                for key in ('thinking', 'calculations', 'reasoning', 'action', 'amount'):
+                    if key in response:
+                        ordered[key] = response[key]
+                # Append any other keys afterwards
+                for key, val in response.items():
+                    if key not in ordered:
+                        ordered[key] = val
+                response = ordered
+            except Exception:
+                # If reordering fails, keep original
+                pass
             logger.debug(f"Agent decision: {response}")
             # Log response to per-player log
             try:
