@@ -58,10 +58,11 @@ class AIConfig:
         
         # OpenAI configuration
         if os.environ.get("OPENAI_API_KEY"):
-            # Default to gpt-4.1 for AI opponents
+            # Default to o4-mini for AI opponents
             self.config["openai"] = {
                 "api_key": os.environ.get("OPENAI_API_KEY"),
-                "model": os.environ.get("OPENAI_MODEL", "gpt-4.1"),
+                # 'OPENAI_MODEL' env var can override this
+                "model": os.environ.get("OPENAI_MODEL", "o4-mini"),
                 "reasoning_level": os.environ.get("OPENAI_REASONING_LEVEL", "medium"),
                 "organization_id": os.environ.get("OPENAI_ORGANIZATION_ID")
             }
