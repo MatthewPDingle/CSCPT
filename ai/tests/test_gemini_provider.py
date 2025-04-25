@@ -27,6 +27,9 @@ class TestGeminiProvider(unittest.TestCase):
     GEMINI_2_0_FLASH_ID = "gemini-2.0-flash-001"
     GEMINI_2_0_FLASH_THINKING = "gemini-2.0-flash-thinking"
     GEMINI_2_0_FLASH_THINKING_ID = "gemini-2.0-flash-thinking-exp-01-21"
+    # New flash preview model
+    GEMINI_2_5_FLASH = "gemini-2.5-flash-preview-04-17"
+    GEMINI_2_5_FLASH_ID = "gemini-2.5-flash-preview-04-17"
     
     def setUp(self):
         """Set up test fixtures."""
@@ -47,6 +50,8 @@ class TestGeminiProvider(unittest.TestCase):
         
         # Set up model mock to return the chat mock
         self.model_mock.start_chat.return_value = self.chat_mock
+        # Make generate_content use chat.send_message to support complete_json in tests
+        self.model_mock.generate_content.side_effect = self.chat_mock.send_message
         # Also mock generate_content for complete_json override
         self.model_mock.generate_content.return_value = mock_response
         
@@ -80,6 +85,7 @@ class TestGeminiProvider(unittest.TestCase):
         # Test each model configuration
         models_to_test = [
             (self.GEMINI_2_5_PRO, self.GEMINI_2_5_PRO_ID, True),  # model name, expected ID, supports_reasoning
+            (self.GEMINI_2_5_FLASH, self.GEMINI_2_5_FLASH_ID, True),
             (self.GEMINI_2_0_FLASH, self.GEMINI_2_0_FLASH_ID, False),
             (self.GEMINI_2_0_FLASH_THINKING, self.GEMINI_2_0_FLASH_THINKING_ID, True)
         ]

@@ -23,6 +23,8 @@ class GeminiProvider(LLMProvider):
         "gemini-2.5-pro": {"id": "gemini-2.5-pro-preview-03-25", "supports_reasoning": True},
         "gemini-2.5-pro-preview": {"id": "gemini-2.5-pro-preview-03-25", "supports_reasoning": True},
         "gemini-2.5-pro-preview-03-25": {"id": "gemini-2.5-pro-preview-03-25", "supports_reasoning": True},
+        # New flash preview model, with structured output & reasoning support
+        "gemini-2.5-flash-preview-04-17": {"id": "gemini-2.5-flash-preview-04-17", "supports_reasoning": True},
         "gemini-2.0-flash": {"id": "gemini-2.0-flash-001", "supports_reasoning": False},
         "gemini-2.0-flash-thinking": {"id": "gemini-2.0-flash-thinking-exp-01-21", "supports_reasoning": True},
     }

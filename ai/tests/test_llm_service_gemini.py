@@ -25,6 +25,8 @@ class TestLLMServiceGemini(unittest.TestCase):
     GEMINI_2_5_PRO = "gemini-2.5-pro"
     GEMINI_2_0_FLASH = "gemini-2.0-flash"
     GEMINI_2_0_FLASH_THINKING = "gemini-2.0-flash-thinking"
+    # New flash preview model
+    GEMINI_2_5_FLASH = "gemini-2.5-flash-preview-04-17"
     
     def setUp(self):
         """Set up test fixtures."""
@@ -60,7 +62,12 @@ class TestLLMServiceGemini(unittest.TestCase):
     def test_all_model_initializations(self):
         """Test that all Gemini models are initialized correctly with the service."""
         # Models to test
-        models = [self.GEMINI_2_5_PRO, self.GEMINI_2_0_FLASH, self.GEMINI_2_0_FLASH_THINKING]
+        models = [
+            self.GEMINI_2_5_PRO,
+            self.GEMINI_2_5_FLASH,
+            self.GEMINI_2_0_FLASH,
+            self.GEMINI_2_0_FLASH_THINKING
+        ]
         
         for model in models:
             # Create a new configuration with this model
