@@ -5,6 +5,7 @@ Google Gemini API provider implementation.
 import json
 import re
 import logging
+import asyncio
 from typing import Dict, Any, Optional, List, Union, Literal
 
 from . import LLMProvider
@@ -736,8 +737,17 @@ class GeminiProvider(LLMProvider):
                             function_call = part.function_call
                             if hasattr(function_call, 'args') and function_call.args:
                                 logger.debug("Successfully extracted JSON from function call args")
-                                # This should be our structured JSON
-                                return function_call.args
+                                raw_args = function_call.args
+                                # Recursively convert any MapComposite or nested maps to plain dicts/lists
+                                def _convert(obj):
+                                    if hasattr(obj, 'items'):
+                                        return {k: _convert(v) for k, v in obj.items()}
+                                    if isinstance(obj, list):
+                                        return [_convert(v) for v in obj]
+                                    return obj
+                                python_args = _convert(raw_args)
+                                logger.debug(f"Returning JSON dict: {python_args}")
+                                return python_args
                     
                     # If we couldn't extract from function_call, check if we have text
                     for part in function_response.candidates[0].content.parts:
@@ -854,3 +864,67 @@ class GeminiProvider(LLMProvider):
         except Exception as e:
             logger.error(f"Error generating JSON with Gemini API: {str(e)}")
             raise
+    
+    # Override complete_json to use response_mime_type (mime-based JSON output)
+    async def complete_json(self,
+                            system_prompt: str,
+                            user_prompt: str,
+                            json_schema: Dict[str, Any],
+                            temperature: Optional[float] = None,
+                            extended_thinking: bool = False) -> Dict[str, Any]:
+        """Generate JSON using response_mime_type config."""
+        # Build generation config forcing JSON
+        cfg = dict(self.generation_config)
+        if temperature is not None:
+            cfg["temperature"] = temperature
+        cfg["response_mime_type"] = "application/json"
+
+        # Embed schema instructions
+        schema_str = json.dumps(json_schema)
+        instr = (
+            f"{system_prompt}\n\n"
+            f"Your response MUST be a valid JSON object that follows this schema: {schema_str}. "
+            "Do not include any text before or after the JSON."
+        )
+
+        # Initialize model
+        json_model = self.genai.GenerativeModel(
+            model_name=self.model,
+            generation_config=self.genai.GenerationConfig(**cfg),
+            system_instruction=instr
+        )
+        try:
+            logger.debug(f"Generating JSON (mime_type) for: {user_prompt[:50]}...")
+            response = await asyncio.to_thread(json_model.generate_content, user_prompt)
+            # Extract text
+            text = None
+            if hasattr(response, 'text') and response.text:
+                text = response.text
+            elif hasattr(response, 'candidates'):
+                for cand in response.candidates or []:
+                    parts = getattr(getattr(cand, 'content', None), 'parts', None)
+                    if parts:
+                        for p in parts:
+                            if hasattr(p, 'text') and p.text:
+                                text = p.text
+                                break
+                    if text:
+                        break
+            if not text:
+                raise ValueError("Empty JSON payload from Gemini API")
+            # Parse JSON
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                # Regex fallback
+                for pat in [r'```json\s*([\s\S]*?)\s*```', r'({[\s\S]*})']:
+                    m = re.search(pat, text)
+                    if m:
+                        snippet = m.group(1) if m.lastindex else m.group(0)
+                        try:
+                            return json.loads(snippet)
+                        except json.JSONDecodeError:
+                            continue
+                return self._create_fallback_json(json_schema)
+        except Exception:
+            return self._create_fallback_json(json_schema)

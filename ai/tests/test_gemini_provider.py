@@ -47,6 +47,8 @@ class TestGeminiProvider(unittest.TestCase):
         
         # Set up model mock to return the chat mock
         self.model_mock.start_chat.return_value = self.chat_mock
+        # Also mock generate_content for complete_json override
+        self.model_mock.generate_content.return_value = mock_response
         
         # Set up genai mock to return the model mock
         self.genai_mock.GenerativeModel.return_value = self.model_mock
