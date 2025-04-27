@@ -78,33 +78,48 @@ class LLMService:
         Returns:
             Provider instance
         """
+        # Get the provider name to use
         name = provider_name or self.default_provider
+        
+        # Return cached provider if available
         if name in self.providers:
             return self.providers[name]
-        cfg = self.config.get_provider_config(name)
-        if name == 'anthropic':
-            prov = AnthropicProvider(
-                api_key=cfg['api_key'],
-                model=cfg.get('model'),
-                thinking_budget_tokens=cfg.get('thinking_budget_tokens', 4000)
-            )
-        elif name == 'openai':
-            prov = OpenAIProvider(
-                api_key=cfg['api_key'],
-                model=cfg.get('model'),
-                reasoning_level=cfg.get('reasoning_level', 'medium'),
-                organization_id=cfg.get('organization_id')
-            )
-        elif name == 'gemini':
-            prov = GeminiProvider(
-                api_key=cfg['api_key'],
-                model=cfg.get('model'),
-                generation_config=cfg.get('generation_config', {})
-            )
-        else:
-            raise ValueError(f"Unknown LLM provider: {name}")
-        self.providers[name] = prov
-        return prov
+        
+        # Otherwise, create a new provider instance
+        try:
+            cfg = self.config.get_provider_config(name)
+            
+            if name == 'anthropic':
+                prov = AnthropicProvider(
+                    api_key=cfg['api_key'],
+                    model=cfg.get('model'),
+                    thinking_budget_tokens=cfg.get('thinking_budget_tokens', 4000)
+                )
+            elif name == 'openai':
+                prov = OpenAIProvider(
+                    api_key=cfg['api_key'],
+                    model=cfg.get('model'),
+                    reasoning_level=cfg.get('reasoning_level', 'medium'),
+                    organization_id=cfg.get('organization_id')
+                )
+            elif name == 'gemini':
+                prov = GeminiProvider(
+                    api_key=cfg['api_key'],
+                    model=cfg.get('model'),
+                    generation_config=cfg.get('generation_config', {})
+                )
+            else:
+                raise ValueError(f"Unknown LLM provider: {name}")
+                
+            # Cache and return the provider
+            self.providers[name] = prov
+            return prov
+            
+        except Exception as e:
+            logger.error(f"Error initializing provider '{name}': {str(e)}")
+            raise ValueError(f"Could not initialize provider '{name}': {str(e)}")
+    
+    # This method is no longer needed - provider creation has been moved to _get_provider
 
     async def complete(
         self,

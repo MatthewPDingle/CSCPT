@@ -9,13 +9,9 @@ from typing import Dict, Any, Optional, List, Union
 
 from . import LLMProvider
 # Ensure anthropic module exists so tests can patch anthropic.Anthropic even if not installed
-import sys, types
-# Create a dummy anthropic module if missing so tests can patch anthropic.Anthropic
-if 'anthropic' not in sys.modules:
-    _anthropic_mod = types.ModuleType('anthropic')
-    # Provide a placeholder Anthropıc class for patching
-    _anthropic_mod.Anthropic = lambda *args, **kwargs: None
-    sys.modules['anthropic'] = _anthropic_mod
+# No need for a dummy module anymore, but keep comments for clarity
+# This previously created a dummy implementation to handle missing dependencies 
+# Now we'll rely on proper error handling in the __init__ method instead
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +35,12 @@ class AnthropicProvider(LLMProvider):
         try:
             import anthropic
             self.client = anthropic.Anthropic(api_key=api_key)
-        except ImportError:
-            logger.error("Failed to import anthropic library. Please install with: pip install anthropic")
+            logger.info(f"Successfully initialized Anthropic client with model {model}")
+        except ImportError as e:
+            logger.error(f"Failed to import anthropic library: {str(e)}. Please install with: pip install anthropic")
+            raise
+        except Exception as e:
+            logger.error(f"Error initializing Anthropic client: {str(e)}")
             raise
     
     async def complete(self, 
@@ -91,10 +91,26 @@ class AnthropicProvider(LLMProvider):
             }
         
         try:
+            # Verify that the client and messages attribute are properly initialized
+            if self.client is None:
+                raise RuntimeError("Anthropic client is not initialized")
+            if not hasattr(self.client, 'messages'):
+                raise RuntimeError("Anthropic client does not have 'messages' attribute")
+            
             # Note: Using sync API here - the Anthropic library doesn't appear to expose
             # async methods, but we keep the async interface for consistency with other providers
             response = self.client.messages.create(**params)
             
+            # Safety check for response
+            if response is None:
+                logger.error("Anthropic API returned None response")
+                return "Error: Anthropic API returned empty response"
+                
+            # Ensure response has content attribute
+            if not hasattr(response, 'content'):
+                logger.error("Anthropic response missing 'content' attribute")
+                return f"Error: Invalid response structure from Anthropic: {str(response)}"
+                
             # If we used extended thinking, we might want to log or use the thinking content
             has_thinking = False
             for content_item in response.content:
@@ -118,6 +134,7 @@ class AnthropicProvider(LLMProvider):
             
         except Exception as e:
             logger.error(f"Error calling Anthropic API: {str(e)}")
+            # Re-raise the exception to let the LLM service handle it
             raise
     
     async def complete_json(self, 
@@ -150,22 +167,31 @@ class AnthropicProvider(LLMProvider):
             extended_thinking=extended_thinking
         )
         
+        # Simple validity check
+        if not response_text or not isinstance(response_text, str):
+            logger.error(f"Invalid response from complete method: {response_text}")
+            raise ValueError(f"Invalid response from Anthropic API: {response_text}")
+            
         # Extract and parse the JSON response
         try:
             # Try to parse the entire response as JSON
-            return json.loads(response_text)
-        except json.JSONDecodeError:
-            # If that fails, try to extract JSON with regex
-            json_pattern = r'```json\s*([\s\S]*?)\s*```'
-            match = re.search(json_pattern, response_text)
-            if match:
-                return json.loads(match.group(1))
-            else:
-                # Try one more pattern that might capture JSON
-                json_pattern = r'{[\s\S]*}'
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                # If that fails, try to extract JSON with regex
+                json_pattern = r'```json\s*([\s\S]*?)\s*```'
                 match = re.search(json_pattern, response_text)
                 if match:
-                    return json.loads(match.group(0))
+                    return json.loads(match.group(1))
                 else:
-                    logger.error(f"Could not extract valid JSON from response: {response_text}")
-                    raise ValueError("Could not extract valid JSON from response")
+                    # Try one more pattern that might capture JSON
+                    json_pattern = r'{[\s\S]*}'
+                    match = re.search(json_pattern, response_text)
+                    if match:
+                        return json.loads(match.group(0))
+                    else:
+                        logger.error(f"Could not extract valid JSON from response: {response_text}")
+                        raise ValueError(f"Could not extract valid JSON from response: {response_text}")
+        except Exception as e:
+            logger.error(f"Error parsing JSON response: {str(e)}")
+            raise
