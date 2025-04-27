@@ -177,4 +177,9 @@ class LLMService:
         )
         # Log raw JSON response with unicode unescaped for readability
         logger.debug("JSON Response: %s", json.dumps(resp, indent=2, ensure_ascii=False))
+        
+        # Additional debug logging for schema-formatted responses
+        if isinstance(resp, dict) and "type" in resp and resp.get("type") == "object" and "properties" in resp:
+            logger.warning("Received schema-formatted response instead of direct content. Should be handled by provider.")
+            
         return resp

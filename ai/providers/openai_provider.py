@@ -418,6 +418,44 @@ class OpenAIProvider(LLMProvider):
                         logger.debug(f"Extended thinking: {json.dumps(result['thinking'])}")
                         return result["result"]
                 
+                # Check if the response is actually a JSON schema definition with properties
+                # This happens with GPT-4o-mini which sometimes returns the schema structure instead of just the content
+                if isinstance(result, dict) and "type" in result and result.get("type") == "object" and "properties" in result:
+                    logger.debug("Detected JSON schema output structure, unwrapping properties")
+                    properties = result.get("properties", {})
+                    
+                    # Only unwrap if properties contains our expected fields (not just schema metadata)
+                    required_fields = ["thinking", "action", "amount", "reasoning"]
+                    if all(field in properties for field in required_fields):
+                        # Create a new dict with the contents of properties
+                        unwrapped = {}
+                        for key, value_obj in properties.items():
+                            # Extract the default value if available, otherwise set to empty default based on type
+                            if isinstance(value_obj, dict):
+                                # For simple fields like action, amount, thinking
+                                unwrapped[key] = None
+                            else:
+                                # Keep as is (shouldn't happen in schema format)
+                                unwrapped[key] = value_obj
+                        
+                        # For nested objects like reasoning, calculations
+                        if "reasoning" in properties and isinstance(properties["reasoning"], dict) and "properties" in properties["reasoning"]:
+                            reasoning_props = properties["reasoning"].get("properties", {})
+                            unwrapped["reasoning"] = {k: None for k in reasoning_props.keys()}
+                        
+                        if "calculations" in properties and isinstance(properties["calculations"], dict) and "properties" in properties["calculations"]:
+                            calc_props = properties["calculations"].get("properties", {})
+                            unwrapped["calculations"] = {k: None for k in calc_props.keys()}
+                        
+                        # Now look for actual values in the response that match the schema
+                        # This handles cases where the model includes values along with the schema
+                        for key, value_obj in properties.items():
+                            if isinstance(value_obj, dict) and key in result:
+                                unwrapped[key] = result[key]
+                        
+                        logger.debug(f"Unwrapped schema response: {json.dumps(unwrapped, indent=2)}")
+                        return unwrapped
+                
                 return result
                 
             except json.JSONDecodeError:
@@ -433,7 +471,37 @@ class OpenAIProvider(LLMProvider):
                     if match:
                         try:
                             text_to_parse = match.group(1) if pattern.startswith('```') else match.group(0)
-                            return json.loads(text_to_parse)
+                            result = json.loads(text_to_parse)
+                            
+                            # Apply the same schema unwrapping logic to extracted JSON
+                            if isinstance(result, dict) and "type" in result and result.get("type") == "object" and "properties" in result:
+                                logger.debug("Detected JSON schema in extracted text, unwrapping properties")
+                                properties = result.get("properties", {})
+                                
+                                # Only unwrap if properties contains our expected fields
+                                required_fields = ["thinking", "action", "amount", "reasoning"]
+                                if all(field in properties for field in required_fields):
+                                    # Create a new dict with the contents of properties
+                                    unwrapped = {}
+                                    for key, value_obj in properties.items():
+                                        # For simple fields like action, amount, thinking
+                                        if isinstance(value_obj, dict) and "type" in value_obj:
+                                            unwrapped[key] = None  # Default null value
+                                        else:
+                                            unwrapped[key] = value_obj
+                                    
+                                    # For nested objects like reasoning, calculations
+                                    if "reasoning" in properties and isinstance(properties["reasoning"], dict) and "properties" in properties["reasoning"]:
+                                        reasoning_props = properties["reasoning"].get("properties", {})
+                                        unwrapped["reasoning"] = {k: None for k in reasoning_props.keys()}
+                                    
+                                    if "calculations" in properties and isinstance(properties["calculations"], dict) and "properties" in properties["calculations"]:
+                                        calc_props = properties["calculations"].get("properties", {})
+                                        unwrapped["calculations"] = {k: None for k in calc_props.keys()}
+                                    
+                                    return unwrapped
+                            
+                            return result
                         except (json.JSONDecodeError, IndexError):
                             continue
                 
