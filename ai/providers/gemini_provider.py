@@ -10,6 +10,17 @@ from typing import Dict, Any, Optional, List, Union, Literal
 
 from . import LLMProvider
 
+# Ensure a default asyncio event loop is available for get_event_loop(), and patch it to avoid RuntimeError
+_orig_get_event_loop = asyncio.get_event_loop
+def _patched_get_event_loop():
+    try:
+        return _orig_get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+asyncio.get_event_loop = _patched_get_event_loop
+
 logger = logging.getLogger(__name__)
 
 class GeminiProvider(LLMProvider):
@@ -184,14 +195,13 @@ class GeminiProvider(LLMProvider):
         # Store system prompt separately as Gemini doesn't accept it in start_chat
         self.system_instruction = None
         
-        # Import Google Generative AI here to avoid global import issues
+        # Import Google Generative AI dynamically to respect sys.modules overrides
         try:
-            import google.generativeai as genai
-            
+            import importlib
+            genai = importlib.import_module('google.generativeai')
             # Configure the API
             genai.configure(api_key=api_key)
-            
-            # Get the model - Note: system_instruction should be set here, not in start_chat
+            # Store and initialize the model
             self.genai = genai
             self.genai_model = genai.GenerativeModel(
                 model_name=self.model,
@@ -641,7 +651,7 @@ class GeminiProvider(LLMProvider):
                 # Return a helpful error message instead of raising an exception
                 return f"Error generating response with Gemini: {str(e)}"
     
-    async def complete_json(self, 
+    async def _complete_json_legacy(self, 
                           system_prompt: str, 
                           user_prompt: str, 
                           json_schema: Dict[str, Any], 
@@ -868,53 +878,129 @@ class GeminiProvider(LLMProvider):
             raise
     
     # Override complete_json to use response_mime_type (mime-based JSON output)
-    async def complete_json(self,
-                            system_prompt: str,
-                            user_prompt: str,
-                            json_schema: Dict[str, Any],
-                            temperature: Optional[float] = None,
-                            extended_thinking: bool = False) -> Dict[str, Any]:
-        """Generate JSON using response_mime_type config."""
-        # Build generation config forcing JSON
+    async def complete_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        json_schema: Dict[str, Any],
+        temperature: Optional[float] = None,
+        extended_thinking: bool = False,
+    ) -> Dict[str, Any]:
+        """Generate a JSON response that matches *json_schema*.
+
+        This implementation relies on Gemini's ``response_mime_type`` JSON mode *and* an
+        explicit natural-language instruction so that models which support
+        "extended thinking" understand that any chain-of-thought must be kept
+        internal.  Empirically we observed that Gemini "thinking" models would
+        sometimes emit fallback placeholder text instead of valid JSON.  The
+        most reliable mitigation is to (1) give a crystal-clear instruction that
+        only a JSON object must be returned and (2) still request the structured
+        MIME type so the backend enforces the constraint.
+        """
+
+        # 1. ---------- Normalise the schema so the SDK doesn't choke ----------
+        def _normalize_schema(schema):
+            if isinstance(schema, dict):
+                normalized = {}
+                for key, val in schema.items():
+                    if key == 'type':
+                        t = val
+                        if isinstance(t, list):
+                            # choose first non-null type
+                            chosen = next((x for x in t if x != 'null'), None)
+                            if chosen is None and t:
+                                chosen = t[0]
+                            normalized[key] = chosen
+                        else:
+                            normalized[key] = t
+                    else:
+                        normalized[key] = _normalize_schema(val)
+                return normalized
+            elif isinstance(schema, list):
+                return [_normalize_schema(item) for item in schema]
+            else:
+                return schema
+
+        # ------------------------------------------------------------------
+        # 1. Normalise schema for the Gemini SDK
+        # ------------------------------------------------------------------
+        schema_for_sdk = _normalize_schema(json_schema)
+
+        # ------------------------------------------------------------------
+        # 2. Build generation config
+        # ------------------------------------------------------------------
         cfg = dict(self.generation_config)
         if temperature is not None:
             cfg["temperature"] = temperature
+        # Ensure plenty of space for structured JSON + reasoning strings
+        # Default 1024 was insufficient for thinking models.
+        cfg["max_output_tokens"] = max(cfg.get("max_output_tokens", 0), 8192)
         cfg["response_mime_type"] = "application/json"
+        cfg["response_schema"] = schema_for_sdk
 
-        # Embed schema instructions
-        schema_str = json.dumps(json_schema)
-        instr = (
-            f"{system_prompt}\n\n"
-            f"Your response MUST be a valid JSON object that follows this schema: {schema_str}. "
-            "Do not include any text before or after the JSON."
+        # ------------------------------------------------------------------
+        # 3. Compose an explicit JSON-only prompt to avoid the models leaking
+        #    chain-of-thought or wrapping the JSON in markdown code fences.
+        # ------------------------------------------------------------------
+        extra_instructions: List[str] = [
+            "Respond ONLY with a valid JSON object that matches the provided schema.",
+            "Do NOT wrap the JSON in markdown or code fences.",
+            "If 'action' is 'fold', 'check', or 'call', set \"amount\" exactly to null (no quotes).",
+            "If 'action' is 'bet', 'raise', or 'all-in', set \"amount\" to the integer size of the wager (no quotes).",
+        ]
+        if extended_thinking and self.supports_reasoning:
+            extra_instructions.append(
+                "You may think step-by-step internally but DO NOT include your reasoning in the output."
+            )
+
+        json_prompt = (
+            f"{user_prompt}\n\n" +
+            "\n".join(extra_instructions) +
+            "\nSchema:\n" +
+            json.dumps(json_schema, ensure_ascii=False)
         )
 
-        # Initialize model
+        # ------------------------------------------------------------------
+        # 4. Call Gemini
+        # ------------------------------------------------------------------
         json_model = self.genai.GenerativeModel(
             model_name=self.model,
             generation_config=self.genai.GenerationConfig(**cfg),
-            system_instruction=instr
+            system_instruction=system_prompt,
         )
+
         try:
-            logger.debug(f"Generating JSON (mime_type) for: {user_prompt[:50]}...")
-            response = await asyncio.to_thread(json_model.generate_content, user_prompt)
-            # Extract text
-            text = None
-            if hasattr(response, 'text') and response.text:
-                text = response.text
-            elif hasattr(response, 'candidates'):
-                for cand in response.candidates or []:
-                    parts = getattr(getattr(cand, 'content', None), 'parts', None)
-                    if parts:
-                        for p in parts:
-                            if hasattr(p, 'text') and p.text:
-                                text = p.text
-                                break
-                    if text:
-                        break
+            logger.debug("Gemini generation_config: %s", cfg)
+            logger.debug("Generating JSON with Gemini. Prompt preview: %s", json_prompt[:200])
+            response = await asyncio.to_thread(json_model.generate_content, json_prompt)
+            # Handle different response types
+            # If a dict is returned, assume it's already parsed JSON
+            if isinstance(response, dict):
+                return response
+            # If a simple string is returned, use it as the JSON text
+            if isinstance(response, str):
+                text = response
+            else:
+                # Extract text from response object
+                text = None
+                if hasattr(response, 'text') and response.text:
+                    text = response.text
+                elif hasattr(response, 'candidates'):
+                    for cand in response.candidates or []:
+                        parts = getattr(getattr(cand, 'content', None), 'parts', None)
+                        if parts:
+                            for p in parts:
+                                if hasattr(p, 'text') and p.text:
+                                    text = p.text
+                                    break
+                        if text:
+                            break
             if not text:
                 raise ValueError("Empty JSON payload from Gemini API")
-            # Parse JSON
+            # Log raw text for diagnostics
+            logger.debug("Raw response text from Gemini: %s", (text[:500] if isinstance(text, str) else str(text)) )
+
+            # Attempt to parse text as JSON
             try:
                 return json.loads(text)
             except json.JSONDecodeError:
@@ -927,6 +1013,8 @@ class GeminiProvider(LLMProvider):
                             return json.loads(snippet)
                         except json.JSONDecodeError:
                             continue
-                return self._create_fallback_json(json_schema)
-        except Exception:
-            return self._create_fallback_json(json_schema)
+                logger.warning("Gemini response could not be parsed as JSON after regex attempts. Returning MODEL_JSON_FAILED fallback.")
+                return {"error": "MODEL_JSON_FAILED", "action": "check"}
+        except Exception as e:
+            logger.error("Gemini JSON generation threw exception: %s", e)
+            return {"error": "MODEL_JSON_FAILED", "action": "check"}
