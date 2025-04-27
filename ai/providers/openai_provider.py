@@ -429,30 +429,117 @@ class OpenAIProvider(LLMProvider):
                     if all(field in properties for field in required_fields):
                         # Create a new dict with the contents of properties
                         unwrapped = {}
+                        
+                        # First, extract all primitive values
                         for key, value_obj in properties.items():
-                            # Extract the default value if available, otherwise set to empty default based on type
-                            if isinstance(value_obj, dict):
-                                # For simple fields like action, amount, thinking
-                                unwrapped[key] = None
-                            else:
-                                # Keep as is (shouldn't happen in schema format)
+                            # For fields like thinking, where the value is defined directly in the properties
+                            if isinstance(value_obj, dict) and "type" in value_obj and value_obj.get("type") in ["string", "number", "boolean"]:
+                                # Check if there's an actual value in the text
+                                if key in response_text:
+                                    # Try to extract the value from the response text
+                                    value_match = re.search(f'"{key}"\\s*:\\s*"([^"]+)"', response_text)
+                                    if value_match:
+                                        unwrapped[key] = value_match.group(1)
+                                    else:
+                                        unwrapped[key] = None
+                                else:
+                                    unwrapped[key] = None
+                            elif not isinstance(value_obj, dict):
+                                # Direct value assignment (rare case)
                                 unwrapped[key] = value_obj
                         
-                        # For nested objects like reasoning, calculations
-                        if "reasoning" in properties and isinstance(properties["reasoning"], dict) and "properties" in properties["reasoning"]:
-                            reasoning_props = properties["reasoning"].get("properties", {})
-                            unwrapped["reasoning"] = {k: None for k in reasoning_props.keys()}
+                        # Handle nested objects by extracting actual values from the text
+                        if "reasoning" in properties and isinstance(properties["reasoning"], dict):
+                            reasoning_obj = properties.get("reasoning", {})
+                            if "properties" in reasoning_obj:
+                                reasoning_props = reasoning_obj.get("properties", {})
+                                unwrapped["reasoning"] = {}
+                                
+                                # Extract actual values from the response for each reasoning field
+                                for reason_key in reasoning_props.keys():
+                                    reason_pattern = f'"reasoning"\\s*:\\s*{{[^}}]*"{reason_key}"\\s*:\\s*"([^"]+)"'
+                                    reason_match = re.search(reason_pattern, response_text, re.DOTALL)
+                                    if reason_match:
+                                        if "reasoning" not in unwrapped:
+                                            unwrapped["reasoning"] = {}
+                                        unwrapped["reasoning"][reason_key] = reason_match.group(1)
+                                    else:
+                                        # If we can't find it with regex, set to empty
+                                        if "reasoning" not in unwrapped:
+                                            unwrapped["reasoning"] = {}
+                                        unwrapped["reasoning"][reason_key] = None
                         
-                        if "calculations" in properties and isinstance(properties["calculations"], dict) and "properties" in properties["calculations"]:
-                            calc_props = properties["calculations"].get("properties", {})
-                            unwrapped["calculations"] = {k: None for k in calc_props.keys()}
+                        # Same for calculations
+                        if "calculations" in properties and isinstance(properties["calculations"], dict):
+                            calc_obj = properties.get("calculations", {})
+                            if "properties" in calc_obj:
+                                calc_props = calc_obj.get("properties", {})
+                                unwrapped["calculations"] = {}
+                                
+                                # Extract actual values from the response for each calculation field
+                                for calc_key in calc_props.keys():
+                                    calc_pattern = f'"calculations"\\s*:\\s*{{[^}}]*"{calc_key}"\\s*:\\s*"([^"]+)"'
+                                    calc_match = re.search(calc_pattern, response_text, re.DOTALL)
+                                    if calc_match:
+                                        if "calculations" not in unwrapped:
+                                            unwrapped["calculations"] = {}
+                                        unwrapped["calculations"][calc_key] = calc_match.group(1)
+                                    else:
+                                        # If we can't find it with regex, set to empty
+                                        if "calculations" not in unwrapped:
+                                            unwrapped["calculations"] = {}
+                                        unwrapped["calculations"][calc_key] = None
                         
-                        # Now look for actual values in the response that match the schema
-                        # This handles cases where the model includes values along with the schema
-                        for key, value_obj in properties.items():
-                            if isinstance(value_obj, dict) and key in result:
-                                unwrapped[key] = result[key]
+                        # Direct extraction approach (more reliable but more complex)
+                        # Extract primitive values directly - this handles cases that regex misses
+                        for key in properties.keys():
+                            # Skip nested objects, they're handled separately
+                            if key in ["reasoning", "calculations"]:
+                                continue
+                                
+                            # Check if there's a direct value in the properties object
+                            if key in result.get("properties", {}):
+                                prop_obj = result["properties"][key]
+                                if isinstance(prop_obj, dict) and prop_obj:
+                                    # Try to find a text value in the property definition
+                                    if prop_obj.get("text"):
+                                        unwrapped[key] = prop_obj.get("text")
+                                    elif prop_obj.get("default"):
+                                        unwrapped[key] = prop_obj.get("default")
+                                    # If there's an example, use that
+                                    elif prop_obj.get("example"):
+                                        unwrapped[key] = prop_obj.get("example")
                         
+                        # Special handling for action and amount which often have direct values
+                        action_pattern = r'"action"\s*:\s*"([^"]+)"'
+                        action_match = re.search(action_pattern, response_text)
+                        if action_match:
+                            unwrapped["action"] = action_match.group(1)
+                            
+                        amount_pattern = r'"amount"\s*:\s*(\d+|null)'
+                        amount_match = re.search(amount_pattern, response_text)
+                        if amount_match:
+                            # Handle null or numeric values properly
+                            amount_val = amount_match.group(1)
+                            if amount_val == "null":
+                                unwrapped["amount"] = None
+                            else:
+                                try:
+                                    unwrapped["amount"] = int(amount_val)
+                                except ValueError:
+                                    try:
+                                        unwrapped["amount"] = float(amount_val)
+                                    except ValueError:
+                                        unwrapped["amount"] = None
+                        
+                        # For thinking, which is often a long text field
+                        thinking_pattern = r'"thinking"\s*:\s*"([^"]+)"'
+                        thinking_match = re.search(thinking_pattern, response_text)
+                        if thinking_match:
+                            unwrapped["thinking"] = thinking_match.group(1)
+                            
+                        # When debugging, show both raw text and extracted values
+                        logger.debug(f"Raw response text sample: {response_text[:200]}...")
                         logger.debug(f"Unwrapped schema response: {json.dumps(unwrapped, indent=2)}")
                         return unwrapped
                 
@@ -483,22 +570,69 @@ class OpenAIProvider(LLMProvider):
                                 if all(field in properties for field in required_fields):
                                     # Create a new dict with the contents of properties
                                     unwrapped = {}
+                                    
+                                    # First, extract all primitive values using the raw text
                                     for key, value_obj in properties.items():
-                                        # For simple fields like action, amount, thinking
+                                        # For fields like thinking, which are defined directly in the schema
                                         if isinstance(value_obj, dict) and "type" in value_obj:
-                                            unwrapped[key] = None  # Default null value
+                                            # Try to extract actual values from the text
+                                            value_pattern = f'"{key}"\\s*:\\s*"([^"]*)"'
+                                            value_match = re.search(value_pattern, text_to_parse, re.DOTALL)
+                                            if value_match:
+                                                unwrapped[key] = value_match.group(1)
+                                            else:
+                                                # For numeric fields like amount
+                                                num_pattern = f'"{key}"\\s*:\\s*(\\d+|null)'
+                                                num_match = re.search(num_pattern, text_to_parse)
+                                                if num_match:
+                                                    val = num_match.group(1)
+                                                    if val == "null":
+                                                        unwrapped[key] = None
+                                                    else:
+                                                        try:
+                                                            unwrapped[key] = int(val)
+                                                        except ValueError:
+                                                            try:
+                                                                unwrapped[key] = float(val)
+                                                            except ValueError:
+                                                                unwrapped[key] = None
+                                                else:
+                                                    unwrapped[key] = None
                                         else:
                                             unwrapped[key] = value_obj
                                     
-                                    # For nested objects like reasoning, calculations
+                                    # Handle nested objects with special attention to extract actual values
                                     if "reasoning" in properties and isinstance(properties["reasoning"], dict) and "properties" in properties["reasoning"]:
                                         reasoning_props = properties["reasoning"].get("properties", {})
-                                        unwrapped["reasoning"] = {k: None for k in reasoning_props.keys()}
+                                        unwrapped["reasoning"] = {}
+                                        
+                                        # Extract each reasoning field separately
+                                        for reason_key in reasoning_props.keys():
+                                            # More robust pattern that can handle multi-line text with escaped quotes
+                                            reason_pattern = f'"reasoning"\\s*:\\s*{{[\\s\\S]*?"{reason_key}"\\s*:\\s*"([\\s\\S]*?)"(?:,|\\s*}})'
+                                            reason_match = re.search(reason_pattern, text_to_parse)
+                                            if reason_match:
+                                                unwrapped["reasoning"][reason_key] = reason_match.group(1)
+                                            else:
+                                                unwrapped["reasoning"][reason_key] = None
                                     
+                                    # Same approach for calculations
                                     if "calculations" in properties and isinstance(properties["calculations"], dict) and "properties" in properties["calculations"]:
                                         calc_props = properties["calculations"].get("properties", {})
-                                        unwrapped["calculations"] = {k: None for k in calc_props.keys()}
+                                        unwrapped["calculations"] = {}
+                                        
+                                        # Extract each calculation field separately
+                                        for calc_key in calc_props.keys():
+                                            calc_pattern = f'"calculations"\\s*:\\s*{{[\\s\\S]*?"{calc_key}"\\s*:\\s*"([\\s\\S]*?)"(?:,|\\s*}})'
+                                            calc_match = re.search(calc_pattern, text_to_parse)
+                                            if calc_match:
+                                                unwrapped["calculations"][calc_key] = calc_match.group(1)
+                                            else:
+                                                unwrapped["calculations"][calc_key] = None
                                     
+                                    # Debug log with the first part of the raw text and the unwrapped result
+                                    logger.debug(f"Raw text sample: {text_to_parse[:100]}...")
+                                    logger.debug(f"Unwrapped extracted schema: {json.dumps(unwrapped, indent=2)}")
                                     return unwrapped
                             
                             return result
