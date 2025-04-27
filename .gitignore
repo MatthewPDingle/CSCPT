@@ -1,1 +1,15 @@
-# Ignore environment files and local config\n*.env\n__pycache__/\n*.pyc
+ # Ignore environment files and local config
+ *.env
+ __pycache__/
+ *.pyc
+
+ # Ignore local test outputs
+ ai_test_output*.txt
+
+ # Ignore AI logs and data directories
+ ai/data/
+ data/
+
+ # Ignore backend logs, data, and virtual environments
+ backend/data/
+ backend/venv/
