@@ -51,15 +51,20 @@ ai_root_logger.addHandler(_fh)
 ai_root_logger.propagate = False
 
 class LLMService:
-    """Dispatcher that selects and invokes real LLM providers based on config."""
-    def __init__(self, config_path: Optional[str] = None):
+    """Dispatcher that selects and invokes real LLM providers based on config or config dict."""
+    def __init__(self, config: Optional[Any] = None):
         """
         Load AI configuration and prepare provider cache.
 
         Args:
-            config_path: Optional path to JSON config file
+            config: Optional path to JSON config file or dict of provider settings
         """
-        self.config = AIConfig(config_path)
+        # Allow passing a config dict directly for testing or dynamic configuration
+        if isinstance(config, dict):
+            self.config = AIConfig(None)
+            self.config.config = config
+        else:
+            self.config = AIConfig(config)
         self.default_provider = self.config.get_default_provider()
         self.providers: Dict[str, Any] = {}
         logger.info(f"LLMService initialized with default provider: {self.default_provider}")
@@ -124,7 +129,7 @@ class LLMService:
             extended_thinking
         )
         # Log which model is being used for this completion
-        logger.debug("Model: %s", prov.model)
+        logger.debug("Model: %s", getattr(prov, 'model', None))
         logger.debug("System prompt:\n%s", system_prompt)
         logger.debug("User prompt:\n%s", user_prompt)
         resp = await prov.complete(
@@ -159,7 +164,7 @@ class LLMService:
             extended_thinking
         )
         # Log which model is being used for this JSON completion
-        logger.debug("Model: %s", prov.model)
+        logger.debug("Model: %s", getattr(prov, 'model', None))
         logger.debug("System prompt:\n%s", system_prompt)
         logger.debug("User prompt:\n%s", user_prompt)
         logger.debug("JSON schema:\n%s", json.dumps(json_schema, indent=2))

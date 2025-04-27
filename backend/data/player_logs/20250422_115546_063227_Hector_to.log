@@ -1,0 +1,173 @@
+SYSTEM PROMPT:
+You are an Adaptable poker player. You embody the following characteristics:
+
+Core Identity:
+- Strategic and observant
+- Able to shift gears based on table dynamics
+- Identifies and exploits opponent weaknesses
+- Balances multiple playing styles based on context
+
+Playing Style:
+- Adjust hand selection range based on table conditions (from 15% to 40%)
+- Switch between tight and loose or passive and aggressive as needed
+- Increase aggression against passive players
+- Tighten up against aggressive players
+- Trap against over-aggressive opponents
+- Value bet thinly against calling stations
+- Bluff rarely against players who don't fold
+- Constantly reassess strategy based on new information
+
+You have expert intelligence and sophisticated opponent modeling capabilities. You actively track tendencies of other players and adjust your strategy to exploit their weaknesses. Calculate pot odds, equity, and expected value for your decisions.
+
+Your decisions should reflect the Adaptable approach. Provide clear reasoning that demonstrates why your action aligns with Adaptable principles. Consider the specific opponents involved and how your strategy is designed to exploit them.
+
+
+USER PROMPT:
+
+
+GAME STATE:
+Your Hand: 4H 2D
+Community Cards: None
+Position: 8
+Pot Size: 7
+Action History: No actions yet.
+Stack Sizes: You: 1000, Alice: 1000, Bob: 1000, Charlie: 1000, Dan: 1000, Ernesto: 1000, Francis: 998, Gemma: 995, Hector: 1000
+
+
+FULL GAME STATE JSON:
+{
+  "game_id": "b669890c-f93c-4703-b2f2-d3e819ea5075",
+  "players": [
+    {
+      "player_id": "11b4277b-7d67-48c1-b45b-4557fde7bc5b",
+      "name": "You",
+      "chips": 1000,
+      "position": 0,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "02b86902-b81c-49d6-9982-3feab404a6e2",
+      "name": "Alice",
+      "chips": 1000,
+      "position": 1,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "d2bb21b2-54c5-49aa-a10b-fda709d67d4f",
+      "name": "Bob",
+      "chips": 1000,
+      "position": 2,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "727aa751-b0ec-4e84-9907-6035fe423a98",
+      "name": "Charlie",
+      "chips": 1000,
+      "position": 3,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "c7384a8d-f79e-4719-82c4-5ccbd7b8bf21",
+      "name": "Dan",
+      "chips": 1000,
+      "position": 4,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "b183fb7a-f3b8-4255-a373-345f3b61b96f",
+      "name": "Ernesto",
+      "chips": 1000,
+      "position": 5,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "af269753-8326-437c-8cb3-87d5f0ef4b47",
+      "name": "Francis",
+      "chips": 998,
+      "position": 6,
+      "status": "ACTIVE",
+      "current_bet": 2,
+      "total_bet": 2,
+      "cards": null
+    },
+    {
+      "player_id": "500a544d-7e72-4a1e-af1d-2451373b5f2a",
+      "name": "Gemma",
+      "chips": 995,
+      "position": 7,
+      "status": "ACTIVE",
+      "current_bet": 5,
+      "total_bet": 5,
+      "cards": null
+    },
+    {
+      "player_id": "a77fa230-f787-4846-a3a1-beb464004fa4",
+      "name": "Hector",
+      "chips": 1000,
+      "position": 8,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": [
+        {
+          "rank": "4",
+          "suit": "H"
+        },
+        {
+          "rank": "2",
+          "suit": "D"
+        }
+      ]
+    }
+  ],
+  "community_cards": [],
+  "pots": [
+    {
+      "name": "Main Pot",
+      "amount": 7,
+      "eligible_player_names": [
+        "Gemma",
+        "Francis"
+      ]
+    }
+  ],
+  "total_pot": 7,
+  "current_round": "PREFLOP",
+  "button_position": 5,
+  "current_player_idx": 8,
+  "small_blind": 2,
+  "big_blind": 5,
+  "ante": 0,
+  "max_buy_in": null,
+  "min_buy_in": null,
+  "action_history": [],
+  "to_call": 5
+}
+
+OPPONENT PROFILES:
+No opponent data available yet.
+
+GAME CONTEXT:
+Game Type: cash
+Stage: Unknown
+Blinds: [2, 5]
+
+Based on the current situation, what action will you take? Analyze the hand, consider pot odds, evaluate opponent tendencies, and make a decision that aligns with your playing style.

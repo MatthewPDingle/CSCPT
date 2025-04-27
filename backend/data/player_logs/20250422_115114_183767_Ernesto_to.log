@@ -1,0 +1,188 @@
+SYSTEM PROMPT:
+You are a Loose-Passive (Fish) poker player. You embody the following characteristics:
+
+Core Identity:
+- Recreational and entertainment-focused
+- Enjoys seeing many flops and playing hands
+- Avoids aggression and confrontation
+- Often makes fundamental strategic errors
+
+Playing Style:
+- Play many hands pre-flop (40-60% of starting hands)
+- Likes to see flops cheaply with any suited cards, connected cards, or face cards
+- Rarely raises pre-flop, preferring to limp or call
+- Continues with hands that have minimal equity
+- Calls too frequently with drawing hands regardless of pot odds
+- Doesn't extract value with strong hands
+- Predictable post-flop patterns based primarily on absolute hand strength
+- Makes fundamental errors in bet sizing and hand reading
+
+You have basic intelligence and limited opponent modeling capabilities. You focus primarily on your own cards and how they connect with the board. You frequently make mathematical errors when calculating odds.
+
+Your decisions should reflect the Loose-Passive approach. Provide reasoning that demonstrates why your action aligns with Loose-Passive principles. Be drawn to playing hands that seem "fun" or have a chance to make something interesting.
+
+
+USER PROMPT:
+
+
+GAME STATE:
+Your Hand: KS 10H
+Community Cards: None
+Position: 5
+Pot Size: 7
+Action History: [PREFLOP] → Charlie fold → Dan fold
+Stack Sizes: You: 1000, Alice: 998, Bob: 995, Charlie: 1000, Dan: 1000, Ernesto: 1000, Francis: 1000, Gemma: 1000, Hector: 1000
+
+
+FULL GAME STATE JSON:
+{
+  "game_id": "f575ec34-4aa0-4e96-9c8d-4f118c9daa14",
+  "players": [
+    {
+      "player_id": "95d63460-8738-4f3d-b943-f0f22aeed6c5",
+      "name": "You",
+      "chips": 1000,
+      "position": 0,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "c6000a9a-9c39-4809-accc-64db7a1eca1a",
+      "name": "Alice",
+      "chips": 998,
+      "position": 1,
+      "status": "ACTIVE",
+      "current_bet": 2,
+      "total_bet": 2,
+      "cards": null
+    },
+    {
+      "player_id": "d2c9c3ca-8b89-4999-ac32-acc6ad9730cd",
+      "name": "Bob",
+      "chips": 995,
+      "position": 2,
+      "status": "ACTIVE",
+      "current_bet": 5,
+      "total_bet": 5,
+      "cards": null
+    },
+    {
+      "player_id": "f38bd785-ae95-47f3-976b-0c78b767d581",
+      "name": "Charlie",
+      "chips": 1000,
+      "position": 3,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "363d066c-0799-426a-8e37-1be8b4d84b50",
+      "name": "Dan",
+      "chips": 1000,
+      "position": 4,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "f943a000-f49d-48b6-a907-3ebab3d88991",
+      "name": "Ernesto",
+      "chips": 1000,
+      "position": 5,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": [
+        {
+          "rank": "K",
+          "suit": "S"
+        },
+        {
+          "rank": "10",
+          "suit": "H"
+        }
+      ]
+    },
+    {
+      "player_id": "f7282e1b-fd40-4793-a7df-c61370fbafa0",
+      "name": "Francis",
+      "chips": 1000,
+      "position": 6,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "5bbe2a90-5dad-435f-b0c1-4c6fce5eb445",
+      "name": "Gemma",
+      "chips": 1000,
+      "position": 7,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "3d0a06b2-95e6-42a3-9276-a6021097de19",
+      "name": "Hector",
+      "chips": 1000,
+      "position": 8,
+      "status": "ACTIVE",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    }
+  ],
+  "community_cards": [],
+  "pots": [
+    {
+      "name": "Main Pot",
+      "amount": 7,
+      "eligible_player_names": [
+        "Alice",
+        "Bob"
+      ]
+    }
+  ],
+  "total_pot": 7,
+  "current_round": "PREFLOP",
+  "button_position": 0,
+  "current_player_idx": 5,
+  "small_blind": 2,
+  "big_blind": 5,
+  "ante": 0,
+  "max_buy_in": null,
+  "min_buy_in": null,
+  "action_history": [
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:50:58.622409",
+      "name": "Charlie"
+    },
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:51:13.679612",
+      "name": "Dan"
+    }
+  ],
+  "to_call": 5
+}
+
+OPPONENT PROFILES:
+No opponent data available yet.
+
+GAME CONTEXT:
+Game Type: cash
+Stage: Unknown
+Blinds: [2, 5]
+
+Based on the current situation, what action will you take? Analyze the hand, consider pot odds, evaluate opponent tendencies, and make a decision that aligns with your playing style.

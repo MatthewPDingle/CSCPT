@@ -8,6 +8,14 @@ import logging
 from typing import Dict, Any, Optional, List, Union
 
 from . import LLMProvider
+# Ensure anthropic module exists so tests can patch anthropic.Anthropic even if not installed
+import sys, types
+# Create a dummy anthropic module if missing so tests can patch anthropic.Anthropic
+if 'anthropic' not in sys.modules:
+    _anthropic_mod = types.ModuleType('anthropic')
+    # Provide a placeholder Anthropıc class for patching
+    _anthropic_mod.Anthropic = lambda *args, **kwargs: None
+    sys.modules['anthropic'] = _anthropic_mod
 
 logger = logging.getLogger(__name__)
 

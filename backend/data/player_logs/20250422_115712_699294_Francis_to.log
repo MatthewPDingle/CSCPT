@@ -1,0 +1,222 @@
+SYSTEM PROMPT:
+You are a Maniac poker player. You embody the following characteristics:
+
+Core Identity:
+- Ultra-aggressive and action-oriented
+- Thrill-seeking and volatility-embracing
+- Minimal regard for conventional hand selection
+- Believes aggression is always the best approach
+
+Playing Style:
+- Play an extremely wide range of hands (50-70%)
+- Raise and re-raise constantly with little regard for hand strength
+- Apply maximum pressure in most situations
+- Use overbets and unusual sizing to confuse opponents
+- Bluff with high frequency in all situations
+- Rarely slow play even monster hands
+- Create chaotic, high-variance situations
+- Constantly attack perceived weakness
+
+You have intermediate intelligence and can occasionally pick up on opponent tendencies, but you primarily focus on implementing your aggressive strategy regardless of context.
+
+Your decisions should reflect the Maniac approach. Provide reasoning that demonstrates why your action aligns with Maniac principles. Be overly confident in your bluffs and consistently favor the most aggressive option available.
+
+
+USER PROMPT:
+
+
+GAME STATE:
+Your Hand: 4C AH
+Community Cards: None
+Position: 6
+Pot Size: 12
+Action History: [PREFLOP] → Hector fold → Alice fold → Bob fold → Charlie fold → Dan fold → Ernesto fold
+Stack Sizes: You: 995, Alice: 1000, Bob: 1000, Charlie: 1000, Dan: 1000, Ernesto: 1000, Francis: 998, Gemma: 995, Hector: 1000
+
+
+FULL GAME STATE JSON:
+{
+  "game_id": "b669890c-f93c-4703-b2f2-d3e819ea5075",
+  "players": [
+    {
+      "player_id": "11b4277b-7d67-48c1-b45b-4557fde7bc5b",
+      "name": "You",
+      "chips": 995,
+      "position": 0,
+      "status": "ACTIVE",
+      "current_bet": 5,
+      "total_bet": 5,
+      "cards": null
+    },
+    {
+      "player_id": "02b86902-b81c-49d6-9982-3feab404a6e2",
+      "name": "Alice",
+      "chips": 1000,
+      "position": 1,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "d2bb21b2-54c5-49aa-a10b-fda709d67d4f",
+      "name": "Bob",
+      "chips": 1000,
+      "position": 2,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "727aa751-b0ec-4e84-9907-6035fe423a98",
+      "name": "Charlie",
+      "chips": 1000,
+      "position": 3,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "c7384a8d-f79e-4719-82c4-5ccbd7b8bf21",
+      "name": "Dan",
+      "chips": 1000,
+      "position": 4,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "b183fb7a-f3b8-4255-a373-345f3b61b96f",
+      "name": "Ernesto",
+      "chips": 1000,
+      "position": 5,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    },
+    {
+      "player_id": "af269753-8326-437c-8cb3-87d5f0ef4b47",
+      "name": "Francis",
+      "chips": 998,
+      "position": 6,
+      "status": "ACTIVE",
+      "current_bet": 2,
+      "total_bet": 2,
+      "cards": [
+        {
+          "rank": "4",
+          "suit": "C"
+        },
+        {
+          "rank": "A",
+          "suit": "H"
+        }
+      ]
+    },
+    {
+      "player_id": "500a544d-7e72-4a1e-af1d-2451373b5f2a",
+      "name": "Gemma",
+      "chips": 995,
+      "position": 7,
+      "status": "ACTIVE",
+      "current_bet": 5,
+      "total_bet": 5,
+      "cards": null
+    },
+    {
+      "player_id": "a77fa230-f787-4846-a3a1-beb464004fa4",
+      "name": "Hector",
+      "chips": 1000,
+      "position": 8,
+      "status": "FOLDED",
+      "current_bet": 0,
+      "total_bet": 0,
+      "cards": null
+    }
+  ],
+  "community_cards": [],
+  "pots": [
+    {
+      "name": "Main Pot",
+      "amount": 12,
+      "eligible_player_names": [
+        "You",
+        "Gemma",
+        "Francis"
+      ]
+    }
+  ],
+  "total_pot": 12,
+  "current_round": "PREFLOP",
+  "button_position": 5,
+  "current_player_idx": 6,
+  "small_blind": 2,
+  "big_blind": 5,
+  "ante": 0,
+  "max_buy_in": null,
+  "min_buy_in": null,
+  "action_history": [
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:56:01.945164",
+      "name": "Hector"
+    },
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:56:15.857912",
+      "name": "Alice"
+    },
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:56:29.922070",
+      "name": "Bob"
+    },
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:56:45.484115",
+      "name": "Charlie"
+    },
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:56:59.004133",
+      "name": "Dan"
+    },
+    {
+      "action": "fold",
+      "amount": null,
+      "round": "preflop",
+      "timestamp": "2025-04-22T11:57:12.194044",
+      "name": "Ernesto"
+    }
+  ],
+  "to_call": 5
+}
+
+OPPONENT PROFILES:
+Hector: [VPIP:Unknown][PFR:Unknown][3Bet:Unknown]
+Alice: [VPIP:Unknown][PFR:Unknown][3Bet:Unknown]
+Bob: [VPIP:Unknown][PFR:Unknown][3Bet:Unknown]
+Charlie: [VPIP:Unknown][PFR:Unknown][3Bet:Unknown]
+Dan: [VPIP:Unknown][PFR:Unknown][3Bet:Unknown]
+Ernesto: [VPIP:Unknown][PFR:Unknown][3Bet:Unknown]
+
+GAME CONTEXT:
+Game Type: cash
+Stage: Unknown
+Blinds: [2, 5]
+
+Based on the current situation, what action will you take? Analyze the hand, consider pot odds, evaluate opponent tendencies, and make a decision that aligns with your playing style.

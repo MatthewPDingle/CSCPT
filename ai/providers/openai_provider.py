@@ -26,19 +26,20 @@ class OpenAIProvider(LLMProvider):
     
     # Model mapping with specific capabilities and requirements
     MODEL_MAP = {
+        # GPT-4o and GPT-4o-mini support JSON-schema structured output
         "gpt-4o": {
-            "id": "gpt-4o", 
+            "id": "gpt-4o",
             "supports_reasoning": False,
             "max_tokens_param": "max_output_tokens",
-            "supports_json_schema": False,
+            "supports_json_schema": True,
             "uses_responses_endpoint": True,
             "supports_temperature": True
         },
         "gpt-4o-mini": {
-            "id": "gpt-4o-mini", 
+            "id": "gpt-4o-mini",
             "supports_reasoning": False,
             "max_tokens_param": "max_output_tokens",
-            "supports_json_schema": False,
+            "supports_json_schema": True,
             "uses_responses_endpoint": True,
             "supports_temperature": True
         },
@@ -296,7 +297,43 @@ class OpenAIProvider(LLMProvider):
         
         # Set default max_tokens (increase to allow longer responses)
         max_tokens = 8192
-        
+        # Fallback for models that do not support JSON schema: use free-form completion and parse JSON
+        if not supports_json_schema:
+            logger.warning(f"Model {self.model} does not support JSON schema-based completions. "
+                           "Falling back to free-form JSON completion.")
+            # Build a free-form JSON prompt
+            fallback_prompt = (
+                f"{user_prompt}\n\nProvide a JSON object matching this schema: "
+                f"{json.dumps(json_schema)}"
+            )
+            # Obtain response as text via standard completion
+            response_text = await self.complete(
+                system_prompt=system_prompt,
+                user_prompt=fallback_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                extended_thinking=extended_thinking
+            )
+            # Attempt to parse JSON from the response text
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                # Try to extract JSON substring with common patterns
+                json_patterns = [
+                    r'```json\s*([\s\S]*?)\s*```',  # JSON code block
+                    r'```([\s\S]*?)```',               # Any code block
+                    r'{[\s\S]*}'                       # JSON object
+                ]
+                for pattern in json_patterns:
+                    match = re.search(pattern, response_text)
+                    if match:
+                        json_str = match.group(1) if pattern.startswith('```') else match.group(0)
+                        try:
+                            return json.loads(json_str)
+                        except json.JSONDecodeError:
+                            continue
+            # Parsing failed
+            raise ValueError(f"Failed to parse JSON from model {self.model} response: {response_text}")
         # Enhance system prompt: always include JSON schema instructions
         schema_instruction = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}"
         enhanced_system_prompt = f"{system_prompt}\n\n{schema_instruction}"
@@ -365,6 +402,10 @@ class OpenAIProvider(LLMProvider):
                             if hasattr(content, 'text') and content.text:
                                 response_text += content.text.strip()
             
+            # Strip code fences if present
+            m = re.search(r'```(?:json)?\s*([\s\S]*?)```', response_text)
+            if m:
+                response_text = m.group(1)
             # Try to parse the JSON response
             try:
                 result = json.loads(response_text)
@@ -382,9 +423,9 @@ class OpenAIProvider(LLMProvider):
             except json.JSONDecodeError:
                 # Try to extract JSON with regex patterns
                 json_patterns = [
-                    r'```json\s*([\s\S]*?)\s*```',  # Code block with json tag
-                    r'```\s*([\s\S]*?)\s*```',      # Any code block
-                    r'{[\s\S]*}'                    # Any JSON object
+                    r'```json\s*([\s\S]*?)\s*```',   # Code block with json tag
+                    r'```\s*([\s\S]*?)\s*```',       # Any code block
+                    r'{[\s\S]*}'                     # Any JSON object
                 ]
                 
                 for pattern in json_patterns:
