@@ -55,6 +55,7 @@ class GeminiProvider(LLMProvider):
             "action" in schema.get("properties", {}) and 
             "amount" in schema.get("properties", {})):
             
+            # Create a detailed example with explicit calculations to guide the model
             return {
                 "thinking": "I have pocket aces (AA) which is the strongest possible starting hand. I'm in early position, so I should raise to build the pot and narrow the field.",
                 "action": "raise",
@@ -66,8 +67,8 @@ class GeminiProvider(LLMProvider):
                     "archetype_alignment": "As a tight-aggressive player, I want to play my premium hands strongly and extract value."
                 },
                 "calculations": {
-                    "pot_odds": "Not applicable pre-flop with a premium hand",
-                    "estimated_equity": "Over 85% against random hands"
+                    "pot_odds": "The pot is currently 3 big blinds. If I raise to 4bb, I'm risking 4bb to win 3bb, giving me pot odds of 3:4 or 0.75.",
+                    "estimated_equity": "With pocket aces, I have approximately 85% equity against a random hand. This gives me a positive expected value of (0.85 * 3bb) - (0.15 * 4bb) = 2.55bb - 0.6bb = +1.95bb."
                 }
             }
         
@@ -947,6 +948,7 @@ class GeminiProvider(LLMProvider):
             "Do NOT wrap the JSON in markdown or code fences.",
             "If 'action' is 'fold', 'check', or 'call', set \"amount\" exactly to null (no quotes).",
             "If 'action' is 'bet', 'raise', or 'all-in', set \"amount\" to the integer size of the wager (no quotes).",
+            "You MUST include a \"calculations\" field with \"pot_odds\" and \"estimated_equity\" in your response.",
         ]
         if extended_thinking and self.supports_reasoning:
             extra_instructions.append(
