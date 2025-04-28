@@ -29,3 +29,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Backend: FastAPI (Python) in backend/ - poker engine, API, game mechanics
 - Frontend: React/TypeScript in frontend/ - poker table UI, game controls
 - AI: Python models in ai/ - agent implementations using OpenAI, Anthropic, Gemini
+
+## Project Navigation
+- Each directory contains a `codex.md` file with documentation about that directory
+- Use these files to understand module purposes and file descriptions
+- The `codex.md` files provide high-level overviews of functionality and implementation details
+- Check these files first when looking for specific functionality or trying to understand a component
