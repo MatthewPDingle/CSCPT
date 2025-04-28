@@ -1840,6 +1840,14 @@ class PokerGame:
         Returns:
             True if hand is complete, False otherwise
         """
+        import logging
+        execution_id = str(id(self))[:8]
+        
+        # Check if there are players who still need to act in this round
+        if self.to_act:
+            logging.info(f"[END-ROUND-{execution_id}] Cannot end betting round yet - players still need to act: {self.to_act}")
+            return False  # Don't end the betting round if players still need to act
+        
         # Check if only one player is left (everyone else folded)
         active_players = [p for p in self.players 
                          if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
@@ -1851,14 +1859,17 @@ class PokerGame:
         all_in_players = [p for p in active_players if p.status == PlayerStatus.ALL_IN]
         active_not_all_in = [p for p in active_players if p.status == PlayerStatus.ACTIVE]
         
+        # Log player statuses for debugging
+        logging.info(f"[END-ROUND-{execution_id}] Active players: {[p.name for p in active_not_all_in]}, All-in players: {[p.name for p in all_in_players]}")
+        
         # Create side pots if there are all-in players
         if all_in_players:
             self._create_side_pots()
             
             # If all players are all-in except at most one, go straight to showdown
-            # This is critical for all-in confrontations
+            # This is critical for all-in confrontations - but only proceed if all players have acted
             if len(active_not_all_in) <= 1 and len(all_in_players) >= 1:
-                print("All-in confrontation detected, skipping to showdown")
+                logging.info(f"[END-ROUND-{execution_id}] All-in confrontation detected, skipping to showdown")
                 # Before going to showdown, make sure we have 5 community cards
                 # This ensures HandEvaluator can properly evaluate the hands
                 while len(self.community_cards) < 5:

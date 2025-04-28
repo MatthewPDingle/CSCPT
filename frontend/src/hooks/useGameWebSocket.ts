@@ -828,20 +828,10 @@ export const useGameWebSocket = (wsUrl: string) => {
             console.log('Hand result received:', message.data);
             setHandResult(message.data);
             
-            // Add detailed hand result to action log
-            if (message.data.winners && message.data.winners.length > 0) {
-            message.data.winners.forEach((winner: HandResultWinner) => {
-                const winningPlayer = winner.name || `Player ${winner.player_id}`;
-                const handType = winner.hand_rank || 'Unknown hand';
-                // Only treat undefined or null as unknown; allow zero
-                const winAmount = typeof winner.amount === 'number' ? winner.amount : 'unknown amount';
-                
-                // Add hand result to action log with emoji for visibility
-                setActionLog(prev => [
-                  ...prev,
-                  `🏆 ${winningPlayer} wins ${winAmount} chips with ${handType}!`
-                ]);
-              });
+            // The detailed hand result is already added to the action log by the backend
+            // We don't need to add it again here to avoid duplicates
+            if (process.env.NODE_ENV !== "production") {
+              console.log('Hand result winners:', message.data.winners);
             }
             
             // Play the shuffle sound with a short delay when hand results are shown
