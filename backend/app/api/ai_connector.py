@@ -127,6 +127,12 @@ async def get_ai_decision(request: AIDecisionRequest):
                 action, amount, request.game_state
             )
             
+            # Ensure all-in actions are consistently formatted
+            if action and "all" in action.lower() and "in" in action.lower():
+                action = "all-in"
+                # For all-in, we'll set the amount on the game side based on the player's stack
+                logging.info(f"AI Connector: Normalized all-in action to 'all-in' format")
+                
             # Return validated decision
             return {
                 "action": action,

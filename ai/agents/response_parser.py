@@ -37,19 +37,63 @@ class AgentResponseParser:
         
         # Extract required fields
         try:
-            action = agent_response.get("action", "").lower()
-            amount = agent_response.get("amount")
+            # Get the action field and log the original value
+            raw_action = agent_response.get("action", "")
+            logger.debug(f"Raw action from agent: '{raw_action}'")
+            
+            # Try to convert to string and lowercase if needed
+            if isinstance(raw_action, str):
+                action = raw_action.lower()
+            else:
+                action = str(raw_action).lower()
+                logger.warning(f"Action was not a string, converted from {type(raw_action)} to '{action}'")
+            
+            # Get amount (ensuring it's an integer if present)
+            raw_amount = agent_response.get("amount")
+            if raw_amount is not None:
+                try:
+                    amount = int(raw_amount)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid amount format '{raw_amount}', keeping as is for validation later")
+                    amount = raw_amount
+            else:
+                amount = None
+                
+            # Get other metadata
             reasoning = agent_response.get("reasoning", {})
             thinking = agent_response.get("thinking", "")
             calculations = agent_response.get("calculations", {})
+            
+            logger.debug(f"Extracted fields - action: '{action}', amount: {amount}")
         except (AttributeError, KeyError) as e:
             logger.error(f"Missing required field in agent response: {str(e)}")
             return "check", None, {"reasoning": {}, "thinking": f"Error: {str(e)}"}
         
-        # Validate action
+        # Normalize action string to handle different formats
+        normalized_action = action.lower().replace('_', '-').strip()
+        
+        # Additional normalization for all-in variations
+        if "all" in normalized_action and "in" in normalized_action:
+            normalized_action = "all-in"
+            logger.info(f"Normalized '{action}' to 'all-in'")
+            
+        # Extended list of valid actions with known variations
         valid_actions = ["fold", "check", "call", "bet", "raise", "all-in"]
-        if action not in valid_actions:
-            logger.warning(f"Invalid action '{action}', using smart fallback")
+        valid_action_map = {
+            # Standard actions
+            "fold": "fold", "check": "check", "call": "call", 
+            "bet": "bet", "raise": "raise", "all-in": "all-in",
+            # Alternative formats
+            "allin": "all-in", "all_in": "all-in", "allin": "all-in",
+            "all in": "all-in"
+        }
+        
+        # Try to map to a valid action
+        if normalized_action in valid_action_map:
+            action = valid_action_map[normalized_action]
+            logger.info(f"Mapped '{normalized_action}' to valid action '{action}'")
+        elif normalized_action not in valid_actions:
+            logger.warning(f"Invalid action '{action}' (normalized: '{normalized_action}'), using smart fallback")
             # Default to 'check' rather than 'fold' when possible
             action = "check"  
             amount = None
@@ -108,6 +152,18 @@ class AgentResponseParser:
         amount: Optional[int],
         game_state: Dict[str, Any]
     ) -> Tuple[str, Optional[int]]:
+        """
+        Apply game rules to ensure the action and amount are valid for the current game state.
+        
+        This method also normalizes common variants of action types, especially for all-in actions.
+        """
+        # Normalize the action first to handle variations like "all in", "all_in", etc.
+        original_action = action
+        if action and "all" in action.lower() and "in" in action.lower():
+            action = "all-in"
+            logger.info(f"Normalized '{original_action}' to 'all-in' in apply_game_rules")
+            
+        # Now continue with regular processing
         """
         Apply game rules to ensure the action and amount are valid for the current game state.
         
@@ -177,8 +233,10 @@ class AgentResponseParser:
                 action = "all-in"
                 
         elif action == "all-in":
+            # For all-in, always use player's entire stack regardless of provided amount
+            original_amount = amount
             amount = stack
-            logger.info(f"All-in with stack size: {stack}")
+            logger.info(f"All-in: Using full stack size {stack} (original requested amount: {original_amount})")
             
         # Preferred fallback cascade (final safety check):
         # If action can't be executed, try to degrade gracefully rather than defaulting to fold

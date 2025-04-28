@@ -1291,29 +1291,61 @@ class GameService:
                     # **Important:** Use game_state_dict which has filtered cards
                     action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state_dict)
 
-                    # Map AI response to poker game actions (case-insensitive)
+                    # Log original action for debugging
+                    logging.debug(f"AI Action: Original action received: '{action}'")
+                    
+                    # Normalize the action string (handle various formats)
+                    normalized_action = action.lower().replace('-', '_').replace(' ', '_')
+                    logging.debug(f"AI Action: Normalized action: '{normalized_action}'")
+                    
+                    # More comprehensive mapping to handle various formats
                     action_map = {
+                        # Standard actions
                         "fold": "FOLD", "check": "CHECK", "call": "CALL",
-                        "bet": "BET", "raise": "RAISE", "all-in": "ALL_IN"
+                        "bet": "BET", "raise": "RAISE", 
+                        # All-in variations
+                        "all_in": "ALL_IN", "all-in": "ALL_IN", "allin": "ALL_IN", 
+                        "all in": "ALL_IN", "all-in": "ALL_IN", "all_in": "ALL_IN"
                     }
-                    action_type = action_map.get(action.lower(), None)
                     
-                    # If action_type is None (unknown action), make a smart default choice
+                    action_type = action_map.get(normalized_action, None)
                     if action_type is None:
-                        logging.warning(f"Unknown action '{action}' received. Making intelligent fallback decision.")
-                        if current_bet == 0:
-                            action_type = "CHECK"
+                        # Try one more approach - see if the action contains "all" and "in"
+                        if "all" in normalized_action and "in" in normalized_action:
+                            logging.info(f"AI Action: Detected likely all-in action from '{normalized_action}'")
+                            action_type = "ALL_IN"
                         else:
-                            # Check if this is an aggressive archetype
-                            aggressive_archetypes = ["LAG", "Maniac"]
-                            if any(a.lower() in archetype.lower() for a in aggressive_archetypes):
-                                action_type = "CALL"
+                            # If still not found, make a smart default choice
+                            logging.warning(f"Unknown action '{action}' received. Making intelligent fallback decision.")
+                            if current_bet == 0:
+                                action_type = "CHECK"
                             else:
-                                action_type = "FOLD"
+                                # Check if this is an aggressive archetype
+                                aggressive_archetypes = ["LAG", "Maniac"]
+                                if any(a.lower() in archetype.lower() for a in aggressive_archetypes):
+                                    action_type = "CALL"
+                                else:
+                                    action_type = "FOLD"
                     
-                    action_amount = amount
+                    # If ALL_IN, ensure amount uses all player's chips
+                    if action_type == "ALL_IN":
+                        # Find player's stack to ensure proper all-in
+                        for p in game_state_dict.get("players", []):
+                            if p.get("player_id") == player_id:
+                                action_amount = p.get("chips", amount)
+                                logging.info(f"AI Action: Setting ALL_IN amount to player's full stack: {action_amount}")
+                                break
+                    else:
+                        # For other actions, use the original amount
+                        action_amount = amount
 
                     logging.info(f"AI Action: Parsed and validated decision: {action_type} {action_amount if action_amount is not None else ''}")
+                    
+                    # Add detailed DEBUG logging to track the full decision-making process
+                    logging.debug(f"AI Decision Process - Player: {domain_player.name} (ID: {player_id})")
+                    logging.debug(f"Original AI Response: {ai_decision}")
+                    logging.debug(f"Parsed Action: {action} (normalized to: {normalized_action})")
+                    logging.debug(f"Final Action Type: {action_type}, Amount: {action_amount}")
                     
                 except (Exception, ImportError) as ai_error:
                     logging.error(f"Error in AI decision making process: {ai_error}")

@@ -1467,10 +1467,16 @@ class PokerGame:
                 logging.warning(f"[ACTION-{execution_id}] Player {player.name} has no chips to go all-in")
                 return False
                 
+            # Enhanced logging for all-in actions
             logging.info(f"[ACTION-{execution_id}] Player {player.name} going ALL-IN for {all_in_amount}")
+            logging.info(f"[ACTION-{execution_id}] ALL-IN DETAILS - Current chips: {player.chips}, Current bet: {player.current_bet}, Total bet: {player.total_bet}")
             
+            # Process the all-in bet
             actual_bet = player.bet(all_in_amount)
             player.status = PlayerStatus.ALL_IN
+            
+            # Verify the player is properly marked as all-in
+            logging.info(f"[ACTION-{execution_id}] ALL-IN CONFIRMED - Player {player.name} now has status {player.status.name} with {player.chips} chips remaining")
             
             # Handle raising logic if necessary
             if player.current_bet > self.current_bet:
@@ -2193,7 +2199,26 @@ class PokerGame:
             
         # If no all-in players, no need for side pots
         if not all_in_players:
+            logging.info("No all-in players found, no side pots needed.")
             return
+            
+        # Log detailed information about all-in players for debugging
+        logging.info(f"Creating side pots based on {len(all_in_players)} all-in players")
+        for player in all_in_players:
+            logging.info(f"All-in player {player.name}: total_bet={player.total_bet}, chips={player.chips}")
+        
+        # Check if all-in players have the same total bet (started with same stack)
+        all_in_bets = [p.total_bet for p in all_in_players]
+        if len(set(all_in_bets)) <= 1 and len(all_in_players) > 0:
+            logging.info(f"All all-in players have the same bet amount ({all_in_bets[0]}). No need for multiple side pots.")
+            
+            # Create a simpler pot structure when all players went all-in for the same amount
+            if len(self.pots) == 1:
+                # Keep the existing main pot, just log the decision
+                logging.info("Keeping main pot structure as is since all all-ins are for the same amount.")
+                # Update pot name for clarity
+                self.pots[0].name = "Main Pot"
+                return
         
         # Save the total amount in all current pots
         total_pot_amount = sum(pot.amount for pot in self.pots)
