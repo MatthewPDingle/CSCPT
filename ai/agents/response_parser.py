@@ -99,8 +99,13 @@ class AgentResponseParser:
             amount = None
         
         # Validate amount based on action
-        if action in ["fold", "check", "call"]:
-            # These actions don't need an amount (or it's determined by the game engine)
+        # Note: Do NOT automatically discard the amount for a CALL, because
+        # the agent may be intentionally specifying an explicit call size
+        # (e.g. an all-in call that is smaller than the bet-to amount).  The
+        # game-rules pass will make the final decision about whether the
+        # supplied amount is usable.
+        if action in ["fold", "check"]:
+            # These actions never require an amount.
             amount = None
         elif action in ["bet", "raise", "all-in"]:
             # These actions require an amount
@@ -190,6 +195,15 @@ class AgentResponseParser:
         # Log the current state for debugging
         logger.info(f"Applying game rules for action: {action}, amount: {amount}")
         logger.info(f"Player stack: {stack}, Current bet: {current_bet}, Min raise: {min_raise}")
+
+        # ------------------------------------------------------------------
+        # 1. Fix common AI error: attempting to "raise" when no bet exists.
+        # ------------------------------------------------------------------
+        if action == "raise" and current_bet == 0:
+            logger.warning(
+                "AI attempted a RAISE when there is no current bet. Converting to BET."
+            )
+            action = "bet"
         
         # Check if action is appropriate given the current state
         if action == "check" and current_bet > 0:
@@ -246,13 +260,20 @@ class AgentResponseParser:
             logger.warning("Player has no chips. Forcing fold.")
             return "fold", None
             
-        # If player can't call and action requires chips, switch to check if possible or fold
-        if stack < current_bet and action in ["call", "raise", "bet", "all-in"]:
+        # If the action is ALREADY an all-in we purposely allow it even when
+        # the stack is less than the amount to call – that is exactly what an
+        # all-in means.  Therefore the insufficient-stack check should only
+        # apply to non-all-in actions.
+        if stack < current_bet and action in ["call", "raise", "bet"]:
             if current_bet == 0:
-                logger.warning(f"Not enough chips for {action}, but can check. Converting to check.")
+                logger.warning(
+                    f"Not enough chips for {action}, but can check. Converting to check."
+                )
                 return "check", None
             else:
-                logger.warning(f"Not enough chips ({stack}) to call bet of {current_bet}. Forcing fold.")
-                return "fold", None
+                logger.warning(
+                    f"Not enough chips ({stack}) to cover bet of {current_bet}. Converting to all-in."
+                )
+                return "all-in", stack
         
         return action, amount

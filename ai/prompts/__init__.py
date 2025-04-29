@@ -18,7 +18,7 @@ POKER_ACTION_SCHEMA = {
         },
         "amount": {
             "type": ["number", "null"],
-            "description": "The amount to bet or raise, or null for fold/check/call actions"
+            "description": "The total amount you are committing with this action, including any chips already bet this round: for calls, the amount needed to call; for raises, the total bet-to amount; for all-in, your entire stack; null for fold or check actions"
         },
         "reasoning": {
             "type": "object",

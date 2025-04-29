@@ -1,15 +1,21 @@
- # Ignore environment files and local config
- *.env
- __pycache__/
- *.pyc
+# Ignore environment files and local config
+*.env
+__pycache__/
+*.pyc
 
- # Ignore local test outputs
- ai_test_output*.txt
+# Ignore local test outputs
+ai_test_output*.txt
+*_test_output*.txt
+*_example_output*.txt
+*.log
 
- # Ignore AI logs and data directories
- ai/data/
- data/
+# Ignore AI logs and data directories
+ai/data/
+data/
 
- # Ignore backend logs, data, and virtual environments
- backend/data/
- backend/venv/
+# Ignore backend logs, data, and virtual environments
+backend/data/
+backend/venv/
+
+# Ignore agent-consult temporary files
+agent-consult/mcp_venv/

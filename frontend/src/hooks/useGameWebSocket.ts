@@ -478,6 +478,35 @@ export const useGameWebSocket = (wsUrl: string) => {
               return;
             }
             
+            // -------------------------------------------------------------
+            // Utility: play a sound for this action irrespective of whether
+            // it was the local player, an AI, or highlight timing.  This
+            // keeps audio in sync even if currentTurnPlayerId hasn’t updated
+            // yet.
+            // -------------------------------------------------------------
+            const playActionSound = (upper: string) => {
+              const safePlay = (ref: React.RefObject<HTMLAudioElement | null>) => {
+                if (!ref.current) return;
+                try {
+                  ref.current.currentTime = 0;
+                  // volume is already 1 but enforce
+                  ref.current.volume = 1.0;
+                  ref.current.play().catch(() => {});
+                } catch {}
+              };
+
+              if (upper === 'CHECK') {
+                safePlay(checkSoundRef);
+              } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(upper) || upper.includes('ALL')) {
+                safePlay(chipsSoundRef);
+              } else if (upper === 'FOLD') {
+                safePlay(foldSoundRef);
+              }
+            };
+
+            const actionUpper = (message.data.action || '').toUpperCase();
+            playActionSound(actionUpper);
+
             // Check if this action belongs to the player who currently has the turn
             const matchesCurrentTurn = message.data.player_id === currentTurnPlayerId;
             const isHumanAction = message.data.player_id === playerId;
@@ -584,17 +613,7 @@ export const useGameWebSocket = (wsUrl: string) => {
                   }
                 };
                 
-                // Play appropriate sound based on action type
-                if (action === 'CHECK') {
-                  playSound(checkSoundRef, 'check');
-                } else if (['BET', 'RAISE', 'CALL', 'ALL_IN'].includes(action)) {
-                  playSound(chipsSoundRef, 'chips');
-                } else if (action.includes('ALL')) {
-                  // Treat any all-in action as a chips sound
-                  playSound(chipsSoundRef, 'chips');
-                } else if (action === 'FOLD') {
-                  playSound(foldSoundRef, 'fold');
-                }
+                // (Sound already played by global handler above)
               } catch (e) {
                 console.error('Error in sound effect playback logic:', e);
               }
@@ -674,21 +693,12 @@ export const useGameWebSocket = (wsUrl: string) => {
                   console.log('Error playing river sound:', e);
                 }
               }
-              // Player actions: check, call/bet/raise/all in, fold
-              try {
-                if (/\bcheck\b/i.test(text) && checkSoundRef.current) {
-                  checkSoundRef.current.currentTime = 0;
-                  checkSoundRef.current.play().catch(e => console.log('Check sound play error:', e));
-                } else if (/(?:\bcall\b|\bbet\b|\braise\b|\ball in\b)/i.test(text) && chipsSoundRef.current) {
-                  chipsSoundRef.current.currentTime = 0;
-                  chipsSoundRef.current.play().catch(e => console.log('Chips sound play error:', e));
-                } else if (/\bfold\b/i.test(text) && foldSoundRef.current) {
-                  foldSoundRef.current.currentTime = 0;
-                  foldSoundRef.current.play().catch(e => console.log('Fold sound play error:', e));
-                }
-              } catch (e) {
-                console.error('Error playing action log sound:', e);
-              }
+              /*
+               * We purposely no longer try to derive bet / call / raise sounds from the
+               * free-text action log because the structured `player_action` event is a
+               * much safer source (handled elsewhere in this switch).  We keep only the
+               * card-dealing sounds that do not yet have a structured equivalent.
+               */
             }
             break;
             

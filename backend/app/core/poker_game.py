@@ -1692,27 +1692,18 @@ class PokerGame:
             logging.warning(f"[ROUND-CHECK-{execution_id}] No active players left - round is over")
             return True  # Round is trivially over
 
-        # Condition 2: Only one active player left who isn't all-in (everyone else folded or went all-in)
-        if len(active_players) <= 1:
-            logging.info(f"[ROUND-CHECK-{execution_id}] Only {len(active_players)} active player(s) left - round is over")
+        # Condition 2: No remaining in to_act means everyone has either acted or is all-in/folded
+        # Rounds should NOT end merely because one ACTIVE remains—he still must act if to_act not empty.
+        if not self.to_act:
+            logging.info(f"[ROUND-CHECK-{execution_id}] 'to_act' empty - round is complete")
             return True
 
-        # Condition 3: All active players have acted and their bets match the current bet
-        # Use the to_act set: if it's empty, everyone has acted or called the current bet level
-        if not self.to_act:
-            logging.info(f"[ROUND-CHECK-{execution_id}] 'to_act' set is empty - round is complete")
-            return True
+        # Condition 3: Otherwise, the round continues if any player still needs to act
+        logging.info(f"[ROUND-CHECK-{execution_id}] Round continues - players still to act: {len(self.to_act)}")
             
         # Detailed logging about why the round continues
-        active_to_act = [p for p in active_players if p.player_id in self.to_act]
-        logging.info(f"[ROUND-CHECK-{execution_id}] {len(active_to_act)} active players still need to act: {[p.name for p in active_to_act]}")
-        
-        # Check bet amounts
-        unmatched_bets = [p for p in active_players if p.current_bet != self.current_bet]
-        if unmatched_bets:
-            logging.info(f"[ROUND-CHECK-{execution_id}] Players with unmatched bets: {[(p.name, p.current_bet) for p in unmatched_bets]}")
-            
-        logging.info(f"[ROUND-CHECK-{execution_id}] Round continues")
+        logging.info(f"[ROUND-CHECK-{execution_id}] Active players: {len(active_players)}, All-in: {len(all_in_players)}, Folded: {len(folded_players)}")
+        logging.info(f"[ROUND-CHECK-{execution_id}] Players in to_act: {self.to_act}")
         return False
 
     def _advance_to_next_player(self) -> None:

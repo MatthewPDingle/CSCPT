@@ -724,8 +724,8 @@ class GameStateNotifier:
                     elif player_pos == (button_pos + 8) % player_count:
                         position_name = "CO"   # Cutoff
                     
-                    # Add seat number for clarity
-                    position_name = f"{position_name} (Seat {player_pos})"
+                    # Do NOT append seat number (was user feedback to remove). Keep only the
+                    # short positional name such as "BTN", "UTG", etc.
         except Exception as e:
             import logging
             logging.error(f"Error getting player position: {str(e)}")
@@ -733,12 +733,33 @@ class GameStateNotifier:
             logging.error(traceback.format_exc())
 
         # Create descriptive log message
+        # Ensure action is treated as a plain string (it may be an Enum value in
+        # some call paths).
+        action_str = str(action)
+        action_upper = action_str.upper()
+
         log_text = f"{player_name}"
         if position_name:
             log_text += f" [{position_name}]"
-        log_text += f" {action.lower()}"
-        if amount is not None and action.upper() in ["BET", "RAISE", "CALL", "ALL_IN"]:
-            log_text += f" {amount}"
+
+        # Build action phrase according to poker terminology
+        if action_upper == "RAISE":
+            log_text += f" raise to {amount}" if amount is not None else " raise"
+        elif action_upper == "BET":
+            log_text += f" bet {amount}" if amount is not None else " bet"
+        elif action_upper in ["ALL_IN", "ALL-IN"]:
+            log_text += f" all-in for {amount}" if amount is not None else " all-in"
+        elif action_upper == "CALL":
+            # Distinguish call of all-in if amount equals player's stack (best effort)
+            # Build phrase that keeps the keyword "call" for regex compatibility
+            call_phrase = f"call {amount}" if amount is not None else "call"
+            log_text += f" {call_phrase}"
+        elif action_upper == "CHECK":
+            log_text += " check"
+        elif action_upper == "FOLD":
+            log_text += " fold"
+        else:
+            log_text += f" {action_str.lower()}"  # fallback
 
         action_message = {
             "type": "player_action",
@@ -850,7 +871,8 @@ class GameStateNotifier:
                 action_log_message = {
                     "type": "action_log",
                     "data": {
-                        "text": f"🏆 {winning_player} wins ${win_amount} with {hand_type}!",
+                        # Display win amount without currency prefix
+                        "text": f"🏆 {winning_player} wins {win_amount} with {hand_type}!",
                         "timestamp": datetime.now().isoformat()
                     }
                 }

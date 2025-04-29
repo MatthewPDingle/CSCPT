@@ -1410,12 +1410,21 @@ class GameService:
             
             # Get the lock before processing the action
             logging.info(f"[AI-ACTION-{execution_id}] Acquiring game lock for processing action")
+            # Capture player's current bet to compute actual call size for 'CALL' actions
+            prev_player_bet = poker_player.current_bet
             async with game_lock:
                 logging.info(f"[AI-ACTION-{execution_id}] Lock acquired - Processing {poker_action.name} {action_amount if action_amount is not None else ''} in PokerGame")
                 logging.info(f"[AI-ACTION-{execution_id}] Before process_action - to_act: {poker_game.to_act}")
                 success = poker_game.process_action(poker_player, poker_action, action_amount)
                 logging.info(f"[AI-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
                 logging.info(f"[AI-ACTION-{execution_id}] PokerGame process_action result: {success}")
+            # Compute actual amount for notify (especially CALL actions)
+            # For CALL, action_amount is None; actual_amount is increase in player's bet
+            post_player_bet = poker_player.current_bet
+            if poker_action == PokerPlayerAction.CALL:
+                notify_amount = post_player_bet - prev_player_bet
+            else:
+                notify_amount = action_amount
             
             if success:
                 # Update domain player
@@ -1441,8 +1450,9 @@ class GameService:
                 
                 # Notify clients about the AI action
                 from app.core.websocket import game_notifier
+                # Notify clients with correct amount (calls will show the chips actually called)
                 await game_notifier.notify_player_action(
-                    game_id, player_id, action_type, action_amount
+                    game_id, player_id, action_type, notify_amount
                 )
                 
                 # Update game state in the repository
@@ -1554,7 +1564,31 @@ class GameService:
                                 logging.info(f"[AI-ACTION-{execution_id}] Next player is Human ({next_player.name}). Sending action request.")
                                 await game_notifier.notify_action_request(game_id, poker_game)
                         else:
-                             logging.warning(f"[AI-ACTION-{execution_id}] Determined next player {next_player.name} cannot act (Status: {next_player.status}, Needs to act: {next_player.player_id in poker_game.to_act}). Checking if round ended or another player needs to act.")
+                            # Next in turn cannot act: look for any other eligible ACTIVE player in to_act
+                            logging.warning(
+                                f"[AI-ACTION-{execution_id}] Next player {next_player.name} cannot act "
+                                f"(Status: {next_player.status}, in to_act: {next_player.player_id in poker_game.to_act}). "
+                                "Searching for another eligible player."
+                            )
+                            # Try all remaining to_act players in seating order
+                            for pid in list(poker_game.to_act):
+                                alt = next((p for p in poker_game.players if p.player_id == pid), None)
+                                if alt and alt.status == PokerPlayerStatus.ACTIVE:
+                                    alt_domain = next((p for p in game.players if p.id == alt.player_id), None)
+                                    if alt_domain:
+                                        logging.info(
+                                            f"[AI-ACTION-{execution_id}] Found alternate player to act: {alt.name}"
+                                        )
+                                        # Schedule AI or human action for this player
+                                        if not alt_domain.is_human:
+                                            await self._request_and_process_ai_action(game_id, alt.player_id)
+                                        else:
+                                            await game_notifier.notify_action_request(game_id, poker_game)
+                                        return
+                            # No eligible players left: likely round or hand complete
+                            logging.info(
+                                f"[AI-ACTION-{execution_id}] No further eligible players to act; round or hand may have concluded."
+                            )
                     else:
                         logging.error(f"AI Action: Invalid current_player_idx after action: {poker_game.current_player_idx}")
                         
