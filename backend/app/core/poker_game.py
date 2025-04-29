@@ -150,7 +150,7 @@ class PokerGame:
         Args:
             rank: The hand rank enum
             kickers: List of kicker values
-            
+        
         Returns:
             A human-readable string describing the hand
         """
@@ -177,9 +177,17 @@ class PokerGame:
 
         # Specific descriptions based on rank
         if rank == HandRank.PAIR:
-            return f"Pair of {readable_kickers[0]}s ({', '.join(readable_kickers[1:])} kickers)"
+            # First kicker is the pair rank, the rest are side kickers
+            pair_rank = readable_kickers[0]
+            side_kickers = readable_kickers[1:]
+            kicker_str = ', '.join(side_kickers)
+            # Use singular or plural for 'kicker'
+            kicker_label = 'kicker' if len(side_kickers) == 1 else 'kickers'
+            return f"Pair of {pair_rank}s ({kicker_str} {kicker_label})"
         elif rank == HandRank.TWO_PAIR:
-             return f"Two Pair, {readable_kickers[0]}s and {readable_kickers[1]}s ({readable_kickers[2]} kicker)"
+            # First two kickers are the pair ranks, third is the remaining kicker
+            high_pair, low_pair, kicker = readable_kickers[0], readable_kickers[1], readable_kickers[2]
+            return f"Two Pair, {high_pair}s and {low_pair}s ({kicker} kicker)"
         elif rank == HandRank.THREE_OF_A_KIND:
              return f"Three of a Kind, {readable_kickers[0]}s ({', '.join(readable_kickers[1:])} kickers)"
         elif rank == HandRank.STRAIGHT:
@@ -819,10 +827,18 @@ class PokerGame:
                 try:
                     from app.core.websocket import game_notifier
                     import asyncio
+                    # Notify about new round
                     asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id, 
-                        self.current_round.name, 
+                        self.game_id,
+                        self.current_round.name,
                         self.community_cards
+                    ))
+                    # Broadcast action log for dealing flop
+                    from datetime import datetime
+                    flop_text = f"*** Dealing the Flop: [{', '.join(str(c) for c in self.community_cards)}] ***"
+                    asyncio.create_task(game_notifier.broadcast_to_game(
+                        self.game_id,
+                        {"type": "action_log", "data": {"text": flop_text, "timestamp": datetime.now().isoformat()}}
                     ))
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
@@ -856,10 +872,18 @@ class PokerGame:
                 try:
                     from app.core.websocket import game_notifier
                     import asyncio
+                    # Notify about new round
                     asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id, 
-                        self.current_round.name, 
+                        self.game_id,
+                        self.current_round.name,
                         self.community_cards
+                    ))
+                    # Broadcast action log for dealing turn
+                    from datetime import datetime
+                    turn_text = f"*** Dealing the Turn: [{', '.join(str(c) for c in self.community_cards)}] ***"
+                    asyncio.create_task(game_notifier.broadcast_to_game(
+                        self.game_id,
+                        {"type": "action_log", "data": {"text": turn_text, "timestamp": datetime.now().isoformat()}}
                     ))
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
@@ -893,10 +917,18 @@ class PokerGame:
                 try:
                     from app.core.websocket import game_notifier
                     import asyncio
+                    # Notify about new round
                     asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id, 
-                        self.current_round.name, 
+                        self.game_id,
+                        self.current_round.name,
                         self.community_cards
+                    ))
+                    # Broadcast action log for dealing river
+                    from datetime import datetime
+                    river_text = f"*** Dealing the River: [{', '.join(str(c) for c in self.community_cards)}] ***"
+                    asyncio.create_task(game_notifier.broadcast_to_game(
+                        self.game_id,
+                        {"type": "action_log", "data": {"text": river_text, "timestamp": datetime.now().isoformat()}}
                     ))
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
