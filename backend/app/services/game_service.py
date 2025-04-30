@@ -1418,11 +1418,13 @@ class GameService:
                 success = poker_game.process_action(poker_player, poker_action, action_amount)
                 logging.info(f"[AI-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
                 logging.info(f"[AI-ACTION-{execution_id}] PokerGame process_action result: {success}")
-            # Compute actual amount for notify (especially CALL actions)
-            # For CALL, action_amount is None; actual_amount is increase in player's bet
-            post_player_bet = poker_player.current_bet
+            # Compute actual amount for notify (especially CALL actions) and totals
+            # post_street_bet: total bet on current street after action
+            post_street_bet = poker_player.current_bet
+            # post_hand_bet: total bet this hand after action (used for all-ins)
+            post_hand_bet = poker_player.total_bet
             if poker_action == PokerPlayerAction.CALL:
-                notify_amount = post_player_bet - prev_player_bet
+                notify_amount = post_street_bet - prev_player_bet
             else:
                 notify_amount = action_amount
             
@@ -1448,11 +1450,15 @@ class GameService:
                 if game.current_hand:
                     game.current_hand.actions.append(action_history)
                 
-                # Notify clients about the AI action
+                # Notify clients about the AI action, passing total bets for correct log phrasing
                 from app.core.websocket import game_notifier
-                # Notify clients with correct amount (calls will show the chips actually called)
                 await game_notifier.notify_player_action(
-                    game_id, player_id, action_type, notify_amount
+                    game_id,
+                    player_id,
+                    action_type,
+                    notify_amount,
+                    total_street_bet=post_street_bet,
+                    total_hand_bet=(post_hand_bet if poker_action == PokerPlayerAction.ALL_IN else None),
                 )
                 
                 # Update game state in the repository
@@ -1630,23 +1636,30 @@ class GameService:
                 # Ensure poker_player is valid before processing the action
                 if poker_player and poker_game:
                     logging.warning(f"AI Action Error: Using fallback {fallback_action_name} for player {player_id}")
+                    # Process the fallback action
                     action_success = poker_game.process_action(poker_player, poker_action, None)
-                    
                     if not action_success and fallback_action_name != "FOLD":
-                        # If the chosen action fails, fall back to FOLD as a last resort
+                        # If the chosen action fails, fall back to FOLD
                         logging.warning(f"AI Action Error: {fallback_action_name} failed, forcing FOLD")
                         poker_action = PokerPlayerAction.FOLD
                         fallback_action_name = "FOLD"
                         poker_game.process_action(poker_player, poker_action, None)
-
-                    # Notify clients
+                    # Compute totals for log
+                    fs_post_street = poker_player.current_bet
+                    fs_post_hand = poker_player.total_bet
+                    # Notify clients about fallback action
                     from app.core.websocket import game_notifier
-                    await game_notifier.notify_player_action(game_id, player_id, fallback_action_name, None)
+                    await game_notifier.notify_player_action(
+                        game_id,
+                        player_id,
+                        fallback_action_name,
+                        None,
+                        total_street_bet=fs_post_street,
+                        total_hand_bet=(fs_post_hand if fallback_action_name.upper() in ["ALL_IN", "ALL-IN"] else None),
+                    )
                     await game_notifier.notify_game_update(game_id, poker_game)
-
                 else:
                     logging.error(f"AI Action Error: Cannot process action because poker_player or poker_game is invalid.")
-
             except Exception as action_error:
                 logging.error(f"AI Action Error: Failed to process {fallback_action_name} action after error: {action_error}")
 

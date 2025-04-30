@@ -183,7 +183,10 @@ class PokerGame:
             kicker_str = ', '.join(side_kickers)
             # Use singular or plural for 'kicker'
             kicker_label = 'kicker' if len(side_kickers) == 1 else 'kickers'
-            return f"Pair of {pair_rank}s ({kicker_str} {kicker_label})"
+            # Full pair name (e.g., 'Aces', 'Kings', '7s')
+            face_names = {'A': 'Aces', 'K': 'Kings', 'Q': 'Queens', 'J': 'Jacks', 'T': 'Tens'}
+            full_pair = face_names.get(pair_rank, f"{pair_rank}s")
+            return f"Pair of {full_pair} with {kicker_str} {kicker_label}"
         elif rank == HandRank.TWO_PAIR:
             # First two kickers are the pair ranks, third is the remaining kicker
             high_pair, low_pair, kicker = readable_kickers[0], readable_kickers[1], readable_kickers[2]
@@ -2042,7 +2045,7 @@ class PokerGame:
                               and p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
             
             if not eligible_players:
-                print(f"No eligible players for {pot_name}, skipping")
+                logger.debug(f"No eligible players for {pot_name}, skipping")
                 continue
                 
             # Get hand evaluations for eligible players
@@ -2055,7 +2058,7 @@ class PokerGame:
             for player, (hand_rank, kickers) in pot_results.items():
                 # Log player hands for debugging
                 description = self._format_hand_description(hand_rank, kickers)
-                print(f"Player {player.name} has {description}")
+                logger.debug(f"Player {player.name} has {description}")
                 
                 if best_hand is None:
                     # First player we're checking
@@ -2074,7 +2077,7 @@ class PokerGame:
             
             # Award pot to winner(s)
             if best_players:
-                print(f"Pot {pot_name} (${pot.amount}) won by: {[p.name for p in best_players]}")
+                logger.debug(f"Pot {pot_name} (${pot.amount}) won by: {[p.name for p in best_players]}")
                 
                 # Split pot amount equally among winners
                 split_amount = pot.amount // len(best_players)
@@ -2083,15 +2086,17 @@ class PokerGame:
                 # Award base split amount to each winner
                 for player in best_players:
                     player.chips += split_amount
-                    print(f"Player {player.name} receives ${split_amount}")
+                    logger.debug(f"Player {player.name} receives ${split_amount}")
                 
                 # Handle any remainder chips
                 if remainder > 0:
                     # Sort winners by position relative to button (closest first)
-                    sorted_winners = sorted(best_players, 
-                                          key=lambda p: (p.position - self.button_position) % len(self.players))
+                    sorted_winners = sorted(
+                        best_players,
+                        key=lambda p: (p.position - self.button_position) % len(self.players)
+                    )
                     sorted_winners[0].chips += remainder
-                    print(f"Remainder ${remainder} goes to {sorted_winners[0].name}")
+                    logger.debug(f"Remainder ${remainder} goes to {sorted_winners[0].name}")
                 
                 # Only store with pot_id for tests
                 self.hand_winners[pot_id] = best_players
@@ -2108,12 +2113,12 @@ class PokerGame:
                         # Combine player's hole cards with community cards
                         extended_hand_evaluations[f"{pot_name}_cards"] = list(best_players[0].hand.cards) + self.community_cards
             else:
-                print(f"No winners determined for {pot_name}")
+                logger.debug(f"No winners determined for {pot_name}")
         
         # Log final chip counts
         for player in self.players:
             if player.status != PlayerStatus.OUT:
-                print(f"Player {player.name} now has ${player.chips} chips")
+                logger.debug(f"Player {player.name} now has ${player.chips} chips")
                 
         # Record pot results in hand history
         if self.hand_history_recorder and self.current_hand_id:
@@ -2321,7 +2326,7 @@ class PokerGame:
             
         # Log the final pot structure
         for pot in self.pots:
-            print(f"{pot.name}: ${pot.amount} with {len(pot.eligible_players)} eligible players")
+            logger.debug(f"{pot.name}: ${pot.amount} with {len(pot.eligible_players)} eligible players")
     
     def _log_expected_action_order(self):
         """Log the expected order of action for the current round."""

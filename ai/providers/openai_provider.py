@@ -333,6 +333,10 @@ class OpenAIProvider(LLMProvider):
                         except json.JSONDecodeError:
                             continue
             # Parsing failed
+            # Log raw response for debugging invalid JSON
+            logger.error(
+                f"Failed to parse JSON from model {self.model} response. Raw text: {response_text}"
+            )
             raise ValueError(f"Failed to parse JSON from model {self.model} response: {response_text}")
         # Enhance system prompt: always include JSON schema instructions
         schema_instruction = f"Your response must be a valid JSON object that follows this structure: {json.dumps(json_schema)}"

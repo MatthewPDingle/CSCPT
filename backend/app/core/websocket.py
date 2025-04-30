@@ -167,13 +167,13 @@ class ConnectionManager:
         
         async with self.lock:
             if game_id not in self.active_connections:
-                logging.warning(f"Cannot broadcast to game {game_id}: no active connections")
+                logging.debug(f"Cannot broadcast to game {game_id}: no active connections")
                 return
             
             # Make a copy of the connections to avoid modification during iteration
             connections_to_broadcast = list(self.active_connections[game_id])
             connection_count = len(connections_to_broadcast)
-            logging.warning(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
+            logging.debug(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
             
         # Convert message to JSON string (preserve unicode characters)
         json_message = json.dumps(message, ensure_ascii=False)
@@ -259,10 +259,9 @@ class ConnectionManager:
         
         # Get message type for logging
         msg_type = message.get('type', 'unknown')
-        
-        # Only log non-routine messages
+        # Only log non-routine messages at debug level
         if msg_type not in ['pong']:
-            logging.warning(f"Sending personal message of type '{msg_type}' to player {player_id}")
+            logging.debug(f"Sending personal message of type '{msg_type}' to player {player_id}")
         
         # Serialize message
         try:
@@ -675,7 +674,15 @@ class GameStateNotifier:
                 logging.error(f"Error preparing observer game state: {str(e)}")
                 logging.error(traceback.format_exc())
     
-    async def notify_player_action(self, game_id: str, player_id: str, action: str, amount: Optional[int] = None):
+    async def notify_player_action(
+        self,
+        game_id: str,
+        player_id: str,
+        action: str,
+        amount: Optional[int] = None,
+        total_street_bet: Optional[int] = None,
+        total_hand_bet: Optional[int] = None,
+    ):
         """
         Notify all clients about a player action and log it.
         
@@ -742,18 +749,34 @@ class GameStateNotifier:
         if position_name:
             log_text += f" [{position_name}]"
 
-        # Build action phrase according to poker terminology
+        # Build action phrase according to poker terminology, using totals when provided
         if action_upper == "RAISE":
-            log_text += f" raise to {amount}" if amount is not None else " raise"
+            # total_street_bet is the amount raised TO on this street
+            if total_street_bet is not None:
+                log_text += f" raise to {total_street_bet}"
+            elif amount is not None:
+                log_text += f" raise to {amount}"
+            else:
+                log_text += " raise"
         elif action_upper == "BET":
+            # amount is the size of the bet
             log_text += f" bet {amount}" if amount is not None else " bet"
         elif action_upper in ["ALL_IN", "ALL-IN"]:
-            log_text += f" all-in for {amount}" if amount is not None else " all-in"
+            # total_hand_bet is the total committed this hand after all-in
+            if total_hand_bet is not None:
+                log_text += f" all-in for {total_hand_bet}"
+            elif amount is not None:
+                log_text += f" all-in for {amount}"
+            else:
+                log_text += " all-in"
         elif action_upper == "CALL":
-            # Distinguish call of all-in if amount equals player's stack (best effort)
-            # Build phrase that keeps the keyword "call" for regex compatibility
-            call_phrase = f"call {amount}" if amount is not None else "call"
-            log_text += f" {call_phrase}"
+            # total_street_bet is the total amount called TO on this street
+            if total_street_bet is not None:
+                log_text += f" call {total_street_bet}"
+            elif amount is not None:
+                log_text += f" call {amount}"
+            else:
+                log_text += " call"
         elif action_upper == "CHECK":
             log_text += " check"
         elif action_upper == "FOLD":

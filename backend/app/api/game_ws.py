@@ -626,9 +626,18 @@ async def process_action_message(
         )
         return
 
-    # Notify about player action
+    # Notify about player action, passing totals for crystal-clear log phrasing
+    # post_street_bet: total chips committed this street after the action
+    post_street_bet = player.current_bet
+    # post_hand_bet: total chips committed in this hand after the action (for all-in)
+    post_hand_bet = player.total_bet
     await game_notifier.notify_player_action(
-        game_id, player_id, action_type.name, action_amount
+        game_id,
+        player_id,
+        action_type.name,
+        action_amount,
+        total_street_bet=post_street_bet,
+        total_hand_bet=(post_hand_bet if action_type == PlayerAction.ALL_IN else None),
     )
 
     # Notify about updated game state

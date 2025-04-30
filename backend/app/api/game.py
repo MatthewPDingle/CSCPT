@@ -316,10 +316,18 @@ async def player_action(
                 game_state=game_to_model(game_id, poker_game),
             )
 
-        # Notify WebSocket clients about the action and updated state
+        # Notify WebSocket clients about the action and updated state,
+        # passing totals for clear poker terminology
+        post_street_bet = player.current_bet
+        post_hand_bet = player.total_bet
         asyncio.create_task(
             game_notifier.notify_player_action(
-                game_id, player.player_id, action.name, action_request.amount
+                game_id,
+                player.player_id,
+                action.name,
+                action_request.amount,
+                total_street_bet=post_street_bet,
+                total_hand_bet=(post_hand_bet if action == PlayerAction.ALL_IN else None),
             )
         )
 
