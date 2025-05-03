@@ -1249,6 +1249,20 @@ class GameService:
         
         # Convert game_state to dictionary for AI consumption
         game_state_dict = game_state.dict()
+        # --- Compute accurate to_call for current player ---
+        try:
+            highest_total = max(
+                p['total_bet'] for p in game_state_dict['players']
+                if p['status'] in ("ACTIVE", "ALL_IN")
+            )
+            me = next(
+                p for p in game_state_dict['players'] if p['player_id'] == player_id
+            )
+            game_state_dict['to_call'] = max(0, highest_total - me.get('total_bet', 0))
+        except Exception as e:
+            logging.error(f"[AI-ACTION] Error computing to_call: {e}")
+            # Fallback to current_bet as to_call
+            game_state_dict['to_call'] = game_state_dict.get('current_bet', 0)
         
         # Filter sensitive information - only show this player's cards
         for player_model in game_state_dict["players"]:
@@ -1605,32 +1619,38 @@ class GameService:
             logging.error(f"AI Action Error: Exception during processing for player {player_id}: {str(e)}")
             import traceback
             logging.error(traceback.format_exc())
-
-            # Use intelligent fallback based on game state
+            # If player is not eligible to act, force a fold to keep state consistent
             from app.core.poker_game import PlayerAction as PokerPlayerAction
-            
-            # Get current bet to determine appropriate action
-            current_bet = poker_game.current_bet if poker_game else 0
-            
-            if current_bet == 0:
-                # If no bet to call, check is the safest action
-                poker_action = PokerPlayerAction.CHECK
-                fallback_action_name = "CHECK"
+            if poker_player and poker_player.player_id not in poker_game.to_act:
+                logging.error(f"[AI-ACTION-{execution_id}] Fallback aborted: player {player_id} not in to_act. Forcing FOLD.")
+                poker_action = PokerPlayerAction.FOLD
+                fallback_action_name = "FOLD"
             else:
-                # Determine if we should call or fold
-                # Use archetype to make this decision
-                if domain_player and domain_player.archetype:
-                    archetype = domain_player.archetype
-                    # Aggressive archetypes should call more often
-                    if any(x in archetype for x in ["LAG", "Maniac", "CallingStation"]):
-                        poker_action = PokerPlayerAction.CALL
-                        fallback_action_name = "CALL"
+                # Use intelligent fallback based on game state
+                from app.core.poker_game import PlayerAction as PokerPlayerAction
+
+                # Get current bet to determine appropriate action
+                current_bet = poker_game.current_bet if poker_game else 0
+
+                if current_bet == 0:
+                    # If no bet to call, check is the safest action
+                    poker_action = PokerPlayerAction.CHECK
+                    fallback_action_name = "CHECK"
+                else:
+                    # Determine if we should call or fold
+                    # Use archetype to make this decision
+                    if domain_player and domain_player.archetype:
+                        archetype = domain_player.archetype
+                        # Aggressive archetypes should call more often
+                        if any(x in archetype for x in ["LAG", "Maniac", "CallingStation"]):
+                            poker_action = PokerPlayerAction.CALL
+                            fallback_action_name = "CALL"
+                        else:
+                            poker_action = PokerPlayerAction.FOLD
+                            fallback_action_name = "FOLD"
                     else:
                         poker_action = PokerPlayerAction.FOLD
                         fallback_action_name = "FOLD"
-                else:
-                    poker_action = PokerPlayerAction.FOLD
-                    fallback_action_name = "FOLD"
                 
             try:
                 # Ensure poker_player is valid before processing the action

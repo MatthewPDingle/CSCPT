@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import defaultdict
 import random
 import logging
+logger = logging.getLogger(__name__)
 import uuid
 
 from app.core.cards import Card, Deck, Hand
@@ -836,13 +837,6 @@ class PokerGame:
                         self.current_round.name,
                         self.community_cards
                     ))
-                    # Broadcast action log for dealing flop
-                    from datetime import datetime
-                    flop_text = f"*** Dealing the Flop: [{', '.join(str(c) for c in self.community_cards)}] ***"
-                    asyncio.create_task(game_notifier.broadcast_to_game(
-                        self.game_id,
-                        {"type": "action_log", "data": {"text": flop_text, "timestamp": datetime.now().isoformat()}}
-                    ))
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             
@@ -881,13 +875,6 @@ class PokerGame:
                         self.current_round.name,
                         self.community_cards
                     ))
-                    # Broadcast action log for dealing turn
-                    from datetime import datetime
-                    turn_text = f"*** Dealing the Turn: [{', '.join(str(c) for c in self.community_cards)}] ***"
-                    asyncio.create_task(game_notifier.broadcast_to_game(
-                        self.game_id,
-                        {"type": "action_log", "data": {"text": turn_text, "timestamp": datetime.now().isoformat()}}
-                    ))
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             
@@ -925,13 +912,6 @@ class PokerGame:
                         self.game_id,
                         self.current_round.name,
                         self.community_cards
-                    ))
-                    # Broadcast action log for dealing river
-                    from datetime import datetime
-                    river_text = f"*** Dealing the River: [{', '.join(str(c) for c in self.community_cards)}] ***"
-                    asyncio.create_task(game_notifier.broadcast_to_game(
-                        self.game_id,
-                        {"type": "action_log", "data": {"text": river_text, "timestamp": datetime.now().isoformat()}}
                     ))
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
@@ -1497,6 +1477,8 @@ class PokerGame:
             
         elif action == PlayerAction.ALL_IN:
             # Go all-in
+            # Preserve original to_act for potential preflop restoration
+            old_to_act = self.to_act.copy()
             all_in_amount = player.chips
             if all_in_amount <= 0:
                 logging.warning(f"[ACTION-{execution_id}] Player {player.name} has no chips to go all-in")
@@ -1534,6 +1516,14 @@ class PokerGame:
             
             self.pots[0].add(actual_bet, player.player_id)
             
+            # Pre-flop ALL-IN may inadvertently remove players; restore any active players still in old_to_act
+            if self.current_round == BettingRound.PREFLOP:
+                for p in self.players:
+                    if p.status == PlayerStatus.ACTIVE and p.player_id in old_to_act and p.player_id != player.player_id:
+                        if p.player_id not in self.to_act:
+                            logging.warning(f"[ACTION-{execution_id}] ACTIVE player {p.name} was incorrectly removed in ALL_IN; adding back to to_act")
+                            self.to_act.add(p.player_id)
+                logging.info(f"[ACTION-{execution_id}] Final to_act after ALL_IN preflop adjustment: {self.to_act}")
             success = True
             
             # In existing tests, side pot creation is expected at the end of betting round
@@ -1895,33 +1885,51 @@ class PokerGame:
             # If all players are all-in except at most one, go straight to showdown
             # This is critical for all-in confrontations - but only proceed if all players have acted
             if len(active_not_all_in) <= 1 and len(all_in_players) >= 1:
-                logging.info(f"[END-ROUND-{execution_id}] All-in confrontation detected, skipping to showdown")
-                # Before going to showdown, make sure we have 5 community cards
-                # This ensures HandEvaluator can properly evaluate the hands
+                logging.info(f"[END-ROUND-{execution_id}] All-in confrontation detected, dealing remaining community cards and skipping to showdown")
+                # Deal all remaining community cards to complete board
                 while len(self.community_cards) < 5:
-                    # Skip the betting rounds, but deal all remaining community cards
                     if len(self.community_cards) == 0:
                         # Burn and deal the flop (3 cards)
-                        self.deck.draw()  # Burn
+                        self.deck.draw()
                         for _ in range(3):
                             card = self.deck.draw()
                             if card:
                                 self.community_cards.append(card)
                     elif len(self.community_cards) == 3:
                         # Burn and deal the turn
-                        self.deck.draw()  # Burn
+                        self.deck.draw()
                         card = self.deck.draw()
                         if card:
                             self.community_cards.append(card)
                     elif len(self.community_cards) == 4:
                         # Burn and deal the river
-                        self.deck.draw()  # Burn
+                        self.deck.draw()
                         card = self.deck.draw()
                         if card:
                             self.community_cards.append(card)
-                
-                # Skip ahead to showdown - we don't need more betting rounds when 
-                # everyone is all-in or all but one player is all-in
+                # Broadcast the TURN and RIVER community cards to clients
+                try:
+                    from app.core.websocket import game_notifier
+                    import asyncio
+                    # TURN (first 4 cards)
+                    asyncio.create_task(
+                        game_notifier.notify_new_round(
+                            self.game_id,
+                            BettingRound.TURN.name,
+                            list(self.community_cards[:4])
+                        )
+                    )
+                    # RIVER (full board)
+                    asyncio.create_task(
+                        game_notifier.notify_new_round(
+                            self.game_id,
+                            BettingRound.RIVER.name,
+                            list(self.community_cards)
+                        )
+                    )
+                except Exception as e:
+                    logging.error(f"[END-ROUND-{execution_id}] Error broadcasting remaining boards: {e}")
+                # Proceed to showdown
                 return self._handle_showdown()
             
         # Move to the next round
