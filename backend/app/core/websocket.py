@@ -770,8 +770,11 @@ class GameStateNotifier:
             else:
                 log_text += " all-in"
         elif action_upper == "CALL":
-            # total_street_bet is the total amount called TO on this street
-            if total_street_bet is not None:
+            # If total_hand_bet provided, this was an all-in call
+            if total_hand_bet is not None:
+                log_text += f" all-in for {total_hand_bet}"
+            # Otherwise, show standard call to street bet or amount
+            elif total_street_bet is not None:
                 log_text += f" call {total_street_bet}"
             elif amount is not None:
                 log_text += f" call {amount}"

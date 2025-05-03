@@ -1472,7 +1472,10 @@ class GameService:
                     action_type,
                     notify_amount,
                     total_street_bet=post_street_bet,
-                    total_hand_bet=(post_hand_bet if poker_action == PokerPlayerAction.ALL_IN else None),
+                    # If the action is an all-in or a call that leaves player with zero chips, treat as all-in
+                    total_hand_bet=(post_hand_bet if (poker_action == PokerPlayerAction.ALL_IN or 
+                                                   (poker_action == PokerPlayerAction.CALL and poker_player.chips == 0))
+                                     else None),
                 )
                 
                 # Update game state in the repository

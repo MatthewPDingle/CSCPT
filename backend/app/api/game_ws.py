@@ -181,8 +181,6 @@ async def websocket_endpoint(
                             else:
                                 logging.warning(f"WebSocket connected: First player is Human ({current_player_domain.name}). Will request action normally.")
                             
-                            # Start a timer to check for showdown state and auto-start next hand if needed
-                            asyncio.create_task(_check_and_start_next_hand(game_id, service))
             
         except Exception as e:
             logging.error(f"Error sending initial game state: {str(e)}")
