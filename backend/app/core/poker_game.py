@@ -1886,7 +1886,7 @@ class PokerGame:
             # This is critical for all-in confrontations - but only proceed if all players have acted
             if len(active_not_all_in) <= 1 and len(all_in_players) >= 1:
                 logging.info(f"[END-ROUND-{execution_id}] All-in confrontation detected, dealing remaining community cards and skipping to showdown")
-                # Deal all remaining community cards to complete board
+                # Deal all remaining community cards to complete the board
                 while len(self.community_cards) < 5:
                     if len(self.community_cards) == 0:
                         # Burn and deal the flop (3 cards)
@@ -1907,29 +1907,7 @@ class PokerGame:
                         card = self.deck.draw()
                         if card:
                             self.community_cards.append(card)
-                # Broadcast the TURN and RIVER community cards to clients
-                try:
-                    from app.core.websocket import game_notifier
-                    import asyncio
-                    # TURN (first 4 cards)
-                    asyncio.create_task(
-                        game_notifier.notify_new_round(
-                            self.game_id,
-                            BettingRound.TURN.name,
-                            list(self.community_cards[:4])
-                        )
-                    )
-                    # RIVER (full board)
-                    asyncio.create_task(
-                        game_notifier.notify_new_round(
-                            self.game_id,
-                            BettingRound.RIVER.name,
-                            list(self.community_cards)
-                        )
-                    )
-                except Exception as e:
-                    logging.error(f"[END-ROUND-{execution_id}] Error broadcasting remaining boards: {e}")
-                # Proceed to showdown
+                # Skip ahead to showdown - we don't broadcast here
                 return self._handle_showdown()
             
         # Move to the next round

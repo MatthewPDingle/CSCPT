@@ -1497,6 +1497,20 @@ class GameService:
                         if poker_game.current_hand_id:
                              game.hand_history_ids.append(poker_game.current_hand_id)
 
+                    # If an early all-in showdown (board incomplete), broadcast Turn/River with pauses
+                    board = poker_game.community_cards
+                    try:
+                        # Turn then River if needed
+                        if len(board) == 3:
+                            await game_notifier.notify_new_round(game_id, PokerBettingRound.TURN.name, board[:4])
+                            await asyncio.sleep(1.0)
+                            await game_notifier.notify_new_round(game_id, PokerBettingRound.RIVER.name, board)
+                            await asyncio.sleep(1.0)
+                        elif len(board) == 4:
+                            await game_notifier.notify_new_round(game_id, PokerBettingRound.RIVER.name, board)
+                            await asyncio.sleep(1.0)
+                    except Exception as e:
+                        logging.error(f"Error broadcasting post-flop showdown boards: {e}")
                     # Notify about hand result
                     await game_notifier.notify_hand_result(game_id, poker_game)
 
