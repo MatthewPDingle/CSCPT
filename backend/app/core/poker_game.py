@@ -1308,10 +1308,13 @@ class PokerGame:
             call_amount = min(call_amount, player.chips)
             
             if call_amount > 0:
-                # Place the bet
+                # Place the bet and log chip counts before and after
+                chips_before = player.chips
                 actual_bet = player.bet(call_amount)
+                chips_after = player.chips
                 self.pots[0].add(actual_bet, player.player_id)
                 logging.info(f"[ACTION-{execution_id}] Player {player.name} CALLED with {actual_bet} chips. Current bet: {self.current_bet}")
+                logging.info(f"[ACTION-{execution_id}] Player {player.name} chips before call: {chips_before}, after call: {chips_after}")
                 
                 # If this call made the player all-in, update status
                 if player.chips == 0:
@@ -1417,8 +1420,10 @@ class PokerGame:
                 logging.warning(f"[ACTION-{execution_id}] Bet doesn't conform to betting structure")
                 return False
                 
-            # Place the bet
+            # Place the bet and log chip counts before and after
+            chips_before = player.chips
             actual_bet = player.bet(amount)
+            chips_after = player.chips
             self.pots[0].add(actual_bet, player.player_id)
             self.current_bet = actual_bet
             self.min_raise = actual_bet
@@ -1429,6 +1434,7 @@ class PokerGame:
             self.to_act = {p.player_id for p in self.players 
                           if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
             logging.info(f"[ACTION-{execution_id}] Player {player.name} BET {amount}. New current bet: {self.current_bet}")
+            logging.info(f"[ACTION-{execution_id}] Player {player.name} chips before bet: {chips_before}, after bet: {chips_after}")
             logging.info(f"[ACTION-{execution_id}] Reset to_act after bet from {old_to_act} to {self.to_act}")
             
             success = True
@@ -1488,9 +1494,12 @@ class PokerGame:
             logging.info(f"[ACTION-{execution_id}] Player {player.name} going ALL-IN for {all_in_amount}")
             logging.info(f"[ACTION-{execution_id}] ALL-IN DETAILS - Current chips: {player.chips}, Current bet: {player.current_bet}, Total bet: {player.total_bet}")
             
-            # Process the all-in bet
+            # Process the all-in bet and log chip counts before and after
+            chips_before = player.chips
             actual_bet = player.bet(all_in_amount)
+            chips_after = player.chips
             player.status = PlayerStatus.ALL_IN
+            logging.info(f"[ACTION-{execution_id}] Player {player.name} chips before all-in: {chips_before}, after all-in: {chips_after}")
             
             # Verify the player is properly marked as all-in
             logging.info(f"[ACTION-{execution_id}] ALL-IN CONFIRMED - Player {player.name} now has status {player.status.name} with {player.chips} chips remaining")

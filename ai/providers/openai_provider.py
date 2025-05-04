@@ -410,6 +410,12 @@ class OpenAIProvider(LLMProvider):
             m = re.search(r'```(?:json)?\s*([\s\S]*?)```', response_text)
             if m:
                 response_text = m.group(1)
+            # Sanitize JSON string: trim and extract first JSON object if extra text present
+            response_text = response_text.strip()
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                response_text = json_match.group(0)
+                logger.debug(f"Sanitized JSON text for parsing: {response_text}")
             # Try to parse the JSON response
             try:
                 result = json.loads(response_text)

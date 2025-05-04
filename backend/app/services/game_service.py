@@ -1332,6 +1332,8 @@ class GameService:
             # Finalize action_type and action_amount
             action_type = final_action_type
             action_amount = final_action_amount
+            # Log the final chosen action for debugging
+            logging.info(f"[AI-ACTION-{execution_id}] Final chosen action for player {player_id}: {action_type} with amount {action_amount}")
             
             # Convert the action type string to the poker game action enum
             from app.core.poker_game import PlayerAction as PokerPlayerAction

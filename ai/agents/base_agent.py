@@ -534,6 +534,8 @@ Based on the current situation, what action will you take? Analyze the hand, con
                     fallback_action = "call"
                     action_reason = f"calling as fallback - bet of {current_bet} is reasonable relative to stack of {stack}"
             
+            # Log and return a more descriptive fallback response
+            logger.warning(f"AI Error Fallback for player {getattr(self, 'player_id', 'unknown')}: choosing {fallback_action} because {action_reason}")
             # Return a more descriptive fallback response
             return {
                 "thinking": f"Error occurred in LLM response: {str(e)}\nUsing fallback logic: {action_reason}",

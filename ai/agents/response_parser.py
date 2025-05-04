@@ -190,7 +190,8 @@ class AgentResponseParser:
         # Minimum raise amount (default to double the current bet)
         min_raise = int(game_state.get("min_raise", current_bet * 2))
         
-        # Log the current state for debugging
+        # Log the current input state for debugging
+        logger.debug(f"apply_game_rules input - action: {action}, amount: {amount}, stack: {stack}, current_bet: {current_bet}, min_raise: {min_raise}")
         logger.info(f"Applying game rules for action: {action}, amount: {amount}")
         logger.info(f"Player stack: {stack}, Current bet: {current_bet}, Min raise: {min_raise}")
 
@@ -277,4 +278,6 @@ class AgentResponseParser:
                 )
                 return "all-in", stack
         
+        # Log the finalized action and amount after applying game rules
+        logger.debug(f"apply_game_rules output - action: {action}, amount: {amount}")
         return action, amount
