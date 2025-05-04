@@ -2005,6 +2005,8 @@ class PokerGame:
             True indicating hand is complete
         """
         self.current_round = BettingRound.SHOWDOWN
+        logging.info(f"[_handle_showdown] Starting showdown. Pots: {[ (pot.name, pot.amount) for pot in self.pots ]}")
+        logging.info(f"[_handle_showdown] Community cards: {self.community_cards}")
         
         # Make sure side pots are properly created
         self._create_side_pots()
@@ -2176,10 +2178,13 @@ class PokerGame:
         This implementation creates a separate pot for each all-in amount,
         ensuring that players only compete for the chips they contributed to.
         """
+        # Log initial pot and player contributions
+        logging.info(f"[_create_side_pots] Initial pots: {[ (pot.name, pot.amount) for pot in self.pots ]}")
         # Get all players still in the hand
         involved_players = [p for p in self.players 
                           if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN, PlayerStatus.FOLDED}
                           and p.total_bet > 0]  # Include folded players who have contributed chips
+        logging.info(f"[_create_side_pots] Involved players (name, total_bet, status): {[ (p.name, p.total_bet, p.status.name) for p in involved_players ]}")
         
         # If no players, or only one player, no need for side pots
         if len(involved_players) <= 1:

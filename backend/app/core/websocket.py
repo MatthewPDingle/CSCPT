@@ -705,34 +705,8 @@ class GameStateNotifier:
                 
                 if player and poker_game:
                     player_name = player.name
-                    button_pos = poker_game.button_position
-                    player_pos = player.position
-                    
-                    # Number of players for calculating positions
-                    player_count = len(game.players)
-                    
-                    # Calculate position names based on button position
-                    if player_pos == button_pos:
-                        position_name = "BTN"  # Button/Dealer
-                    elif player_pos == (button_pos + 1) % player_count:
-                        position_name = "SB"   # Small Blind
-                    elif player_pos == (button_pos + 2) % player_count:
-                        position_name = "BB"   # Big Blind
-                    elif player_pos == (button_pos + 3) % player_count:
-                        position_name = "UTG"  # Under the Gun
-                    elif player_pos == (button_pos + 4) % player_count:
-                        position_name = "UTG+1"
-                    elif player_pos == (button_pos + 5) % player_count:
-                        position_name = "UTG+2"
-                    elif player_pos == (button_pos + 6) % player_count:
-                        position_name = "LJ"   # Lojack
-                    elif player_pos == (button_pos + 7) % player_count:
-                        position_name = "HJ"   # Hijack
-                    elif player_pos == (button_pos + 8) % player_count:
-                        position_name = "CO"   # Cutoff
-                    
-                    # Do NOT append seat number (was user feedback to remove). Keep only the
-                    # short positional name such as "BTN", "UTG", etc.
+                    # Use computed poker position name from PokerGame._set_positions
+                    position_name = poker_game.position_names.get(player_id, "")
         except Exception as e:
             import logging
             logging.error(f"Error getting player position: {str(e)}")
