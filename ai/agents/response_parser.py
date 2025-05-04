@@ -99,16 +99,11 @@ class AgentResponseParser:
             amount = None
         
         # Validate amount based on action
-        # Note: Do NOT automatically discard the amount for a CALL, because
-        # the agent may be intentionally specifying an explicit call size
-        # (e.g. an all-in call that is smaller than the bet-to amount).  The
-        # game-rules pass will make the final decision about whether the
-        # supplied amount is usable.
         if action in ["fold", "check"]:
-            # These actions never require an amount.
+            # No amount needed for fold or check.
             amount = None
-        elif action in ["bet", "raise", "all-in"]:
-            # These actions require an amount
+        elif action in ["bet", "raise"]:
+            # Bet/Raise actions require an explicit amount.
             if amount is None:
                 logger.warning(f"Action '{action}' requires an amount but none provided, using call instead")
                 action = "call"
@@ -124,6 +119,9 @@ class AgentResponseParser:
                     logger.warning(f"Invalid amount '{amount}' for action '{action}', using call instead")
                     action = "call"
                     amount = None
+        elif action == "all-in":
+            # All-in does not require an explicit amount; game rules will determine commitment.
+            pass
         
         # Construct metadata with all additional information
         metadata = {
@@ -212,11 +210,14 @@ class AgentResponseParser:
             amount = None
             
         elif action == "call":
-            # If call amount is more than player's stack, convert to all-in
+            # Calls: match current bet or convert to all-in if necessary
             if current_bet >= stack:
                 logger.info(f"Call amount {current_bet} exceeds stack {stack}. Converting to all-in.")
                 action = "all-in"
                 amount = stack
+            else:
+                # Total call amount is the current bet
+                amount = current_bet
                 
         elif action in ["raise", "bet"]:
             # Handle raise/bet amounts

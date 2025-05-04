@@ -18,7 +18,7 @@ POKER_ACTION_SCHEMA = {
         },
         "amount": {
             "type": ["number", "null"],
-            "description": "The total amount you are committing with this action, including any chips already bet this round: for calls, the amount needed to call; for raises, the total bet-to amount; for all-in, your entire stack; null for fold or check actions"
+            "description": "Total cumulative chips committed by the player after this action in the current betting round. For calls, the total call amount (the current bet being matched); for raises, the total bet amount after raising; for all-in, the player’s full stack committed this round; null for fold or check actions"
         },
         "reasoning": {
             "type": "object",

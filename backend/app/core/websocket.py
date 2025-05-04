@@ -753,14 +753,14 @@ class GameStateNotifier:
         if action_upper == "RAISE":
             # total_street_bet is the amount raised TO on this street
             if total_street_bet is not None:
-                log_text += f" raise to {total_street_bet}"
+                log_text += f" raises to {total_street_bet}"
             elif amount is not None:
-                log_text += f" raise to {amount}"
+                log_text += f" raises to {amount}"
             else:
-                log_text += " raise"
+                log_text += " raises"
         elif action_upper == "BET":
             # amount is the size of the bet
-            log_text += f" bet {amount}" if amount is not None else " bet"
+            log_text += f" bets {amount}" if amount is not None else " bets"
         elif action_upper in ["ALL_IN", "ALL-IN"]:
             # total_hand_bet is the total committed this hand after all-in
             if total_hand_bet is not None:
@@ -775,15 +775,15 @@ class GameStateNotifier:
                 log_text += f" all-in for {total_hand_bet}"
             # Otherwise, show standard call to street bet or amount
             elif total_street_bet is not None:
-                log_text += f" call {total_street_bet}"
+                log_text += f" calls to {total_street_bet}"
             elif amount is not None:
-                log_text += f" call {amount}"
+                log_text += f" calls to {amount}"
             else:
-                log_text += " call"
+                log_text += " calls"
         elif action_upper == "CHECK":
-            log_text += " check"
+            log_text += " checks"
         elif action_upper == "FOLD":
-            log_text += " fold"
+            log_text += " folds"
         else:
             log_text += f" {action_str.lower()}"  # fallback
 
