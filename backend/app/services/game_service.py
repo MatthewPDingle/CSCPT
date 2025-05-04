@@ -1359,6 +1359,27 @@ class GameService:
                 success = poker_game.process_action(poker_player, poker_action, action_amount)
                 logging.info(f"[AI-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
                 logging.info(f"[AI-ACTION-{execution_id}] PokerGame process_action result: {success}")
+                # If invalid, force a fold to advance game state
+                if not success:
+                    from app.core.poker_game import PlayerAction as PokerPlayerAction
+                    logging.error(f"[AI-ACTION-{execution_id}] Invalid AI action {poker_action.name} {action_amount}. Forcing FOLD to prevent stall.")
+                    # Force fold
+                    fold_action = PokerPlayerAction.FOLD
+                    poker_game.process_action(poker_player, fold_action, None)
+                    # Notify forced fold
+                    from app.core.websocket import game_notifier
+                    await game_notifier.notify_player_action(
+                        game_id,
+                        player_id,
+                        fold_action.name,
+                        None,
+                        total_street_bet=None,
+                        total_hand_bet=None
+                    )
+                    # Update and notify game state
+                    self.game_repo.update(game)
+                    await game_notifier.notify_game_update(game_id, poker_game)
+                    return
             # Compute actual amount for notify (especially CALL actions) and totals
             # post_street_bet: total bet on current street after action
             post_street_bet = poker_player.current_bet

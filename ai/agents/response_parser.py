@@ -203,6 +203,10 @@ class AgentResponseParser:
                 "AI attempted a RAISE when there is no current bet. Converting to BET."
             )
             action = "bet"
+        # 1b. If AI uses BET when there is already a bet, convert to RAISE
+        elif action == "bet" and current_bet > 0:
+            logger.info(f"AI attempted a BET when current_bet={current_bet}. Converting to RAISE.")
+            action = "raise"
         
         # Check if action is appropriate given the current state
         if action == "check" and current_bet > 0:
