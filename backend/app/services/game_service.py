@@ -1278,135 +1278,60 @@ class GameService:
                 # We'll decide between CALL and FOLD based on various factors below
                 action_type = "FOLD"
             action_amount = None
-
-            if MEMORY_SYSTEM_AVAILABLE:
-                logging.info(f"AI Action: Requesting decision from MemoryIntegration for {archetype}")
+            
+            # AI decision with fallback retries
+            from ai.memory_integration import MemoryIntegration
+            from ai.agents.response_parser import AgentResponseParser
+            from app.core.poker_game import PlayerAction as PokerPlayerAction
+            max_retries = 3
+            final_action_type: str = None
+            final_action_amount = None
+            for attempt in range(1, max_retries + 1):
+                logging.info(f"[AI-ACTION-{execution_id}] Attempt {attempt}/{max_retries} for AI decision")
                 try:
-                    # Import necessary modules
-                    from ai.memory_integration import MemoryIntegration
-                    from ai.agents.response_parser import AgentResponseParser
-
-                    # Request decision from AI
-                    # Request decision from AI (session-only memory)
                     ai_decision = await MemoryIntegration.get_agent_decision(
                         archetype=archetype,
                         game_state=game_state_dict,
                         context=context,
                         player_id=player_id,
-                        use_memory=False,               # disable persistent memory, use in-session profiles only
+                        use_memory=False,
                         intelligence_level=intelligence_level
                     )
-                    logging.info(f"AI Action: Received decision: {ai_decision}")
-
-                    # Parse and validate the response
-                    action, amount, metadata = AgentResponseParser.parse_response(ai_decision)
-
-                    # Apply game rules to ensure the action is valid
-                    # **Important:** Use game_state_dict which has filtered cards
-                    action, amount = AgentResponseParser.apply_game_rules(action, amount, game_state_dict)
-
-                    # Log original action for debugging
-                    logging.debug(f"AI Action: Original action received: '{action}'")
-                    
-                    # Normalize the action string (handle various formats)
-                    normalized_action = action.lower().replace('-', '_').replace(' ', '_')
-                    logging.debug(f"AI Action: Normalized action: '{normalized_action}'")
-                    
-                    # More comprehensive mapping to handle various formats
+                    logging.info(f"[AI-ACTION-{execution_id}] Attempt {attempt}: Raw AI decision: {ai_decision}")
+                    action_str, amount, metadata = AgentResponseParser.parse_response(ai_decision)
+                    logging.info(f"[AI-ACTION-{execution_id}] Attempt {attempt}: Parsed action: {action_str}, amount: {amount}")
+                    # Handle null or zero amount for ALL_IN
+                    if action_str.lower().replace('-', '_').replace(' ', '_') == 'all_in' and (amount is None or amount <= 0):
+                        correct_amount = poker_player.chips + poker_player.current_bet
+                        logging.warning(f"[AI-ACTION-{execution_id}] Corrected ALL_IN amount for player {player_id} from {amount} to {correct_amount}")
+                        amount = correct_amount
+                    action_str, amount = AgentResponseParser.apply_game_rules(action_str, amount, game_state_dict)
+                    logging.info(f"[AI-ACTION-{execution_id}] Attempt {attempt}: Action after rules: {action_str}, amount: {amount}")
+                    normalized = action_str.lower().replace('-', '_').replace(' ', '_')
                     action_map = {
-                        # Standard actions
-                        "fold": "FOLD", "check": "CHECK", "call": "CALL",
-                        "bet": "BET", "raise": "RAISE", 
-                        # All-in variations
-                        "all_in": "ALL_IN", "all-in": "ALL_IN", "allin": "ALL_IN", 
-                        "all in": "ALL_IN", "all-in": "ALL_IN", "all_in": "ALL_IN"
+                        'fold': 'FOLD', 'check': 'CHECK', 'call': 'CALL',
+                        'bet': 'BET', 'raise': 'RAISE', 'all_in': 'ALL_IN'
                     }
-                    
-                    action_type = action_map.get(normalized_action, None)
-                    if action_type is None:
-                        # Try one more approach - see if the action contains "all" and "in"
-                        if "all" in normalized_action and "in" in normalized_action:
-                            logging.info(f"AI Action: Detected likely all-in action from '{normalized_action}'")
-                            action_type = "ALL_IN"
-                        else:
-                            # If still not found, make a smart default choice
-                            logging.warning(f"Unknown action '{action}' received. Making intelligent fallback decision.")
-                            if current_bet == 0:
-                                action_type = "CHECK"
-                            else:
-                                # Check if this is an aggressive archetype
-                                aggressive_archetypes = ["LAG", "Maniac"]
-                                if any(a.lower() in archetype.lower() for a in aggressive_archetypes):
-                                    action_type = "CALL"
-                                else:
-                                    action_type = "FOLD"
-                    
-                    # If ALL_IN, ensure amount uses all player's chips
-                    if action_type == "ALL_IN":
-                        # Find player's stack to ensure proper all-in
-                        for p in game_state_dict.get("players", []):
-                            if p.get("player_id") == player_id:
-                                action_amount = p.get("chips", amount)
-                                logging.info(f"AI Action: Setting ALL_IN amount to player's full stack: {action_amount}")
-                                break
+                    action_type = action_map.get(normalized)
+                    if not action_type and 'all' in normalized and 'in' in normalized:
+                        action_type = 'ALL_IN'
+                    if not action_type:
+                        raise ValueError(f"Invalid action type: {action_str}")
+                    if action_type == 'ALL_IN':
+                        final_action_amount = amount or (poker_player.chips + poker_player.current_bet)
                     else:
-                        # For other actions, use the original amount
-                        action_amount = amount
-
-                    logging.info(f"AI Action: Parsed and validated decision: {action_type} {action_amount if action_amount is not None else ''}")
-                    
-                    # Add detailed DEBUG logging to track the full decision-making process
-                    logging.debug(f"AI Decision Process - Player: {domain_player.name} (ID: {player_id})")
-                    logging.debug(f"Original AI Response: {ai_decision}")
-                    logging.debug(f"Parsed Action: {action} (normalized to: {normalized_action})")
-                    logging.debug(f"Final Action Type: {action_type}, Amount: {action_amount}")
-                    
-                except (Exception, ImportError) as ai_error:
-                    logging.error(f"Error in AI decision making process: {ai_error}")
-                    logging.error(traceback.format_exc())
-                    
-                    # Use smarter fallback based on archetype and bet amount
-                    if current_bet == 0:
-                        action_type = "CHECK"
-                    else:
-                        # Determine appropriate fallback based on archetype
-                        aggressive_archetypes = ["LAG", "Maniac"]
-                        passive_archetypes = ["CallingStation", "LoosePassive", "Beginner"]
-                        tight_archetypes = ["TAG", "TightPassive", "ShortStack"]
-                        
-                        player_stack = 0
-                        for player in game_state_dict.get("players", []):
-                            if player.get("player_id") == player_id:
-                                player_stack = player.get("stack", 0)
-                                break
-                        
-                        # If current bet is small compared to stack, more likely to call
-                        if any(a.lower() in archetype.lower() for a in aggressive_archetypes):
-                            action_type = "CALL"  # Aggressive types call more
-                        elif any(a.lower() in archetype.lower() for a in passive_archetypes):
-                            if current_bet < player_stack / 5:  # Call small bets
-                                action_type = "CALL"
-                            else:
-                                action_type = "FOLD"
-                        else:  # Tight archetypes or unknown
-                            if current_bet < player_stack / 10:  # Only call very small bets
-                                action_type = "CALL"
-                            else:
-                                action_type = "FOLD"
-                    
-                    logging.info(f"Using intelligent fallback action: {action_type}")
-            else:
-                 logging.warning("AI Action: Memory system not available, using smart defaults.")
-                 
-                 # Even if memory system isn't available, make reasonable decisions
-                 if current_bet == 0:
-                     action_type = "CHECK"
-                 else:
-                     # Basic strategy based on archetype
-                     if "LAG" in archetype or "Maniac" in archetype:
-                         action_type = "CALL"
-                     else:
-                         action_type = "FOLD"
+                        final_action_amount = amount
+                    final_action_type = action_type
+                    break
+                except Exception as e:
+                    logging.warning(f"[AI-ACTION-{execution_id}] Attempt {attempt} failed: {e}")
+                    if attempt == max_retries:
+                        final_action_type = 'FOLD'
+                        final_action_amount = None
+                        logging.error(f"[AI-ACTION-{execution_id}] All {max_retries} attempts failed. Defaulting to FOLD.")
+            # Finalize action_type and action_amount
+            action_type = final_action_type
+            action_amount = final_action_amount
             
             # Convert the action type string to the poker game action enum
             from app.core.poker_game import PlayerAction as PokerPlayerAction
