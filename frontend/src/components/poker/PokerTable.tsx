@@ -7,6 +7,7 @@ interface Player {
   id: string;
   name: string;
   chips: number;
+  currentBet: number;
   position: number;
   cards: (string | null)[];
   isActive: boolean;
@@ -16,6 +17,8 @@ interface Player {
   isSB?: boolean;
   isBB?: boolean;
   status?: string;
+  /** Raw current street bet from server */
+  current_bet?: number;
 }
 
 interface PokerTableProps {
@@ -120,13 +123,13 @@ const PlayerPositions = styled.div`
 const getPlayerPosition = (player: Player) => {
   // Define the 10 fixed positions around the oval table in clockwise order
   const seatPositions = [
-    { x: '28%', y: '6%' },     // Position 0: Top left (moved up by 6%)
-    { x: '72%', y: '6%' },     // Position 1: Top right (moved up by 6%)
+    { x: '28%', y: 'calc(1% - 40px)' },     // Position 0: Top left (moved up ~80px)
+    { x: '72%', y: 'calc(1% - 40px)' },     // Position 1: Top right (moved up ~80px)
     { x: '92%', y: '24%' },    // Position 2: Right top (moved up by 6%)
     { x: '92%', y: '78%' },    // Position 3: Right bottom (moved down by 8%)
-    { x: '72%', y: '97%' },    // Position 4: Bottom right (moved down by 9%)
-    { x: '50%', y: '97%' },    // Position 5: Bottom middle (moved down by 9%)
-    { x: '28%', y: '97%' },    // Position 6: Bottom left (moved down by 9%)
+    { x: '72%', y: '112%' },   // Position 4: Bottom right (moved down more)
+    { x: '50%', y: '112%' },   // Position 5: Bottom middle (moved down more)
+    { x: '28%', y: '112%' },   // Position 6: Bottom left (moved down more)
     { x: '8%',  y: '78%' },    // Position 7: Left bottom (moved down by 8%)
     { x: '8%',  y: '24%' }     // Position 8: Left top (moved up by 6%)
   ];
@@ -248,6 +251,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
               id: 'dealer',
               name: 'Dealer',
               chips: 0,
+              currentBet: 0,
               position: -1, // Special position for dealer
               cards: [], // Empty cards array for dealer
               isActive: true,
@@ -262,6 +266,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
               id: 'dealer',
               name: 'Dealer',
               chips: 0,
+              currentBet: 0,
               position: -1,
               cards: [],
               isActive: true,
@@ -285,6 +290,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
               // Create sanitized player object with fallback values
               const sanitizedPlayer: Player = {
                 ...player,
+                // Use the currentBet from the transformed player data
+                currentBet: typeof player.currentBet === 'number' ? player.currentBet : 0,
                 id: playerId,
                 name: player.name || `Player ${index}`,
                 chips: typeof player.chips === 'number' ? player.chips : 1000,

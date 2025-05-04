@@ -15,6 +15,7 @@ interface Player {
   isSB?: boolean;
   isBB?: boolean;
   status?: string;
+  currentBet: number;
 }
 
 interface PlayerSeatProps {
@@ -174,6 +175,61 @@ const SmallBlindMarker = styled(PositionMarker)`
 const BigBlindMarker = styled(PositionMarker)`
   background-color: #e74c3c; // Red
 `;
+// Container for bet stack display
+// Direction where to place bet stack relative to seat
+type StackDirection = 'top' | 'bottom' | 'left' | 'right';
+interface BetStackContainerProps {
+  amount: number;
+  direction: StackDirection;
+}
+const BetStackContainer = styled.div<BetStackContainerProps>`
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #ffd700;
+  font-size: 0.75rem;
+  font-weight: bold;
+  border-radius: 10px;
+  z-index: 15;
+  opacity: ${props => (props.amount > 0 ? 1 : 0)};
+  ${props => {
+    switch (props.direction) {
+      case 'top':
+        // Bottom seats: place badge above, closer to player (moved down)
+        return `
+          top: -40px;
+          left: 50%;
+          transform: translateX(-50%);
+        `;
+      case 'bottom':
+        // Top seats: place badge below the player card
+        return `
+          bottom: -18px;
+          left: 50%;
+          transform: translateX(-50%);
+        `;
+      case 'left':
+        // Left side seats: badge outside on left, moved further left
+        return `
+          top: calc(50% - 10px);
+          right: calc(0% - 50px);
+          transform: translateY(-50%);
+        `;
+      case 'right':
+        // Right side seats: badge outside on right, moved further right
+        return `
+          top: calc(50% - 10px);
+          left: calc(0% - 50px);
+          transform: translateY(-50%);
+        `;
+      default:
+        return '';
+    }
+  }}
+`;
 
 const PlayerSeat: React.FC<PlayerSeatProps> = ({
   player,
@@ -184,7 +240,26 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
   showTurnHighlight = false,
   isFolding = false,
   isWinner = false
-}) => {
+ }) => {
+  // Determine seat direction based on seat index (player.position)
+  const seatIndex = player.position;
+  let direction: StackDirection;
+  if (seatIndex === 0 || seatIndex === 1) {
+    // Top seats: badge below
+    direction = 'bottom';
+  } else if ([4, 5, 6].includes(seatIndex)) {
+    // Bottom seats: badge above
+    direction = 'top';
+  } else if ([7, 8].includes(seatIndex)) {
+    // Left side seats: badge to outside left
+    direction = 'left';
+  } else if ([2, 3].includes(seatIndex)) {
+    // Right side seats: badge to outside right
+    direction = 'right';
+  } else {
+    // Fallback: above
+    direction = 'top';
+  }
   // Check if player is folded based on status (permanent) or is currently folding (transitional)
   // The status-based fold styling persists after a hand, while isFolding is only for transitions
   const isFolded = player.status === 'FOLDED';
@@ -228,6 +303,13 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
           </MarkersContainer>
         )}
       </PlayerInfo>
+      {/* Bet stack display */}
+      {player.currentBet > 0 && (
+        <BetStackContainer amount={player.currentBet} direction={direction}>
+          <span role="img" aria-label="chips">🪙</span>
+          <span>{player.currentBet}</span>
+        </BetStackContainer>
+      )}
       
       <PlayerCards $isHuman={isHuman} $isFolded={shouldShowFoldStyle}>
         {player.id === 'dealer' ? (
