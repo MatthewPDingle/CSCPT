@@ -876,6 +876,7 @@ const connectionIndicator = (
           card ? `${card.rank}${card.suit}` : null
         )}
         pot={effectiveGameState?.total_pot || 0}
+        currentRound={effectiveGameState?.current_round || ''}
         handResultPlayers={handResult?.players}
         // IDs of winning players for pulsing their cards
         handWinners={handResult?.winners.map(w => w.player_id) ?? []}

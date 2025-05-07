@@ -24,7 +24,10 @@ interface Player {
 interface PokerTableProps {
   players: Player[];
   communityCards: (string | null)[];
+  /** Total pot (sum of all street pots) */
   pot: number;
+  /** Current betting round name (e.g., 'PREFLOP', 'FLOP', etc.) */
+  currentRound: string;
   showdownActive?: boolean;
   handResultPlayers?: { player_id: string; cards?: string[] }[];
   /** IDs of players who won the last hand */
@@ -195,6 +198,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   players,
   communityCards,
   pot,
+  currentRound,
   showdownActive = false,
   handResultPlayers,
   handWinners = [],
@@ -202,17 +206,25 @@ const PokerTable: React.FC<PokerTableProps> = ({
   showTurnHighlight = false,
   foldedPlayerId = null
 }) => {
-  // Flash pot display when pot increases
+  // Displayed pot updates only when a betting round completes
   const [flashPot, setFlashPot] = useState<boolean>(false);
-  const prevPotRef = useRef<number>(pot);
+  // Displayed pot stays zero until end of each betting round
+  const [displayedPot, setDisplayedPot] = useState<number>(0);
+  const prevRoundRef = useRef<string>(currentRound);
   useEffect(() => {
-    if (pot > prevPotRef.current) {
-      setFlashPot(true);
-      const timer = setTimeout(() => setFlashPot(false), 600);
-      return () => clearTimeout(timer);
+    // On round transition, update pot display and trigger flash
+    if (prevRoundRef.current !== currentRound) {
+      // Animate chip stacks moving into pot (stub for full animation)
+      console.log(`Animating chip move for round ${prevRoundRef.current} -> ${currentRound}`);
+      // After animation, update displayedPot
+      setTimeout(() => {
+        setDisplayedPot(pot);
+        setFlashPot(true);
+        setTimeout(() => setFlashPot(false), 600);
+      }, 500); // 500ms chip movement animation duration
+      prevRoundRef.current = currentRound;
     }
-    prevPotRef.current = pot;
-  }, [pot]);
+  }, [currentRound, pot]);
   // Ensure players array is valid and handle potential undefined/null values
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
   console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
@@ -235,7 +247,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   return (
     <TableContainer>
       <TableFelt>
-        <PotDisplay flash={flashPot}>Pot: {validPot}</PotDisplay>
+        <PotDisplay flash={flashPot}>Pot: {displayedPot}</PotDisplay>
         
         <CommunityCardsArea>
           {paddedCommunityCards.slice(0, 5).map((card, index) => (
