@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import styled, { css } from 'styled-components';
 import PlayerSeat from './PlayerSeat';
 import Card from './Card';
+import AnimatingBetChip from './AnimatingBetChip';
 
 interface Player {
   id: string;
@@ -25,9 +26,22 @@ interface PokerTableProps {
   players: Player[];
   communityCards: (string | null)[];
   /** Total pot (sum of all street pots) */
+  /** Total pot from all completed betting rounds */
   pot: number;
-  /** Current betting round name (e.g., 'PREFLOP', 'FLOP', etc.) */
+  /** Name of the current betting round (PREFLOP, FLOP, TURN, RIVER, SHOWDOWN) */
   currentRound: string;
+  /** Sum of bets in the current active betting round */
+  currentStreetTotal?: number;
+  /** Chip animations for bet collection at end of round */
+  betsToAnimate?: Array<{ playerId: string; amount: number; fromPosition?: { x: string; y: string } }>;
+  /** Target position for animating chips (center of currentStreetPot display) */
+  animationTargetPosition?: { x: string; y: string };
+  /** Callback for PlayerSeat to register its bet-stack position */
+  updatePlayerSeatPosition?: (playerId: string, pos: { x: string; y: string }) => void;
+  /** Flash main pot pulse */
+  flashMainPot?: boolean;
+  /** Flash current street pot pulse */
+  flashCurrentStreetPot?: boolean;
   showdownActive?: boolean;
   handResultPlayers?: { player_id: string; cards?: string[] }[];
   /** IDs of players who won the last hand */
@@ -72,16 +86,20 @@ const TableFelt = styled.div`
 
 const PotDisplay = styled.div<{ flash?: boolean }>`
   position: absolute;
-  top: 40px;
+  top: 24px;
   background-color: rgba(0, 0, 0, 0.8);
   color: white;
-  padding: 0.7rem 1.5rem;
+  padding: 0.7rem 1.0rem;
   border-radius: 25px;
   font-weight: bold;
   font-size: 1.2rem;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   z-index: 2;
+  height: 49px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   /* Pulse animation when pot increases */
   ${props => props.flash && css`
     animation: potFlash 0.6s ease-out;
@@ -101,6 +119,14 @@ const PotDisplay = styled.div<{ flash?: boolean }>`
       color: white;
     }
   }
+`;
+// Display for current street bets
+const CurrentRoundPotDisplay = styled(PotDisplay)`
+  top: auto;
+  bottom: 82px;  // moved up 12px
+  height: 26px;
+  font-size: 1rem;
+  padding: 0.4rem 0.8rem;
 `;
 
 const CommunityCardsArea = styled.div`
@@ -199,6 +225,11 @@ const PokerTable: React.FC<PokerTableProps> = ({
   communityCards,
   pot,
   currentRound,
+  currentStreetTotal = 0,
+  betsToAnimate = [],
+  updatePlayerSeatPosition = () => {},
+  flashMainPot = false,
+  flashCurrentStreetPot = false,
   showdownActive = false,
   handResultPlayers,
   handWinners = [],
@@ -206,6 +237,20 @@ const PokerTable: React.FC<PokerTableProps> = ({
   showTurnHighlight = false,
   foldedPlayerId = null
 }) => {
+  // Refs for table container and pot display (for animation coordinate calculations)
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const potDisplayRef = useRef<HTMLDivElement>(null);
+  const [animationTargetPosition, setAnimationTargetPosition] = useState<{ x: string; y: string }>({ x: '50%', y: '50%' });
+  // Compute animation target (center of pot display) relative to table
+  useEffect(() => {
+    if (potDisplayRef.current && tableContainerRef.current) {
+      const potRect = potDisplayRef.current.getBoundingClientRect();
+      const tableRect = tableContainerRef.current.getBoundingClientRect();
+      const relX = ((potRect.left + potRect.width / 2 - tableRect.left) / tableRect.width) * 100;
+      const relY = ((potRect.top + potRect.height / 2 - tableRect.top) / tableRect.height) * 100;
+      setAnimationTargetPosition({ x: `${relX}%`, y: `${relY}%` });
+    }
+  }, [currentStreetTotal, flashCurrentStreetPot]);
   // Displayed pot updates only when a betting round completes
   const [flashPot, setFlashPot] = useState<boolean>(false);
   // Displayed pot stays zero until end of each betting round
@@ -214,14 +259,21 @@ const PokerTable: React.FC<PokerTableProps> = ({
   useEffect(() => {
     // On round transition, update pot display and trigger flash
     if (prevRoundRef.current !== currentRound) {
-      // Animate chip stacks moving into pot (stub for full animation)
-      console.log(`Animating chip move for round ${prevRoundRef.current} -> ${currentRound}`);
-      // After animation, update displayedPot
-      setTimeout(() => {
-        setDisplayedPot(pot);
-        setFlashPot(true);
-        setTimeout(() => setFlashPot(false), 600);
-      }, 500); // 500ms chip movement animation duration
+      const fromRound = prevRoundRef.current;
+      const toRound = currentRound;
+      console.log(`Animating chip move for round ${fromRound} -> ${toRound}`);
+      // Skip animation and pot update on new hand (SHOWDOWN -> PREFLOP)
+      if (!(fromRound === 'SHOWDOWN' && toRound === 'PREFLOP')) {
+        // After animation, update displayedPot and flash
+        setTimeout(() => {
+          setDisplayedPot(pot);
+          setFlashPot(true);
+          setTimeout(() => setFlashPot(false), 600);
+        }, 500); // 500ms chip movement animation duration
+      } else {
+        // New hand: reset displayed pot immediately
+        setDisplayedPot(0);
+      }
       prevRoundRef.current = currentRound;
     }
   }, [currentRound, pot]);
@@ -245,14 +297,29 @@ const PokerTable: React.FC<PokerTableProps> = ({
   const validPot = typeof pot === 'number' && !isNaN(pot) ? pot : 0;
   
   return (
-    <TableContainer>
+    <TableContainer ref={tableContainerRef}>
       <TableFelt>
-        <PotDisplay flash={flashPot}>Pot: {displayedPot}</PotDisplay>
+        <PotDisplay ref={potDisplayRef} flash={flashPot}>Pot: {displayedPot}</PotDisplay>
+        <CurrentRoundPotDisplay flash={flashCurrentStreetPot}>
+          Bets: {currentStreetTotal}
+        </CurrentRoundPotDisplay>
         
         <CommunityCardsArea>
           {paddedCommunityCards.slice(0, 5).map((card, index) => (
             <Card key={index} card={card} isCommunity />
           ))}
+        {/* Chip animation elements for completed bets */}
+        {betsToAnimate.map(bet => (
+          bet.fromPosition && (
+            <AnimatingBetChip
+              key={`anim-${bet.playerId}`}
+              amount={bet.amount}
+              fromPosition={bet.fromPosition}
+              targetPosition={animationTargetPosition}
+              onEnd={() => {}}
+            />
+          )
+        ))}
         </CommunityCardsArea>
         
         <PlayerPositions>
@@ -291,6 +358,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
             isCurrentTurn={false}
             showTurnHighlight={false}
             isFolding={false}
+            updatePlayerSeatPosition={updatePlayerSeatPosition}
+            tableContainerRef={tableContainerRef}
           />
           
           {/* Player positions */}
@@ -344,6 +413,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   isCurrentTurn={isPlayerCurrentTurn}
                   showTurnHighlight={showTurnHighlight && isPlayerCurrentTurn}
                   isFolding={isFolding}
+                  updatePlayerSeatPosition={updatePlayerSeatPosition}
+                  tableContainerRef={tableContainerRef}
                   // highlight winning player's cards
                   isWinner={showdownActive && handWinners.includes(playerId)}
                 />

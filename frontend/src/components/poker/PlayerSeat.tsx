@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import styled from 'styled-components';
 import Card from './Card';
 
@@ -28,6 +28,10 @@ interface PlayerSeatProps {
   isFolding?: boolean;
   /** Whether this player won the last hand */
   isWinner?: boolean;
+  /** Callback to register the bet-stack position for animations */
+  updatePlayerSeatPosition: (playerId: string, pos: { x: string; y: string }) => void;
+  /** Ref to the table container for coordinate calculations */
+  tableContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 interface PositionProps {
@@ -200,14 +204,14 @@ const BetStackContainer = styled.div<BetStackContainerProps>`
       case 'top':
         // Bottom seats: place badge above, closer to player (moved down)
         return `
-          top: -40px;
+          top: -30px;
           left: 50%;
           transform: translateX(-50%);
         `;
       case 'bottom':
         // Top seats: place badge below the player card
         return `
-          bottom: -18px;
+          bottom: -8px;
           left: 50%;
           transform: translateX(-50%);
         `;
@@ -215,7 +219,7 @@ const BetStackContainer = styled.div<BetStackContainerProps>`
         // Left side seats: badge outside on left, moved further left
         return `
           top: calc(50% - 10px);
-          right: calc(0% - 50px);
+          right: calc(0% - 40px);
           transform: translateY(-50%);
         `;
       case 'right':
@@ -239,8 +243,22 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
   isCurrentTurn = false,
   showTurnHighlight = false,
   isFolding = false,
-  isWinner = false
- }) => {
+  isWinner = false,
+  updatePlayerSeatPosition,
+  tableContainerRef
+}) => {
+  // Ref for player's bet-stack container to register position for chip animations
+  const betStackRef = useRef<HTMLDivElement>(null);
+  // Report bet-stack position relative to the table container
+  useEffect(() => {
+    if (betStackRef.current && tableContainerRef.current) {
+      const betRect = betStackRef.current.getBoundingClientRect();
+      const tableRect = tableContainerRef.current.getBoundingClientRect();
+      const relX = ((betRect.left + betRect.width / 2 - tableRect.left) / tableRect.width) * 100;
+      const relY = ((betRect.top + betRect.height / 2 - tableRect.top) / tableRect.height) * 100;
+      updatePlayerSeatPosition(player.id, { x: `${relX}%`, y: `${relY}%` });
+    }
+  }, [player.currentBet, updatePlayerSeatPosition, tableContainerRef]);
   // Determine seat direction based on seat index (player.position)
   const seatIndex = player.position;
   let direction: StackDirection;
@@ -305,7 +323,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       </PlayerInfo>
       {/* Bet stack display */}
       {player.currentBet > 0 && (
-        <BetStackContainer amount={player.currentBet} direction={direction}>
+        <BetStackContainer ref={betStackRef} amount={player.currentBet} direction={direction}>
           <span role="img" aria-label="chips">🪙</span>
           <span>{player.currentBet}</span>
         </BetStackContainer>

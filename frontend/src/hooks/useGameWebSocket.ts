@@ -298,6 +298,32 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
   
+  // Pot state and animation tracking
+  // accumulatedPot: chips collected from completed betting rounds
+  const [accumulatedPot, setAccumulatedPot] = useState<number>(0);
+  // currentStreetPot: sum of bets in the active betting round
+  const [currentStreetPot, setCurrentStreetPot] = useState<number>(0);
+  // Bets to animate when a betting round completes
+  const [betsToAnimate, setBetsToAnimate] = useState<
+    Array<{ playerId: string; amount: number; fromPosition?: { x: string; y: string } }>
+  >([]);
+  // Flash flags for pot pulse animations
+  const [flashMainPot, setFlashMainPot] = useState<boolean>(false);
+  const [flashCurrentStreetPot, setFlashCurrentStreetPot] = useState<boolean>(false);
+  // Ref to store previous gameState for detecting round transitions
+  const previousGameStateRef = useRef<GameState | null>(null);
+  // Ref to store each player's BetStack position for animation start
+  const playerSeatPositionsRef = useRef<Map<string, { x: string; y: string }>>(new Map());
+  /**
+   * Register a player's bet stack position (relative CSS coords)
+   */
+  const updatePlayerSeatPosition = useCallback(
+    (playerId: string, pos: { x: string; y: string }) => {
+      playerSeatPositionsRef.current.set(playerId, pos);
+    },
+    []
+  );
+  
   // Player turn state for visual timing and highlighting
   const [currentTurnPlayerId, setCurrentTurnPlayerId] = useState<string | null>(null);
   const [showTurnHighlight, setShowTurnHighlight] = useState<boolean>(false);
@@ -409,6 +435,70 @@ export const useGameWebSocket = (wsUrl: string) => {
               prevCommunityCardsRef.current = currentCommunityCardsCount;
             } catch (soundError) {
               console.error('Error playing card sounds:', soundError);
+            }
+            // --- Pot and chip animation logic for end-of-round ---
+            {
+              // Sum of bets in the new state (current street)
+              const newStreetSum = message.data.players.reduce(
+                (sum: number, p: any) => sum + (p.current_bet || 0),
+                0
+              );
+              const prevState = previousGameStateRef.current;
+              // On round change, collect and animate last street's bets
+              // Skip animating at end-of-hand transition from SHOWDOWN to PREFLOP
+              if (
+                prevState &&
+                prevState.current_round !== message.data.current_round &&
+                !(prevState.current_round === 'SHOWDOWN' && message.data.current_round === 'PREFLOP')
+              ) {
+                const lastStreetSum = prevState.players.reduce(
+                  (sum, p: any) => sum + (p.current_bet || 0),
+                  0
+                );
+                if (lastStreetSum > 0) {
+                  const anims = prevState.players
+                    .filter((p: any) => p.current_bet && p.current_bet > 0)
+                    .map((p: any) => ({
+                      playerId: p.player_id,
+                      amount: p.current_bet,
+                      fromPosition: playerSeatPositionsRef.current.get(
+                        p.player_id
+                      ),
+                    }));
+                  if (anims.length) {
+                    // Reset street pot display before animating chips to pot
+                    setCurrentStreetPot(0);
+                    setBetsToAnimate(anims);
+                    // After 0.5s animation, update main pot and clear animations
+                    setTimeout(() => {
+                      setAccumulatedPot((acc) => acc + lastStreetSum);
+                      setFlashMainPot(true);
+                      setTimeout(() => setFlashMainPot(false), 600);
+                      setBetsToAnimate([]);
+                    }, 500);
+                  }
+                }
+              }
+              // Live update of current street pot and flash
+              if (newStreetSum !== currentStreetPot) {
+                setCurrentStreetPot(newStreetSum);
+                if (newStreetSum > currentStreetPot) {
+                  setFlashCurrentStreetPot(true);
+                  setTimeout(() => setFlashCurrentStreetPot(false), 600);
+                }
+              }
+              // New hand reset: from SHOWDOWN to PREFLOP or first state
+              if (
+                (!previousGameStateRef.current &&
+                  message.data.current_round === 'PREFLOP') ||
+                (previousGameStateRef.current &&
+                  previousGameStateRef.current.current_round === 'SHOWDOWN' &&
+                  message.data.current_round === 'PREFLOP')
+              ) {
+                setAccumulatedPot(0);
+                setCurrentStreetPot(newStreetSum);
+              }
+              previousGameStateRef.current = message.data;
             }
             
             // Handle turn sequence
@@ -1246,6 +1336,12 @@ export const useGameWebSocket = (wsUrl: string) => {
     isPlayerTurn,
     lastMessage,
     getConnectionHealth,
+    // Betting pot and animations
+    currentStreetPot,
+    betsToAnimate,
+    flashMainPot,
+    flashCurrentStreetPot,
+    updatePlayerSeatPosition,
     // Turn highlighting states
     currentTurnPlayerId,
     showTurnHighlight,
