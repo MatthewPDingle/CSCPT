@@ -498,6 +498,10 @@ Based on the current situation, what action will you take? Analyze the hand, con
             except Exception:
                 # If reordering fails, keep original
                 pass
+            # Ensure calculations field is present for schema compliance
+            if not isinstance(response.get('calculations', None), dict):
+                logger.warning(f"Agent response missing 'calculations' field, inserting default values")
+                response['calculations'] = {'pot_odds': 'N/A', 'estimated_equity': 'N/A'}
             logger.debug(f"Agent decision: {response}")
             # Log response to per-player log
             try:

@@ -718,6 +718,14 @@ class GameStateNotifier:
         # some call paths).
         action_str = str(action)
         action_upper = action_str.upper()
+        # Treat zero-amount CALLs as CHECKs for logging and structured events
+        if action_upper == "CALL" and (amount is None or amount <= 0):
+            action_upper = "CHECK"
+            action_str = "CHECK"
+            # Clear amount fields for a check
+            amount = None
+            total_street_bet = None
+            total_hand_bet = None
 
         log_text = f"{player_name}"
         if position_name:
@@ -736,22 +744,23 @@ class GameStateNotifier:
             # amount is the size of the bet
             log_text += f" bets {amount}" if amount is not None else " bets"
         elif action_upper in ["ALL_IN", "ALL-IN"]:
-            # total_hand_bet is the total committed this hand after all-in
-            if total_hand_bet is not None:
-                log_text += f" all-in for {total_hand_bet}"
+            # Format all-in: show additional chips and total committed
+            if amount is not None and total_hand_bet is not None:
+                log_text += f" all-in for {amount} (total {total_hand_bet})"
             elif amount is not None:
                 log_text += f" all-in for {amount}"
+            elif total_hand_bet is not None:
+                log_text += f" all-in (total {total_hand_bet})"
             else:
                 log_text += " all-in"
         elif action_upper == "CALL":
-            # If total_hand_bet provided, this was an all-in call
-            if total_hand_bet is not None:
-                log_text += f" all-in for {total_hand_bet}"
-            # Otherwise, show standard call to street bet or amount
-            elif total_street_bet is not None:
-                log_text += f" calls to {total_street_bet}"
+            # Format call: show amount added and context for totals or all-in
+            if total_hand_bet is not None and amount is not None:
+                log_text += f" calls {amount} (all-in, total {total_hand_bet})"
+            elif total_street_bet is not None and amount is not None:
+                log_text += f" calls {amount} (to {total_street_bet} total)"
             elif amount is not None:
-                log_text += f" calls to {amount}"
+                log_text += f" calls {amount}"
             else:
                 log_text += " calls"
         elif action_upper == "CHECK":
@@ -761,11 +770,12 @@ class GameStateNotifier:
         else:
             log_text += f" {action_str.lower()}"  # fallback
 
+        # Structured event for client-side handling (use normalized action_str)
         action_message = {
             "type": "player_action",
             "data": {
                 "player_id": player_id,
-                "action": action,
+                "action": action_str,
                 "amount": amount,
                 "timestamp": datetime.now().isoformat()
             }

@@ -74,6 +74,8 @@ class Player:
         Returns:
             The actual amount bet (may be less if player doesn't have enough)
         """
+        # Ensure non-negative betting amount and not exceeding player's chips
+        amount = max(0, amount)
         amount = min(amount, self.chips)
         self.chips -= amount
         self.current_bet += amount
@@ -633,23 +635,23 @@ class PokerGame:
             # Calculate relative position based on seat numbers, not list indices
             rel_pos = (player.position - self.button_position) % max(9, len(self.players))
             if rel_pos == 0:
-                poker_pos = "BTN (Dealer)"
+                poker_pos = "BTN"
             elif rel_pos == 1:
-                poker_pos = "SB (Small Blind)"
+                poker_pos = "SB"
             elif rel_pos == 2:
-                poker_pos = "BB (Big Blind)"
+                poker_pos = "BB"
             elif rel_pos == 3:
-                poker_pos = "UTG (Under the Gun)"
+                poker_pos = "UTG"
             elif rel_pos == 4:
                 poker_pos = "UTG+1"
             elif rel_pos == 5:
                 poker_pos = "UTG+2"
             elif rel_pos == 6:
-                poker_pos = "LJ (Lojack)"
+                poker_pos = "LJ"
             elif rel_pos == 7:
-                poker_pos = "HJ (Hijack)"
+                poker_pos = "HJ"
             elif rel_pos == 8:
-                poker_pos = "CO (Cutoff)"
+                poker_pos = "CO"
             else:
                 poker_pos = f"Pos {rel_pos}"
                 
@@ -1303,11 +1305,18 @@ class PokerGame:
             success = True
             
         elif action == PlayerAction.CALL:
-            # Calculate call amount
+            # Calculate call amount (non-negative)
             call_amount = self.current_bet - player.current_bet
-            call_amount = min(call_amount, player.chips)
-            
-            if call_amount > 0:
+            if call_amount <= 0:
+                # This is effectively a check
+                logging.info(f"[ACTION-{execution_id}] Player {player.name} attempted CALL for {call_amount}, treated as CHECK")
+                if player.player_id in self.to_act:
+                    self.to_act.remove(player.player_id)
+                    logging.info(f"[ACTION-{execution_id}] Player {player.name} CHECKED via CALL. Removed from to_act. Remaining: {self.to_act}")
+                success = True
+            else:
+                # Limit to player's chips
+                call_amount = min(call_amount, player.chips)
                 # Place the bet and log chip counts before and after
                 chips_before = player.chips
                 actual_bet = player.bet(call_amount)
@@ -1315,18 +1324,15 @@ class PokerGame:
                 self.pots[0].add(actual_bet, player.player_id)
                 logging.info(f"[ACTION-{execution_id}] Player {player.name} CALLED with {actual_bet} chips. Current bet: {self.current_bet}")
                 logging.info(f"[ACTION-{execution_id}] Player {player.name} chips before call: {chips_before}, after call: {chips_after}")
-                
                 # If this call made the player all-in, update status
                 if player.chips == 0:
                     player.status = PlayerStatus.ALL_IN
                     logging.info(f"[ACTION-{execution_id}] Player {player.name} is now ALL-IN after calling")
-                    # Don't create side pots yet for backward compatibility
-                    # Side pots will be created at the end of the betting round
-            else:
-                logging.info(f"[ACTION-{execution_id}] Player {player.name} CALLED for 0 chips (checking)")
+                # proceed to remove from to_act below
+                success = True
             
-            # Log to_act set before modification for debugging
-            logging.info(f"[ACTION-{execution_id}] to_act set BEFORE removing {player.name} after CALL: {self.to_act}")
+            # Log to_act set before modification for debugging (if not already handled)
+            logging.info(f"[ACTION-{execution_id}] to_act before CALL handling: {self.to_act}")
             
             # Save a snapshot of the to_act set before modification for verification
             to_act_before = self.to_act.copy()
@@ -1838,23 +1844,23 @@ class PokerGame:
     def _get_position_name(self, rel_pos: int) -> str:
         """Get the poker position name for a relative position."""
         if rel_pos == 0:
-            return "BTN (Dealer)"
+            return "BTN"
         elif rel_pos == 1:
-            return "SB (Small Blind)"
+            return "SB"
         elif rel_pos == 2:
-            return "BB (Big Blind)"
+            return "BB"
         elif rel_pos == 3:
-            return "UTG (Under the Gun)"
+            return "UTG"
         elif rel_pos == 4:
             return "UTG+1"
         elif rel_pos == 5:
             return "UTG+2"
         elif rel_pos == 6:
-            return "LJ (Lojack)"
+            return "LJ"
         elif rel_pos == 7:
-            return "HJ (Hijack)"
+            return "HJ"
         elif rel_pos == 8:
-            return "CO (Cutoff)"
+            return "CO"
         else:
             return f"Position {rel_pos}"
     

@@ -179,13 +179,21 @@ class TestGameStateNotifier:
         # Call notify method
         await notifier.notify_player_action("game1", "player1", "FOLD")
         
-        # Verify broadcast was called with correct message
-        mock_manager.broadcast_to_game.assert_called_once()
-        call_args = mock_manager.broadcast_to_game.call_args[0]
-        assert call_args[0] == "game1"
-        assert call_args[1]["type"] == "player_action"
-        assert call_args[1]["data"]["player_id"] == "player1"
-        assert call_args[1]["data"]["action"] == "FOLD"
+        # Verify broadcast was called twice: one for player_action and one for action_log
+        assert mock_manager.broadcast_to_game.call_count == 2
+        calls = mock_manager.broadcast_to_game.call_args_list
+        # First call: player_action message
+        game_id_1, message_1 = calls[0][0]
+        assert game_id_1 == "game1"
+        assert message_1["type"] == "player_action"
+        assert message_1["data"]["player_id"] == "player1"
+        assert message_1["data"]["action"] == "FOLD"
+        # Second call: action_log message
+        game_id_2, message_2 = calls[1][0]
+        assert game_id_2 == "game1"
+        assert message_2["type"] == "action_log"
+        assert "text" in message_2["data"]
+        assert "timestamp" in message_2["data"]
     
     @pytest.mark.asyncio
     async def test_notify_hand_result(self):
