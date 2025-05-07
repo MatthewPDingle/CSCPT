@@ -936,17 +936,26 @@ export const useGameWebSocket = (wsUrl: string) => {
   
   // Send player action
   const sendAction = useCallback((action: string, amount?: number) => {
+    // Determine correct amount for CALL actions if not explicitly provided
+    let actionAmount = amount;
+    // For CALL actions, default to the server-provided callAmount if not specified
+    if (action === 'CALL' && actionAmount === undefined) {
+      const toCall = actionRequest?.callAmount;
+      if (typeof toCall === 'number') {
+        actionAmount = toCall;
+      }
+    }
     const message = {
       type: 'action',
       data: {
-        handId: gameState?.game_id,
+        // Hand ID may be included for context; backend uses its own hand tracking
+        handId: actionRequest?.handId ?? gameState?.game_id,
         action,
-        amount
+        amount: actionAmount
       }
     };
-    
     return sendMessage(message);
-  }, [sendMessage, gameState?.game_id]);
+  }, [sendMessage, actionRequest]);
   
   // Send chat message
   const sendChat = useCallback((text: string, target: 'table' | 'coach' = 'table') => {
