@@ -69,11 +69,7 @@ const SeatContainer = styled.div<PositionProps>`
   ${props => props.$isHuman && `
     z-index: 20;
   `}
-  
-  ${props => !props.$isActive && `
-    opacity: 0.5;
-    filter: grayscale(70%);
-  `}
+  /* Note: fold/inactive styling is handled per-component (PlayerInfo, PlayerCards) to avoid graying out bet stacks */
 `;
 
 interface PlayerInfoProps {

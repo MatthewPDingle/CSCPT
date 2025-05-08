@@ -305,21 +305,22 @@ const PokerTable: React.FC<PokerTableProps> = ({
         </CurrentRoundPotDisplay>
         
         <CommunityCardsArea>
-          {paddedCommunityCards.slice(0, 5).map((card, index) => (
+          {/* Show community cards only after chip animations complete */}
+          {betsToAnimate.length === 0 && paddedCommunityCards.slice(0, 5).map((card, index) => (
             <Card key={index} card={card} isCommunity />
           ))}
-        {/* Chip animation elements for completed bets */}
-        {betsToAnimate.map(bet => (
-          bet.fromPosition && (
-            <AnimatingBetChip
-              key={`anim-${bet.playerId}`}
-              amount={bet.amount}
-              fromPosition={bet.fromPosition}
-              targetPosition={animationTargetPosition}
-              onEnd={() => {}}
-            />
-          )
-        ))}
+          {/* Chip animation elements for completed bets */}
+          {betsToAnimate.map(bet => (
+            bet.fromPosition && (
+              <AnimatingBetChip
+                key={`anim-${bet.playerId}`}
+                amount={bet.amount}
+                fromPosition={bet.fromPosition}
+                targetPosition={animationTargetPosition}
+                onEnd={() => {}}
+              />
+            )
+          ))}
         </CommunityCardsArea>
         
         <PlayerPositions>
