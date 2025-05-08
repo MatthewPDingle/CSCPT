@@ -401,43 +401,36 @@ export const useGameWebSocket = (wsUrl: string) => {
               }
             }
             
-            // Play sounds based on community cards changes; delay during chip animation rounds
+            // Play sounds based on community cards changes
             const currentCommunityCardsCount = message.data?.community_cards?.length || 0;
             const prevCommunityCardsCount = prevCommunityCardsRef.current;
-            // Determine if this is a dealing round transition (pre-flop->flop, flop->turn, turn->river)
-            const isDealRoundTransition = previousGameStateRef.current
-              && previousGameStateRef.current.current_round !== message.data.current_round
-              && ['FLOP', 'TURN', 'RIVER'].includes(message.data.current_round);
-            const playDealSound = () => {
-              try {
-                if (prevCommunityCardsCount === 0 && currentCommunityCardsCount === 3) {
-                  console.log('Flop detected - playing 3cards.wav');
-                  if (flopSoundRef.current) {
-                    flopSoundRef.current.currentTime = 0;
-                    flopSoundRef.current.play().catch(e => console.log('Flop sound play error:', e));
-                  }
-                } else if (prevCommunityCardsCount === 3 && currentCommunityCardsCount === 4) {
-                  console.log('Turn detected - playing card.wav');
-                  if (cardSoundRef.current) {
-                    cardSoundRef.current.currentTime = 0;
-                    cardSoundRef.current.play().catch(e => console.log('Turn sound play error:', e));
-                  }
-                } else if (prevCommunityCardsCount === 4 && currentCommunityCardsCount === 5) {
-                  console.log('River detected - playing card.wav');
-                  if (cardSoundRef.current) {
-                    cardSoundRef.current.currentTime = 0;
-                    cardSoundRef.current.play().catch(e => console.log('River sound play error:', e));
-                  }
+            try {
+              // Flop: 0->3 cards
+              if (prevCommunityCardsCount === 0 && currentCommunityCardsCount === 3) {
+                console.log('Flop detected - playing 3cards.wav');
+                if (flopSoundRef.current) {
+                  flopSoundRef.current.currentTime = 0;
+                  flopSoundRef.current.play().catch(e => console.log('Flop sound play error:', e));
                 }
-              } catch (soundError) {
-                console.error('Error playing deal sound:', soundError);
               }
-            };
-            if (isDealRoundTransition) {
-              // Delay sound to after chip animation (~500ms)
-              setTimeout(playDealSound, 600);
-            } else {
-              playDealSound();
+              // Turn: 3->4 cards
+              else if (prevCommunityCardsCount === 3 && currentCommunityCardsCount === 4) {
+                console.log('Turn detected - playing card.wav');
+                if (cardSoundRef.current) {
+                  cardSoundRef.current.currentTime = 0;
+                  cardSoundRef.current.play().catch(e => console.log('Turn sound play error:', e));
+                }
+              }
+              // River: 4->5 cards
+              else if (prevCommunityCardsCount === 4 && currentCommunityCardsCount === 5) {
+                console.log('River detected - playing card.wav');
+                if (cardSoundRef.current) {
+                  cardSoundRef.current.currentTime = 0;
+                  cardSoundRef.current.play().catch(e => console.log('River sound play error:', e));
+                }
+              }
+            } catch (soundError) {
+              console.error('Error playing card sounds:', soundError);
             }
             // Update the reference for next comparison
             prevCommunityCardsRef.current = currentCommunityCardsCount;

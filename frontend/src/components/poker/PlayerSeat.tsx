@@ -32,6 +32,8 @@ interface PlayerSeatProps {
   updatePlayerSeatPosition: (playerId: string, pos: { x: string; y: string }) => void;
   /** Ref to the table container for coordinate calculations */
   tableContainerRef: React.RefObject<HTMLDivElement | null>;
+  /** Suppress static bet stack display (when animating to pot) */
+  suppressBetStack?: boolean;
 }
 
 interface PositionProps {
@@ -241,7 +243,8 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
   isFolding = false,
   isWinner = false,
   updatePlayerSeatPosition,
-  tableContainerRef
+  tableContainerRef,
+  suppressBetStack = false
 }) => {
   // Ref for player's bet-stack container to register position for chip animations
   const betStackRef = useRef<HTMLDivElement>(null);
@@ -317,8 +320,8 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
           </MarkersContainer>
         )}
       </PlayerInfo>
-      {/* Bet stack display */}
-      {player.currentBet > 0 && (
+      {/* Bet stack display (suppress during animation) */}
+      {player.currentBet > 0 && !suppressBetStack && (
         <BetStackContainer ref={betStackRef} amount={player.currentBet} direction={direction}>
           <span role="img" aria-label="chips">🪙</span>
           <span>{player.currentBet}</span>

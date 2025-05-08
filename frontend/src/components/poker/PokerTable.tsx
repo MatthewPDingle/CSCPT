@@ -416,6 +416,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   isFolding={isFolding}
                   updatePlayerSeatPosition={updatePlayerSeatPosition}
                   tableContainerRef={tableContainerRef}
+                  // Suppress static bet display when animating chips to pot
+                  suppressBetStack={betsToAnimate.some(b => b.playerId === playerId)}
                   // highlight winning player's cards
                   isWinner={showdownActive && handWinners.includes(playerId)}
                 />
