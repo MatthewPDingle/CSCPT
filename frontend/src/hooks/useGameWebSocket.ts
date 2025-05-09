@@ -401,38 +401,8 @@ export const useGameWebSocket = (wsUrl: string) => {
               }
             }
             
-            // Play sounds based on community cards changes
+            // Removed immediate sound playback; sounds will play after chip animations
             const currentCommunityCardsCount = message.data?.community_cards?.length || 0;
-            const prevCommunityCardsCount = prevCommunityCardsRef.current;
-            try {
-              // Flop: 0->3 cards
-              if (prevCommunityCardsCount === 0 && currentCommunityCardsCount === 3) {
-                console.log('Flop detected - playing 3cards.wav');
-                if (flopSoundRef.current) {
-                  flopSoundRef.current.currentTime = 0;
-                  flopSoundRef.current.play().catch(e => console.log('Flop sound play error:', e));
-                }
-              }
-              // Turn: 3->4 cards
-              else if (prevCommunityCardsCount === 3 && currentCommunityCardsCount === 4) {
-                console.log('Turn detected - playing card.wav');
-                if (cardSoundRef.current) {
-                  cardSoundRef.current.currentTime = 0;
-                  cardSoundRef.current.play().catch(e => console.log('Turn sound play error:', e));
-                }
-              }
-              // River: 4->5 cards
-              else if (prevCommunityCardsCount === 4 && currentCommunityCardsCount === 5) {
-                console.log('River detected - playing card.wav');
-                if (cardSoundRef.current) {
-                  cardSoundRef.current.currentTime = 0;
-                  cardSoundRef.current.play().catch(e => console.log('River sound play error:', e));
-                }
-              }
-            } catch (soundError) {
-              console.error('Error playing card sounds:', soundError);
-            }
-            // Update the reference for next comparison
             prevCommunityCardsRef.current = currentCommunityCardsCount;
             // --- Pot and chip animation logic for end-of-round ---
             {
@@ -466,6 +436,15 @@ export const useGameWebSocket = (wsUrl: string) => {
                   if (anims.length) {
                     // Reset street pot display before animating chips to pot
                     setCurrentStreetPot(0);
+                    // Prevent Bets box flash during chip animation
+                    setFlashCurrentStreetPot(false);
+                    // Suppress individual bets in game state (optimistic update)
+                    const animingIds = new Set(anims.map(a => a.playerId));
+                    message.data.players.forEach((p: any) => {
+                      if (animingIds.has(p.player_id)) {
+                        p.current_bet = 0;
+                      }
+                    });
                     setBetsToAnimate(anims);
                     // After 0.5s animation, update main pot and clear animations
                     setTimeout(() => {
@@ -473,7 +452,33 @@ export const useGameWebSocket = (wsUrl: string) => {
                       setFlashMainPot(true);
                       setTimeout(() => setFlashMainPot(false), 600);
                       setBetsToAnimate([]);
+                      // After chip animation, play sound for community cards reveal
+                      try {
+                        const prevCount = prevState.community_cards?.length || 0;
+                        const currCount = message.data.community_cards.length;
+                        if (prevCount === 0 && currCount === 3) {
+                          flopSoundRef.current?.play().catch(() => {});
+                        } else if ((prevCount === 3 && currCount === 4) || (prevCount === 4 && currCount === 5)) {
+                          cardSoundRef.current?.play().catch(() => {});
+                        }
+                      } catch (e) {
+                        console.error('Error playing deal sound after animation:', e);
+                      }
                     }, 500);
+                  }
+                }
+                // No chip animations but cards dealt: play sound immediately
+                else if (prevState.community_cards.length < message.data.community_cards.length) {
+                  try {
+                    const prevCount = prevState.community_cards.length;
+                    const currCount = message.data.community_cards.length;
+                    if (prevCount === 0 && currCount === 3) {
+                      flopSoundRef.current?.play().catch(() => {});
+                    } else if ((prevCount === 3 && currCount === 4) || (prevCount === 4 && currCount === 5)) {
+                      cardSoundRef.current?.play().catch(() => {});
+                    }
+                  } catch (e) {
+                    console.error('Error playing deal sound without animation:', e);
                   }
                 }
               }

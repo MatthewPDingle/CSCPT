@@ -486,7 +486,7 @@ const GamePage: React.FC = () => {
         clearTimeout(showdownTimerRef.current);
       }
       
-      // Set timer to hide cards after delay (1 second)
+      // Set timer to hide cards after delay (2.5 seconds)
       showdownTimerRef.current = setTimeout(() => {
         console.log('Showdown timer expired - hiding cards');
         setIsShowdown(false);

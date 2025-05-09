@@ -84,7 +84,12 @@ const TableFelt = styled.div`
   box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.4);
 `;
 
-const PotDisplay = styled.div<{ flash?: boolean }>`
+interface PotDisplayProps {
+  flash?: boolean;
+  $moveDelta?: { dx: number; dy: number };
+  $moving?: boolean;
+}
+const PotDisplay = styled.div<PotDisplayProps>`
   position: absolute;
   top: 24px;
   background-color: rgba(0, 0, 0, 0.8);
@@ -103,6 +108,11 @@ const PotDisplay = styled.div<{ flash?: boolean }>`
   /* Pulse animation when pot increases */
   ${props => props.flash && css`
     animation: potFlash 0.6s ease-out;
+  `}
+  /* Transition for pot-to-winner move */
+  transition: transform 0.5s ease-out;
+  ${props => props.$moving && props.$moveDelta && css`
+    transform: translate(${props.$moveDelta.dx}px, ${props.$moveDelta.dy}px);
   `}
 
   @keyframes potFlash {
@@ -293,22 +303,150 @@ const PokerTable: React.FC<PokerTableProps> = ({
     paddedCommunityCards.push(null);
   }
   
+  // State for staged community card reveal
+  const [displayCount, setDisplayCount] = useState<number>(validCommunityCards.length);
+  const [pendingRevealCount, setPendingRevealCount] = useState<number>(0);
+  const prevCommCountRef = useRef<number>(validCommunityCards.length);
+  
+  // Audio refs for card deal sounds
+  const flopAudioRef = useRef<HTMLAudioElement | null>(null);
+  const cardAudioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Initialize audio elements once
+  useEffect(() => {
+    try {
+      const baseUrl = window.location.origin;
+      flopAudioRef.current = new Audio(`${baseUrl}/audio/3cards.wav`);
+      flopAudioRef.current.volume = 1.0;
+      cardAudioRef.current = new Audio(`${baseUrl}/audio/card.wav`);
+      cardAudioRef.current.volume = 1.0;
+    } catch (e) {
+      console.error('Error initializing deal audio in PokerTable:', e);
+    }
+  }, []);
+  
+  // Detect changes in communityCards prop to stage reveal
+  useEffect(() => {
+    const newCount = validCommunityCards.length;
+    const prevCount = prevCommCountRef.current;
+    if (newCount > prevCount) {
+      setPendingRevealCount(newCount - prevCount);
+      setDisplayCount(prevCount);
+    } else if (newCount === 0) {
+      // New hand reset
+      setDisplayCount(0);
+      setPendingRevealCount(0);
+    }
+    prevCommCountRef.current = newCount;
+  }, [validCommunityCards]);
+  
+  // Reveal staged cards after chip animations complete
+  useEffect(() => {
+    if (betsToAnimate && betsToAnimate.length === 0 && pendingRevealCount > 0) {
+      const count = pendingRevealCount;
+      setPendingRevealCount(0);
+      // Handle staged reveal of community cards
+      if (count >= 3) {
+        // Flop: reveal 3 cards immediately
+        setDisplayCount(d => d + 3);
+        flopAudioRef.current?.play().catch(() => {});
+        if (count > 3) {
+          // Turn: reveal 4th card after 0.5s
+          setTimeout(() => {
+            setDisplayCount(d => d + 1);
+            cardAudioRef.current?.play().catch(() => {});
+          }, 500);
+          // River: reveal 5th card after 1s, then trigger winner effects
+          setTimeout(() => {
+            setDisplayCount(d => d + 1);
+            cardAudioRef.current?.play().catch(() => {});
+          }, 1000);
+        }
+      } else if (count === 2) {
+        // Turn+River: reveal turn, then river
+        setDisplayCount(d => d + 1);
+        cardAudioRef.current?.play().catch(() => {});
+        setTimeout(() => {
+          setDisplayCount(d => d + 1);
+          cardAudioRef.current?.play().catch(() => {});
+        }, 500);
+      } else if (count === 1) {
+        // Single card (turn or river)
+        setDisplayCount(d => d + 1);
+        cardAudioRef.current?.play().catch(() => {});
+      }
+    }
+  }, [betsToAnimate, pendingRevealCount]);
+
+  // Pot-to-winner and winner highlight after river reveal
+  const [potMoveDelta, setPotMoveDelta] = useState<{ dx: number; dy: number } | null>(null);
+  const [potMoveActive, setPotMoveActive] = useState<boolean>(false);
+  const [highlightWinnerActive, setHighlightWinnerActive] = useState<boolean>(false);
+  const [winnerEffectsTriggered, setWinnerEffectsTriggered] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Trigger pot-to-winner and winner highlight once after river is fully revealed
+    if (
+      betsToAnimate.length === 0 &&
+      displayCount === validCommunityCards.length &&
+      validCommunityCards.length === 5 &&
+      !winnerEffectsTriggered
+    ) {
+      setWinnerEffectsTriggered(true);
+      // Compute target positions
+      const winnerId = handWinners && handWinners.length > 0 ? handWinners[0] : null;
+      if (winnerId && potDisplayRef.current && tableContainerRef.current) {
+        // Compute pot center
+        const potRect = potDisplayRef.current.getBoundingClientRect();
+        const potCx = potRect.left + potRect.width / 2;
+        const potCy = potRect.top + potRect.height / 2;
+        // Compute winner seat position percent
+        const winnerPlayer = players.find(p => p.id === winnerId);
+        if (winnerPlayer) {
+          const seatPos = getPlayerPosition(winnerPlayer);
+          const tableRect = tableContainerRef.current.getBoundingClientRect();
+          const targetCx = tableRect.left + (parseFloat(seatPos.x) / 100) * tableRect.width;
+          const targetCy = tableRect.top + (parseFloat(seatPos.y) / 100) * tableRect.height;
+          const dx = targetCx - potCx;
+          const dy = targetCy - potCy;
+          // Start animation
+          setPotMoveDelta({ dx, dy });
+          setPotMoveActive(true);
+          setHighlightWinnerActive(true);
+          // Cleanup after animation duration (.5s)
+          setTimeout(() => {
+            setPotMoveActive(false);
+            setHighlightWinnerActive(false);
+          }, 500);
+        }
+      }
+    }
+  }, [betsToAnimate, displayCount, winnerEffectsTriggered, handWinners, validCommunityCards.length, players]);
+  
   // Ensure pot is a valid number
   const validPot = typeof pot === 'number' && !isNaN(pot) ? pot : 0;
   
   return (
     <TableContainer ref={tableContainerRef}>
       <TableFelt>
-        <PotDisplay ref={potDisplayRef} flash={flashPot}>Pot: {displayedPot}</PotDisplay>
+        <PotDisplay
+          ref={potDisplayRef}
+          flash={flashPot}
+          $moveDelta={potMoveDelta || undefined}
+          $moving={potMoveActive}
+        >
+          Pot: {displayedPot}
+        </PotDisplay>
         <CurrentRoundPotDisplay flash={flashCurrentStreetPot}>
           Bets: {currentStreetTotal}
         </CurrentRoundPotDisplay>
         
         <CommunityCardsArea>
-          {/* Show community cards only after chip animations complete */}
-          {betsToAnimate.length === 0 && paddedCommunityCards.slice(0, 5).map((card, index) => (
-            <Card key={index} card={card} isCommunity />
-          ))}
+          {/* Always show existing cards; staged reveal of new cards */}
+          {Array.from({ length: 5 }).map((_, i) => {
+            const card = i < displayCount ? paddedCommunityCards[i] : null;
+            return <Card key={i} card={card} isCommunity />;
+          })}
           {/* Chip animation elements for completed bets */}
           {betsToAnimate.map(bet => (
             bet.fromPosition && (
