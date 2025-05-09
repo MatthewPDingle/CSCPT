@@ -437,8 +437,22 @@ const PokerTable: React.FC<PokerTableProps> = ({
         >
           Pot: {displayedPot}
         </PotDisplay>
-        <CurrentRoundPotDisplay flash={flashCurrentStreetPot}>
-          Bets: {currentStreetTotal}
+        {/*
+          Override the "Bets" textbox while chip animations are running so it
+          immediately resets to 0 and does **not** flash yellow.  This prevents
+          the stale amount from being shown during the 0.5 s animation where
+          each player's bet stack flies to the main pot.
+
+          The logic is:
+            • if there are bet-chip animations in progress (`betsToAnimate` is
+              non-empty) – force the value to 0 and disable the flash effect
+            • otherwise – use the real street-pot value and the flash flag that
+              comes from props
+        */}
+        <CurrentRoundPotDisplay
+          flash={betsToAnimate.length > 0 ? false : flashCurrentStreetPot}
+        >
+          Bets: {betsToAnimate.length > 0 ? 0 : currentStreetTotal}
         </CurrentRoundPotDisplay>
         
         <CommunityCardsArea>

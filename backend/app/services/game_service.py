@@ -1021,32 +1021,103 @@ class GameService:
                     # Process the action
                     poker_game.process_action(poker_player, poker_action, amount)
                     
-                    # If the hand is over, start a new one
+                    # ------------------------------------------------------------------
+                    # HAND COMPLETE – HANDLE SHOWDOWN SEQUENCE FOR **HUMAN** ACTION PATH
+                    # ------------------------------------------------------------------
                     if poker_game.current_round == PokerBettingRound.SHOWDOWN:
-                        # Record end of hand in domain model
+                        # Record end-of-hand timestamp on the domain model
                         game.current_hand.ended_at = datetime.now()
-                        
-                        # Add to hand history
+
+                        # Persist this hand to the running history list
                         game.hand_history.append(game.current_hand)
-                        
-                        # Update hand history IDs list if we have a hand history ID
+
+                        # Track hand-history id if one was generated
                         if poker_game.current_hand_id:
                             game.hand_history_ids.append(poker_game.current_hand_id)
-                        
-                        # First notify about the hand result
+
+                        # ------------------------------------------------------------------
+                        # 1)  Broadcast any missing Turn / River board cards **with** the
+                        #     requested pauses so the frontend can stage the reveal and play
+                        #     sounds correctly.
+                        # ------------------------------------------------------------------
                         try:
                             from app.core.websocket import game_notifier
-                            await game_notifier.notify_hand_result(game_id, poker_game)
-                            
-                            # Add delay to show cards at showdown before starting new hand
-                            logging.info(f"Hand {game.current_hand.hand_number} concluded. Adding delay of {self.SHOWDOWN_DELAY}s to show cards at showdown...")
-                            await asyncio.sleep(self.SHOWDOWN_DELAY)  # Use consistent delay from class constant
+
+                            board = poker_game.community_cards  # List[Card]
+
+                            # If the board is incomplete (e.g. all-in pre-flop) we still
+                            # want the clients to see the full run-out.  We piggy-back on
+                            # notify_new_round so the frontend treats these like normal
+                            # round transitions.
+                            if len(board) == 3:
+                                # Only flop dealt – we need to synthesise TURN and RIVER updates
+                                # based on what the poker_game has after dealing (this situation
+                                # should not normally occur – _end_betting_round should have
+                                # completed the board).  We therefore skip board animations but
+                                # still provide a short pause so the UI feels natural.
+                                await asyncio.sleep(1.0)
+
+                            elif len(board) >= 4:
+                                # The flop is always three cards (already shown).  We want to
+                                # ensure the TURN (4th card) and RIVER (5th card) each get their
+                                # own update so the frontend can animate them with a 0.5s gap.
+
+                                # TURN update – first four cards
+                                await game_notifier.notify_new_round(
+                                    game_id,
+                                    PokerBettingRound.TURN.name,
+                                    board[:4]
+                                )
+                                await asyncio.sleep(0.5)
+
+                                # RIVER update – full five-card board
+                                await game_notifier.notify_new_round(
+                                    game_id,
+                                    PokerBettingRound.RIVER.name,
+                                    board
+                                )
+                                # Immediately after the River update we will send the
+                                # hand-result (pot-award) message which kicks off the
+                                # 1 second pot-to-winner animation on the frontend.  We do
+                                # **not** wait here – the SHOWDOWN_DELAY below already
+                                # provides a 1.5 s buffer before the next hand starts.
+                            else:
+                                # Board somehow shorter than 4 – unlikely but guard.
+                                await asyncio.sleep(1.0)
+
                         except Exception as e:
-                            logging.error(f"Error showing hand result or delaying: {e}")
-                        
-                        # Start a new hand
-                        logging.info("Starting new hand...")
+                            logging.error(f"Error broadcasting showdown board cards: {e}")
+
+                        # ------------------------------------------------------------------
+                        # 2)  Broadcast the hand result (winners, etc.)
+                        # ------------------------------------------------------------------
+                        try:
+                            await game_notifier.notify_hand_result(game_id, poker_game)
+                        except Exception as e:
+                            logging.error(f"Error broadcasting hand result: {e}")
+
+                        # ------------------------------------------------------------------
+                        # 3)  Give the frontend a moment (self.SHOWDOWN_DELAY) to animate
+                        #     the pot move and winner pulse before resetting for the next
+                        #     hand.
+                        # ------------------------------------------------------------------
+                        logging.info(
+                            f"Hand {game.current_hand.hand_number} concluded. Waiting {self.SHOWDOWN_DELAY}s before next hand…"
+                        )
+                        await asyncio.sleep(self.SHOWDOWN_DELAY)
+
+                        # ------------------------------------------------------------------
+                        # 4)  Start a fresh hand and notify clients of the new state.
+                        # ------------------------------------------------------------------
+                        logging.info("Starting new hand…")
                         self._start_new_hand(game)
+
+                        # Persist game state and broadcast the reset table
+                        self.game_repo.update(game)
+
+                        new_poker_game = self.poker_games.get(game_id)
+                        if new_poker_game:
+                            await game_notifier.notify_game_update(game_id, new_poker_game)
                     
                     # Update player states
                     for p in game.players:
