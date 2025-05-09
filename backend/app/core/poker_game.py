@@ -828,19 +828,20 @@ class PokerGame:
                 round_name=self.current_round.name
             )
             
-            # Send notification to clients about new round
+            # Notify clients that flop has been dealt (frontend will animate reveal)
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
                     import asyncio
-                    # Notify about new round
-                    asyncio.create_task(game_notifier.notify_new_round(
+                    # Only send the three new flop cards
+                    new_cards = self.community_cards[-3:]
+                    asyncio.create_task(game_notifier.notify_street_dealt(
                         self.game_id,
                         self.current_round.name,
-                        self.community_cards
+                        new_cards
                     ))
                 except Exception as e:
-                    logging.error(f"Error sending new round notification: {e}")
+                    logging.error(f"Error sending street dealt notification (flop): {e}")
             
         self._reset_betting_round()
     
@@ -866,19 +867,20 @@ class PokerGame:
                 round_name=self.current_round.name
             )
             
-            # Send notification to clients about new round
-            if self.game_id:
-                try:
-                    from app.core.websocket import game_notifier
-                    import asyncio
-                    # Notify about new round
-                    asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id,
-                        self.current_round.name,
-                        self.community_cards
-                    ))
-                except Exception as e:
-                    logging.error(f"Error sending new round notification: {e}")
+        # Notify clients that turn has been dealt (frontend will animate reveal)
+        if self.game_id:
+            try:
+                from app.core.websocket import game_notifier
+                import asyncio
+                # Only send the new turn card
+                new_card = [self.community_cards[-1]]
+                asyncio.create_task(game_notifier.notify_street_dealt(
+                    self.game_id,
+                    self.current_round.name,
+                    new_card
+                ))
+            except Exception as e:
+                logging.error(f"Error sending street dealt notification (turn): {e}")
             
         self._reset_betting_round()
     
@@ -904,19 +906,20 @@ class PokerGame:
                 round_name=self.current_round.name
             )
             
-            # Send notification to clients about new round
-            if self.game_id:
-                try:
-                    from app.core.websocket import game_notifier
-                    import asyncio
-                    # Notify about new round
-                    asyncio.create_task(game_notifier.notify_new_round(
-                        self.game_id,
-                        self.current_round.name,
-                        self.community_cards
-                    ))
-                except Exception as e:
-                    logging.error(f"Error sending new round notification: {e}")
+        # Notify clients that river has been dealt (frontend will animate reveal)
+        if self.game_id:
+            try:
+                from app.core.websocket import game_notifier
+                import asyncio
+                # Only send the new river card
+                new_card = [self.community_cards[-1]]
+                asyncio.create_task(game_notifier.notify_street_dealt(
+                    self.game_id,
+                    self.current_round.name,
+                    new_card
+                ))
+            except Exception as e:
+                logging.error(f"Error sending street dealt notification (river): {e}")
             
         self._reset_betting_round()
     

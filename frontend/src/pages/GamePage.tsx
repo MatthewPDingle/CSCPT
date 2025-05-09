@@ -310,10 +310,21 @@ const GamePage: React.FC = () => {
     getConnectionHealth,
     actionLog,
     // Betting pot and animations
+    accumulatedPot,
     currentStreetPot,
     betsToAnimate,
+    flashMainPot,
     flashCurrentStreetPot,
     updatePlayerSeatPosition,
+    // Community card reveal events
+    streetDealt,
+    // Showdown hole cards
+    showdownHands,
+    // Pot winners and chip distribution
+    potWinners,
+    chipsDistributed,
+    // Final winner pulse event
+    handVisuallyConcluded,
     // Turn highlighting states
     currentTurnPlayerId,
     showTurnHighlight,
@@ -880,12 +891,18 @@ const connectionIndicator = (
         communityCards={(effectiveGameState?.community_cards || []).map(card =>
           card ? `${card.rank}${card.suit}` : null
         )}
-        pot={effectiveGameState?.total_pot || 0}
+        pot={accumulatedPot}
+        flashMainPot={flashMainPot}
         currentRound={effectiveGameState?.current_round || ''}
         currentStreetTotal={currentStreetPot}
         betsToAnimate={betsToAnimate}
         updatePlayerSeatPosition={updatePlayerSeatPosition}
         flashCurrentStreetPot={flashCurrentStreetPot}
+        streetDealt={streetDealt}
+        showdownHands={showdownHands}
+        potWinners={potWinners}
+        chipsDistributed={chipsDistributed}
+        handVisuallyConcluded={handVisuallyConcluded}
         handResultPlayers={handResult?.players}
         // IDs of winning players for pulsing their cards
         handWinners={handResult?.winners.map(w => w.player_id) ?? []}

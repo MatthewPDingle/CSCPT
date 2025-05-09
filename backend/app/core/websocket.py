@@ -516,6 +516,109 @@ class GameStateNotifier:
         except Exception as e:
             import logging
             logging.error(f"Error scheduling action request after new round: {e}")
+    
+    async def notify_round_bets_finalized(self, game_id: str, player_bets: list, current_pot: int):
+        """
+        Notify clients that the last betting round's bets are finalized.
+
+        Args:
+            game_id: ID of the game
+            player_bets: List of dicts {player_id, amount} for bets on the street
+            current_pot: Total pot before distribution
+        """
+        message = {
+            "type": "round_bets_finalized",
+            "data": {
+                "player_bets": player_bets,
+                "pot": current_pot,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_street_dealt(self, game_id: str, street_name: str, cards: list):
+        """
+        Notify clients that a community card street has been dealt.
+
+        Args:
+            game_id: ID of game
+            street_name: "FLOP", "TURN", or "RIVER"
+            cards: List of card strings for the street
+        """
+        message = {
+            "type": "street_dealt",
+            "data": {
+                "street": street_name,
+                "cards": [str(card) for card in cards],
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_showdown_hands_revealed(self, game_id: str, player_hands: list):
+        """
+        Notify clients to reveal player hole cards at showdown.
+
+        Args:
+            game_id: ID of game
+            player_hands: List of dicts {player_id, cards: [str,str]}
+        """
+        message = {
+            "type": "showdown_hands_revealed",
+            "data": {
+                "player_hands": player_hands,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_pot_winners_determined(self, game_id: str, pots: list):
+        """
+        Notify clients which pots have been won and by whom.
+
+        Args:
+            game_id: ID of game
+            pots: List of dicts {pot_id, amount, winners: [{player_id, hand_rank, share}, ...]}
+        """
+        message = {
+            "type": "pot_winners_determined",
+            "data": {
+                "pots": pots,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_chips_distributed_to_winners(self, game_id: str, game: PokerGame):
+        """
+        Notify clients that player chip counts have been updated after pot distribution.
+
+        Args:
+            game_id: ID of game
+            game: PokerGame instance with updated chips
+        """
+        # Convert game state to model and send updated game_state
+        model = game_to_model(game_id, game)
+        message = {
+            "type": "chips_distributed",
+            "data": model.dict()
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_hand_visually_concluded(self, game_id: str):
+        """
+        Notify clients that all end-of-hand animations are complete.
+
+        Args:
+            game_id: ID of game
+        """
+        message = {
+            "type": "hand_visually_concluded",
+            "data": {
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
         
     async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func=None):
         """

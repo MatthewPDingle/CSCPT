@@ -1050,71 +1050,120 @@ class GameService:
                             # notify_new_round so the frontend treats these like normal
                             # round transitions.
                             if len(board) == 3:
-                                # Only flop dealt – we need to synthesise TURN and RIVER updates
-                                # based on what the poker_game has after dealing (this situation
-                                # should not normally occur – _end_betting_round should have
-                                # completed the board).  We therefore skip board animations but
-                                # still provide a short pause so the UI feels natural.
+                                # Only flop dealt – skip additional board animations but pause
                                 await asyncio.sleep(1.0)
-
                             elif len(board) >= 4:
-                                # The flop is always three cards (already shown).  We want to
-                                # ensure the TURN (4th card) and RIVER (5th card) each get their
-                                # own update so the frontend can animate them with a 0.5s gap.
-
-                                # TURN update – first four cards
-                                await game_notifier.notify_new_round(
+                                # TURN update – reveal only the 4th card
+                                await game_notifier.notify_street_dealt(
                                     game_id,
                                     PokerBettingRound.TURN.name,
-                                    board[:4]
+                                    [board[3]]
                                 )
                                 await asyncio.sleep(0.5)
 
-                                # RIVER update – full five-card board
-                                await game_notifier.notify_new_round(
-                                    game_id,
-                                    PokerBettingRound.RIVER.name,
-                                    board
-                                )
-                                # Immediately after the River update we will send the
-                                # hand-result (pot-award) message which kicks off the
-                                # 1 second pot-to-winner animation on the frontend.  We do
-                                # **not** wait here – the SHOWDOWN_DELAY below already
-                                # provides a 1.5 s buffer before the next hand starts.
+                                # RIVER update – reveal only the 5th card if available
+                                if len(board) >= 5:
+                                    await game_notifier.notify_street_dealt(
+                                        game_id,
+                                        PokerBettingRound.RIVER.name,
+                                        [board[4]]
+                                    )
                             else:
-                                # Board somehow shorter than 4 – unlikely but guard.
+                                # Board somehow shorter than 4 – guard and pause
                                 await asyncio.sleep(1.0)
 
                         except Exception as e:
                             logging.error(f"Error broadcasting showdown board cards: {e}")
 
                         # ------------------------------------------------------------------
-                        # 2)  Broadcast the hand result (winners, etc.)
                         # ------------------------------------------------------------------
+                        # 1) Collect the final street bets into the pot (frontend will animate)
                         try:
-                            await game_notifier.notify_hand_result(game_id, poker_game)
+                            from app.core.websocket import game_notifier
+                            # Gather each player's current bet for this street
+                            player_bets = [{'player_id': p.player_id, 'amount': p.current_bet} for p in poker_game.players]
+                            # Total pot before distribution
+                            total_pot = sum(pot.amount for pot in poker_game.pots)
+                            await game_notifier.notify_round_bets_finalized(game_id, player_bets, total_pot)
                         except Exception as e:
-                            logging.error(f"Error broadcasting hand result: {e}")
+                            logging.error(f"Error broadcasting round bets finalized: {e}")
+                        # End-of-Hand: Frontend-driven animation sequence via granular events
+                        # ------------------------------------------------------------------
+                        # 2) Reveal showdown hole cards
+                        try:
+                            player_hands = []
+                            for pp in poker_game.players:
+                                if hasattr(pp, 'hand') and pp.hand and pp.status != PokerPlayerStatus.FOLDED:
+                                    player_hands.append({
+                                        'player_id': pp.player_id,
+                                        'cards': [str(c) for c in pp.hand.cards]
+                                    })
+                            await game_notifier.notify_showdown_hands_revealed(game_id, player_hands)
+                        except Exception as e:
+                            logging.error(f"Error revealing showdown hands: {e}")
 
-                        # ------------------------------------------------------------------
-                        # 3)  Give the frontend a moment (self.SHOWDOWN_DELAY) to animate
-                        #     the pot move and winner pulse before resetting for the next
-                        #     hand.
-                        # ------------------------------------------------------------------
-                        logging.info(
-                            f"Hand {game.current_hand.hand_number} concluded. Waiting {self.SHOWDOWN_DELAY}s before next hand…"
-                        )
-                        await asyncio.sleep(self.SHOWDOWN_DELAY)
+                        # 3) Announce pot winners for each pot
+                        pots_info = []
+                        try:
+                            for idx, pot in enumerate(poker_game.pots):
+                                pot_id = f"pot_{idx}"
+                                winners = poker_game.hand_winners.get(pot_id, [])
+                                amount = pot.amount
+                                share = amount // len(winners) if winners else 0
+                                winners_list = []
+                                for winner in winners:
+                                    # Hand rank description if available
+                                    hand_rank = ''
+                                    try:
+                                        rank_desc = poker_game._format_hand_description
+                                        if hasattr(winner, 'hand') and winner.hand:
+                                            # Evaluate if needed
+                                            hand_rank = rank_desc(*game.evaluate_hands().get(winner, ('', [])))
+                                    except Exception:
+                                        pass
+                                    winners_list.append({
+                                        'player_id': winner.player_id,
+                                        'hand_rank': hand_rank,
+                                        'share': share
+                                    })
+                                pots_info.append({
+                                    'pot_id': pot_id,
+                                    'amount': amount,
+                                    'winners': winners_list
+                                })
+                            await game_notifier.notify_pot_winners_determined(game_id, pots_info)
+                        except Exception as e:
+                            logging.error(f"Error announcing pot winners: {e}")
 
-                        # ------------------------------------------------------------------
-                        # 4)  Start a fresh hand and notify clients of the new state.
-                        # ------------------------------------------------------------------
+                        # 4) Distribute chips to winners (update chip counts)
+                        await asyncio.sleep(0.5)
+                        try:
+                            # Update domain model chip counts from poker_game
+                            for p in game.players:
+                                pp = next((x for x in poker_game.players if x.player_id == p.id), None)
+                                if pp:
+                                    p.chips = pp.chips
+                            self.game_repo.update(game)
+                            await game_notifier.notify_chips_distributed_to_winners(game_id, poker_game)
+                        except Exception as e:
+                            logging.error(f"Error distributing chips: {e}")
+
+                        # 5) Pulse winner seat
+                        await asyncio.sleep(0.5)
+                        try:
+                            # Primary winner: first winner of main pot
+                            if pots_info and pots_info[0]['winners']:
+                                await game_notifier.notify_hand_visually_concluded(game_id)
+                        except Exception as e:
+                            logging.error(f"Error pulsing winner seat: {e}")
+
+                        # 6) Pause before starting next hand
+                        await asyncio.sleep(1.0)
+
+                        # 7) Start a fresh hand and notify clients of the new state
                         logging.info("Starting new hand…")
                         self._start_new_hand(game)
-
-                        # Persist game state and broadcast the reset table
                         self.game_repo.update(game)
-
                         new_poker_game = self.poker_games.get(game_id)
                         if new_poker_game:
                             await game_notifier.notify_game_update(game_id, new_poker_game)
@@ -1521,51 +1570,115 @@ class GameService:
                     try:
                         # Turn then River if needed
                         if len(board) == 3:
-                            await game_notifier.notify_new_round(game_id, PokerBettingRound.TURN.name, board[:4])
+                            await game_notifier.notify_street_dealt(
+                                game_id,
+                                PokerBettingRound.TURN.name,
+                                board[:4]
+                            )
                             await asyncio.sleep(1.0)
-                            await game_notifier.notify_new_round(game_id, PokerBettingRound.RIVER.name, board)
+                            await game_notifier.notify_street_dealt(
+                                game_id,
+                                PokerBettingRound.RIVER.name,
+                                board
+                            )
                             await asyncio.sleep(1.0)
                         elif len(board) == 4:
-                            await game_notifier.notify_new_round(game_id, PokerBettingRound.RIVER.name, board)
+                            await game_notifier.notify_street_dealt(
+                                game_id,
+                                PokerBettingRound.RIVER.name,
+                                board
+                            )
                             await asyncio.sleep(1.0)
                     except Exception as e:
                         logging.error(f"Error broadcasting post-flop showdown boards: {e}")
-                    # Notify about hand result
-                    await game_notifier.notify_hand_result(game_id, poker_game)
+                    # ------------------------------------------------------------------
+                    # 1) Collect the final street bets into the pot (frontend will animate)
+                    try:
+                        from app.core.websocket import game_notifier
+                        player_bets = [{'player_id': p.player_id, 'amount': p.current_bet} for p in poker_game.players]
+                        total_pot = sum(pot.amount for pot in poker_game.pots)
+                        await game_notifier.notify_round_bets_finalized(game_id, player_bets, total_pot)
+                    except Exception as e:
+                        logging.error(f"Error broadcasting round bets finalized (AI path): {e}")
+                    # End-of-Hand: Frontend-driven animation sequence via granular events
+                    # ------------------------------------------------------------------
+                    # 2) Reveal showdown hole cards
+                    try:
+                        player_hands = []
+                        for pp in poker_game.players:
+                            if hasattr(pp, 'hand') and pp.hand and pp.status != PokerPlayerStatus.FOLDED:
+                                player_hands.append({
+                                    'player_id': pp.player_id,
+                                    'cards': [str(c) for c in pp.hand.cards]
+                                })
+                        await game_notifier.notify_showdown_hands_revealed(game_id, player_hands)
+                    except Exception as e:
+                        logging.error(f"Error revealing showdown hands (AI path): {e}")
 
-                    # Add delay before starting a new hand to show cards at showdown
-                    logging.info(f"AI Action: Waiting {self.SHOWDOWN_DELAY} seconds before starting new hand to show cards at showdown...")
-                    await asyncio.sleep(self.SHOWDOWN_DELAY)
-                    
-                    # Start a new hand
+                    # 3) Announce pot winners
+                    pots_info = []
+                    try:
+                        for idx, pot in enumerate(poker_game.pots):
+                            pot_id = f"pot_{idx}"
+                            winners = poker_game.hand_winners.get(pot_id, [])
+                            amount = pot.amount
+                            share = amount // len(winners) if winners else 0
+                            winners_list = []
+                            for winner in winners:
+                                winners_list.append({
+                                    'player_id': winner.player_id,
+                                    'hand_rank': '',  # optional rank description
+                                    'share': share
+                                })
+                            pots_info.append({
+                                'pot_id': pot_id,
+                                'amount': amount,
+                                'winners': winners_list
+                            })
+                        await game_notifier.notify_pot_winners_determined(game_id, pots_info)
+                    except Exception as e:
+                        logging.error(f"Error announcing pot winners (AI path): {e}")
+
+                    # 4) Distribute chips to winners (update chip counts)
+                    await asyncio.sleep(0.5)
+                    try:
+                        for p in game.players:
+                            pp = next((x for x in poker_game.players if x.player_id == p.id), None)
+                            if pp:
+                                p.chips = pp.chips
+                        self.game_repo.update(game)
+                        await game_notifier.notify_chips_distributed_to_winners(game_id, poker_game)
+                    except Exception as e:
+                        logging.error(f"Error distributing chips (AI path): {e}")
+
+                    # 5) Pulse winner seat
+                    await asyncio.sleep(0.5)
+                    try:
+                        if pots_info and pots_info[0]['winners']:
+                            await game_notifier.notify_hand_visually_concluded(game_id)
+                    except Exception as e:
+                        logging.error(f"Error pulsing winner seat (AI path): {e}")
+
+                    # 6) Pause before starting next hand
+                    await asyncio.sleep(1.0)
+
+                    # 7) Move button, start new hand, and notify clients
                     logging.info("AI Action: Starting new hand.")
-                    
-                    # Move the button before starting a new hand
                     poker_game.move_button()
                     logging.info(f"AI Action: Moved button to position {poker_game.button_position}")
-                    
                     self._start_new_hand(game)
-
-                    # Update game in repository again after starting new hand
                     self.game_repo.update(game)
-                    
-                    # Send an explicit game state update for the new hand
                     new_poker_game = self.poker_games.get(game.id)
                     if new_poker_game:
                         logging.info("AI Action: Notifying clients about the *new* hand state.")
                         await game_notifier.notify_game_update(game_id, new_poker_game)
-                        
-                        # Trigger the first AI player to act in the new hand
+                        # Trigger first player action in new hand
                         if 0 <= new_poker_game.current_player_idx < len(new_poker_game.players):
-                            first_player = new_poker_game.players[new_poker_game.current_player_idx]
-                            first_player_domain = next((p for p in game.players if p.id == first_player.player_id), None)
-                            
-                            if first_player_domain and not first_player_domain.is_human:
-                                logging.info(f"AI Action: Triggering first AI player {first_player.name} to act in new hand")
-                                # Create a separate task to avoid waiting here
-                                asyncio.create_task(self._request_and_process_ai_action(game_id, first_player.player_id))
+                            first = new_poker_game.players[new_poker_game.current_player_idx]
+                            first_domain = next((p for p in game.players if p.id == first.player_id), None)
+                            if first_domain and not first_domain.is_human:
+                                asyncio.create_task(self._request_and_process_ai_action(game_id, first.player_id))
                             else:
-                                logging.info(f"AI Action: First player {first_player.name} in new hand is human, requesting action")
                                 await game_notifier.notify_action_request(game_id, new_poker_game)
                     else:
                         logging.error("AI Action: Could not find poker game instance after starting new hand to notify clients.")

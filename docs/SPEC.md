@@ -75,6 +75,26 @@ This specification outlines the development of an interactive poker training app
 - **Constructive Criticism:**
   - Detailed feedback on suboptimal moves, reasoning, and alternative strategies.
 
+#### End-of-Hand Animation Sequence
+
+At the end of each hand, the frontend follows this canonical sequence to ensure smooth, consistent animations and state updates:
+
+1. The final player action is received and applied.
+2. The current street's Bets box is reset to 0.
+3. All individual player bet indicators from that street animate into the main Pot box (duration: 0.5s).
+4. The main Pot box updates its total amount and pulses yellow (duration: 0.5s).
+5. If there are undealt community cards (flop/turn/river), each street is revealed in turn:
+   a. Flop: reveal 3 cards together, play the flop sound, then pause 1s.
+   b. Turn: reveal 1 card, play the card-deal sound, then pause 1s.
+   c. River: reveal 1 card, play the card-deal sound, then pause 1s.
+6. Once all community cards are shown, the main Pot box resets to 0.
+7. A new Pot representation animates from the table pot to the winning player’s seat (duration: 0.5s).
+8. The winning player's chip count updates to include their winnings.
+9. The winning player's seat pulses with a yellow border (duration: 0.5s).
+10. The UI pauses for 1s to allow the player to absorb the result.
+11. The action log displays the winner announcement.
+12. The table is cleaned and the next hand is set up and dealt.
+
 ### Technical Architecture
 
 #### Frontend

@@ -1,5 +1,5 @@
 import React from 'react';
-import styled, { css } from 'styled-components';
+import styled, { css, keyframes } from 'styled-components';
 
 interface CardProps {
   card: string | null;
@@ -9,6 +9,13 @@ interface CardProps {
   flash?: boolean;
 }
 
+// Animation duration
+const CARD_REVEAL_DURATION = 300;  // ms reveal animation
+// Reveal keyframes
+const cardReveal = keyframes`
+  from { transform: scale(0.8); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+`;
 const CardContainer = styled.div<{ $faceDown: boolean; $isCommunity: boolean; $flash?: boolean }>`
   width: ${props => props.$isCommunity ? '80px' : '70px'};
   height: ${props => props.$isCommunity ? '115px' : '100px'};
@@ -57,6 +64,10 @@ const CardContainer = styled.div<{ $faceDown: boolean; $isCommunity: boolean; $f
   /* Flash animation for winning cards */
   ${props => props.$flash && css`
     animation: potFlash 0.6s ease-out;
+  `}
+  /* Reveal animation when card is face up */
+  ${props => !props.$faceDown && css`
+    animation: ${cardReveal} ${CARD_REVEAL_DURATION}ms ease-out;
   `}
 `;
 

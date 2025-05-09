@@ -49,7 +49,19 @@ interface PokerTableProps {
   currentTurnPlayerId?: string | null;
   showTurnHighlight?: boolean;
   foldedPlayerId?: string | null;
+  /** End-of-hand: final reveal and animation events */
+  streetDealt?: { street: string; cards: string[] } | null;
+  showdownHands?: { player_id: string; cards: string[] }[] | null;
+  potWinners?: { pot_id: string; amount: number; winners: { player_id: string; hand_rank: string; share: number }[] }[] | null;
+  chipsDistributed?: boolean;
+  handVisuallyConcluded?: boolean;
 }
+
+// Animation timing constants
+const CHIP_ANIM_DURATION = 500;    // ms for chip-to-pot and pot-to-player animations
+const POT_FLASH_DURATION = 500;    // ms for pot flash effect
+const CARD_STAGGER = 500;          // ms between card reveals
+const SHOWDOWN_PAUSE = 1000;       // ms pause after reveal before next action
 
 const TableContainer = styled.div`
   position: relative;
@@ -246,12 +258,48 @@ const PokerTable: React.FC<PokerTableProps> = ({
   currentTurnPlayerId = null,
   showTurnHighlight = false,
   foldedPlayerId = null
+  , streetDealt = null
+  , showdownHands = null
+  , potWinners = null
+  , chipsDistributed = false
+  , handVisuallyConcluded = false
 }) => {
   // Refs for table container and pot display (for animation coordinate calculations)
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const potDisplayRef = useRef<HTMLDivElement>(null);
   const [animationTargetPosition, setAnimationTargetPosition] = useState<{ x: string; y: string }>({ x: '50%', y: '50%' });
   // Compute animation target (center of pot display) relative to table
+  /**
+   * Handle street_dealt: frontend reveals new community cards
+   */
+  useEffect(() => {
+    if (!streetDealt) return;
+    // Stage reveal of new community cards for this street
+    setPendingRevealCount(prev => prev + streetDealt.cards.length);
+  }, [streetDealt]);
+  
+  /**
+   * Handle showdown_hands_revealed: reveal player hole cards
+   */
+  useEffect(() => {
+    if (!showdownHands) return;
+    // No additional action here; hole cards are provided via handResultPlayers prop
+  }, [showdownHands]);
+  
+  /**
+   * Handle pot_winners_determined: animate pots to winners
+   */
+  // Pot-to-player animations are handled by potToPlayerAnimations state
+  
+  /**
+   * Handle chips_distributed: pot amounts added to player chip stacks
+   */
+  // Chips distribution updates are reflected via gameState players' chip counts
+  
+  /**
+   * Handle hand_visually_concluded: final winner pulse complete
+   */
+  // Winner seat pulse handled via isWinner prop and CSS animation
   useEffect(() => {
     if (potDisplayRef.current && tableContainerRef.current) {
       const potRect = potDisplayRef.current.getBoundingClientRect();
@@ -261,32 +309,16 @@ const PokerTable: React.FC<PokerTableProps> = ({
       setAnimationTargetPosition({ x: `${relX}%`, y: `${relY}%` });
     }
   }, [currentStreetTotal, flashCurrentStreetPot]);
-  // Displayed pot updates only when a betting round completes
+  // Displayed pot and flash controlled by hook props and updates directly on pot changes
   const [flashPot, setFlashPot] = useState<boolean>(false);
-  // Displayed pot stays zero until end of each betting round
-  const [displayedPot, setDisplayedPot] = useState<number>(0);
-  const prevRoundRef = useRef<string>(currentRound);
+  const [displayedPot, setDisplayedPot] = useState<number>(pot);
   useEffect(() => {
-    // On round transition, update pot display and trigger flash
-    if (prevRoundRef.current !== currentRound) {
-      const fromRound = prevRoundRef.current;
-      const toRound = currentRound;
-      console.log(`Animating chip move for round ${fromRound} -> ${toRound}`);
-      // Skip animation and pot update on new hand (SHOWDOWN -> PREFLOP)
-      if (!(fromRound === 'SHOWDOWN' && toRound === 'PREFLOP')) {
-        // After animation, update displayedPot and flash
-        setTimeout(() => {
-          setDisplayedPot(pot);
-          setFlashPot(true);
-          setTimeout(() => setFlashPot(false), 600);
-        }, 500); // 500ms chip movement animation duration
-      } else {
-        // New hand: reset displayed pot immediately
-        setDisplayedPot(0);
-      }
-      prevRoundRef.current = currentRound;
+    if (pot !== displayedPot) {
+      setDisplayedPot(pot);
+      setFlashPot(true);
+      setTimeout(() => setFlashPot(false), POT_FLASH_DURATION);
     }
-  }, [currentRound, pot]);
+  }, [pot]);
   // Ensure players array is valid and handle potential undefined/null values
   const validPlayers = Array.isArray(players) ? players.filter(p => p && typeof p === 'object') : [];
   console.log(`Valid players: ${validPlayers.length}/${players?.length || 0}`);
@@ -351,25 +383,25 @@ const PokerTable: React.FC<PokerTableProps> = ({
         setDisplayCount(d => d + 3);
         flopAudioRef.current?.play().catch(() => {});
         if (count > 3) {
-          // Turn: reveal 4th card after 0.5s
+          // Turn: reveal 4th card after CARD_STAGGER
           setTimeout(() => {
             setDisplayCount(d => d + 1);
             cardAudioRef.current?.play().catch(() => {});
-          }, 500);
-          // River: reveal 5th card after 1s, then trigger winner effects
+          }, CARD_STAGGER);
+          // River: reveal 5th card after 2 * CARD_STAGGER
           setTimeout(() => {
             setDisplayCount(d => d + 1);
             cardAudioRef.current?.play().catch(() => {});
-          }, 1000);
+          }, CARD_STAGGER * 2);
         }
       } else if (count === 2) {
         // Turn+River: reveal turn, then river
         setDisplayCount(d => d + 1);
         cardAudioRef.current?.play().catch(() => {});
-        setTimeout(() => {
+      setTimeout(() => {
           setDisplayCount(d => d + 1);
           cardAudioRef.current?.play().catch(() => {});
-        }, 500);
+        }, CARD_STAGGER);
       } else if (count === 1) {
         // Single card (turn or river)
         setDisplayCount(d => d + 1);
@@ -378,50 +410,40 @@ const PokerTable: React.FC<PokerTableProps> = ({
     }
   }, [betsToAnimate, pendingRevealCount]);
 
-  // Pot-to-winner and winner highlight after river reveal
+  // Pot-to-winner animations
   const [potMoveDelta, setPotMoveDelta] = useState<{ dx: number; dy: number } | null>(null);
   const [potMoveActive, setPotMoveActive] = useState<boolean>(false);
+  // Track per-winner chip animations
+  const [potToPlayerAnimations, setPotToPlayerAnimations] = useState<
+    Array<{ playerId: string; amount: number }>
+  >([]);
+  // Highlight flag for winner seat pulse
   const [highlightWinnerActive, setHighlightWinnerActive] = useState<boolean>(false);
-  const [winnerEffectsTriggered, setWinnerEffectsTriggered] = useState<boolean>(false);
 
   useEffect(() => {
-    // Trigger pot-to-winner and winner highlight once after river is fully revealed
-    if (
-      betsToAnimate.length === 0 &&
-      displayCount === validCommunityCards.length &&
-      validCommunityCards.length === 5 &&
-      !winnerEffectsTriggered
-    ) {
-      setWinnerEffectsTriggered(true);
-      // Compute target positions
-      const winnerId = handWinners && handWinners.length > 0 ? handWinners[0] : null;
-      if (winnerId && potDisplayRef.current && tableContainerRef.current) {
-        // Compute pot center
-        const potRect = potDisplayRef.current.getBoundingClientRect();
-        const potCx = potRect.left + potRect.width / 2;
-        const potCy = potRect.top + potRect.height / 2;
-        // Compute winner seat position percent
-        const winnerPlayer = players.find(p => p.id === winnerId);
-        if (winnerPlayer) {
-          const seatPos = getPlayerPosition(winnerPlayer);
-          const tableRect = tableContainerRef.current.getBoundingClientRect();
-          const targetCx = tableRect.left + (parseFloat(seatPos.x) / 100) * tableRect.width;
-          const targetCy = tableRect.top + (parseFloat(seatPos.y) / 100) * tableRect.height;
-          const dx = targetCx - potCx;
-          const dy = targetCy - potCy;
-          // Start animation
-          setPotMoveDelta({ dx, dy });
-          setPotMoveActive(true);
-          setHighlightWinnerActive(true);
-          // Cleanup after animation duration (.5s)
-          setTimeout(() => {
-            setPotMoveActive(false);
-            setHighlightWinnerActive(false);
-          }, 500);
-        }
-      }
+    if (!potWinners) return;
+    console.log('PokerTable: Pot winners, triggering chip transfer animations', potWinners);
+    // Prepare animations for each winner of main pot only (or multiple pots)
+    const anims: Array<{ playerId: string; amount: number }> = [];
+    potWinners.forEach(pot => {
+      const share = pot.winners.length > 0 ? pot.amount / pot.winners.length : 0;
+      pot.winners.forEach(w => {
+        anims.push({ playerId: w.player_id, amount: share });
+      });
+    });
+    if (anims.length > 0) {
+      setPotToPlayerAnimations(anims);
+      setPotMoveActive(true);
+      // After animation (.5s), clear animations and highlight winners
+      setTimeout(() => {
+        setPotMoveActive(false);
+        setPotToPlayerAnimations([]);
+        setHighlightWinnerActive(true);
+        // Then clear highlight after pulse duration
+        setTimeout(() => setHighlightWinnerActive(false), POT_FLASH_DURATION);
+      }, CHIP_ANIM_DURATION);
     }
-  }, [betsToAnimate, displayCount, winnerEffectsTriggered, handWinners, validCommunityCards.length, players]);
+  }, [potWinners]);
   
   // Ensure pot is a valid number
   const validPot = typeof pot === 'number' && !isNaN(pot) ? pot : 0;
@@ -474,6 +496,31 @@ const PokerTable: React.FC<PokerTableProps> = ({
             )
           ))}
         </CommunityCardsArea>
+        {/* Pot-to-player animations for end-of-hand */}
+        {potMoveActive && potToPlayerAnimations.map((anim, i) => {
+          // Find player object and compute seat pixel position
+          const playerObj = players.find(p => p.id === anim.playerId);
+          if (!playerObj || !potDisplayRef.current || !tableContainerRef.current) return null;
+          const tableRect = tableContainerRef.current.getBoundingClientRect();
+          const potRect = potDisplayRef.current.getBoundingClientRect();
+          const potCx = potRect.left + potRect.width / 2;
+          const potCy = potRect.top + potRect.height / 2;
+          // Compute seat center in pixels
+          const seatPercent = getPlayerPosition(playerObj);
+          const targetCx = tableRect.left + (parseFloat(seatPercent.x) / 100) * tableRect.width;
+          const targetCy = tableRect.top + (parseFloat(seatPercent.y) / 100) * tableRect.height;
+          const fromPos = { x: `${potCx}px`, y: `${potCy}px` };
+          const toPos = { x: `${targetCx}px`, y: `${targetCy}px` };
+          return (
+            <AnimatingBetChip
+              key={`win-anim-${i}-${anim.playerId}`}
+              amount={anim.amount}
+              fromPosition={fromPos}
+              targetPosition={toPos}
+              onEnd={() => {}}
+            />
+          );
+        })}
         
         <PlayerPositions>
           {/* Add dealer position */}
@@ -571,7 +618,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   // Suppress static bet display when animating chips to pot
                   suppressBetStack={betsToAnimate.some(b => b.playerId === playerId)}
                   // highlight winning player's cards
-                  isWinner={showdownActive && handWinners.includes(playerId)}
+                  isWinner={highlightWinnerActive && handWinners.includes(playerId)}
                 />
               );
             } catch (error) {

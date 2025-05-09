@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import Card from './Card';
 
 interface Player {
@@ -44,6 +44,7 @@ interface PositionProps {
   $isCurrentTurn: boolean;
   $showTurnHighlight: boolean;
   $isHuman: boolean;
+  $isWinner?: boolean;
 }
 
 const SeatContainer = styled.div<PositionProps>`
@@ -71,6 +72,16 @@ const SeatContainer = styled.div<PositionProps>`
   ${props => props.$isHuman && `
     z-index: 20;
   `}
+  /* Winner pulse animation */
+  ${props => props.$isWinner && css`
+    animation: winnerPulse 0.5s ease-out;
+  `}
+
+  @keyframes winnerPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0.8); }
+    50%  { box-shadow: 0 0 20px 8px rgba(255,215,0,0.8); }
+    100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.8); }
+  }
   /* Note: fold/inactive styling is handled per-component (PlayerInfo, PlayerCards) to avoid graying out bet stacks */
 `;
 
@@ -248,6 +259,27 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
 }) => {
   // Ref for player's bet-stack container to register position for chip animations
   const betStackRef = useRef<HTMLDivElement>(null);
+  // Animated chip count for smooth chip distribution
+  const [displayChips, setDisplayChips] = React.useState(player.chips);
+  React.useEffect(() => {
+    if (player.chips !== displayChips) {
+      const start = displayChips;
+      const end = player.chips;
+      const steps = 5;
+      const delta = (end - start) / steps;
+      let current = start;
+      const interval = setInterval(() => {
+        current += delta;
+        if ((delta > 0 && current >= end) || (delta < 0 && current <= end)) {
+          setDisplayChips(end);
+          clearInterval(interval);
+        } else {
+          setDisplayChips(Math.round(current));
+        }
+      }, 50);
+      return () => clearInterval(interval);
+    }
+  }, [player.chips]);
   // Report bet-stack position relative to the table container
   useEffect(() => {
     if (betStackRef.current && tableContainerRef.current) {
@@ -300,6 +332,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       $isCurrentTurn={isCurrentTurn}
       $showTurnHighlight={showTurnHighlight}
       $isHuman={isHuman}
+      $isWinner={isWinner}
     >
       <PlayerInfo
         $isHuman={isHuman}
@@ -308,7 +341,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       >
         <PlayerName $isHuman={isHuman}>{player.name}</PlayerName>
         { !player.isDealer && (
-          <ChipCount $isHuman={isHuman}>{player.chips}</ChipCount>
+          <ChipCount $isHuman={isHuman}>{displayChips}</ChipCount>
         )}
         
         {/* Container for all markers */}

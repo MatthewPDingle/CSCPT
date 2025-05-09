@@ -102,6 +102,9 @@ interface WebSocketMessage {
  * React hook for managing game WebSocket communication
  */
 export const useGameWebSocket = (wsUrl: string) => {
+  // Animation timing constants (ms)
+  const CHIP_ANIM_DURATION = 500;
+  const POT_FLASH_DURATION = 500;
   // Store player ID for checking turns
   const [playerId, setPlayerId] = useState<string | undefined>();
   
@@ -289,7 +292,47 @@ export const useGameWebSocket = (wsUrl: string) => {
     }
   }, [wsUrl, initializeAudio, audioContextInitialized]);
   
-  // State for different message types
+  // End-of-hand sequence state
+  const [roundBetsFinalized, setRoundBetsFinalized] = useState<{ player_bets: { player_id: string; amount: number; }[]; pot: number; } | null>(null);
+  const [streetDealt, setStreetDealt] = useState<{ street: string; cards: any[]; } | null>(null);
+  const [showdownHands, setShowdownHands] = useState<{ player_id: string; cards: string[]; }[] | null>(null);
+  const [potWinners, setPotWinners] = useState<any[] | null>(null);
+  const [chipsDistributed, setChipsDistributed] = useState<boolean>(false);
+  const [handVisuallyConcluded, setHandVisuallyConcluded] = useState<boolean>(false);
+  
+  // Orchestrate bet-to-pot animation when bets are finalized
+  useEffect(() => {
+    if (!roundBetsFinalized) return;
+    const { player_bets, pot } = roundBetsFinalized;
+    // Wait for chip-to-pot animation (0.5s), then clear bets and flash pot
+    const timer = setTimeout(() => {
+      setBetsToAnimate([]);
+      setFlashMainPot(true);
+      setAccumulatedPot(pot);
+      setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION);
+    }, CHIP_ANIM_DURATION);
+    return () => clearTimeout(timer);
+  }, [roundBetsFinalized]);
+  
+  // Append winner messages after the final pulse
+  useEffect(() => {
+    if (!handVisuallyConcluded || !potWinners) return;
+    potWinners.forEach(pot => {
+      (pot.winners || []).forEach((w: any) => {
+        const text = `🏆 ${w.player_id} wins ${w.share}`;
+        setActionLog(log => [...log, text]);
+      });
+    });
+    // Reset end-of-hand states for next hand
+    setRoundBetsFinalized(null);
+    setStreetDealt(null);
+    setShowdownHands(null);
+    setPotWinners(null);
+    setChipsDistributed(false);
+    setHandVisuallyConcluded(false);
+  }, [handVisuallyConcluded, potWinners]);
+  
+  // General state for different message types
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [lastAction, setLastAction] = useState<PlayerAction | null>(null);
   const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
@@ -383,6 +426,62 @@ export const useGameWebSocket = (wsUrl: string) => {
       // Process by type with extra error handling
       try {
         switch (message.type) {
+          case 'round_bets_finalized':
+            console.log('Round bets finalized:', message.data);
+            setRoundBetsFinalized(message.data);
+            // Reset street pot display
+            setCurrentStreetPot(0);
+            // Prepare betsToAnimate for UI
+            const anims = message.data.player_bets.map((b: any) => ({
+              playerId: b.player_id,
+              amount: b.amount,
+              fromPosition: playerSeatPositionsRef.current.get(b.player_id)
+            }));
+            setBetsToAnimate(anims);
+            break;
+          case 'street_dealt':
+            console.log('Street dealt:', message.data.street, message.data.cards);
+            setStreetDealt(message.data);
+            // Append new cards into community cards in gameState
+            setGameState(prev => {
+              if (!prev) return prev;
+              const newCards = message.data.cards.map((cs: string) => ({ rank: cs[0], suit: cs[1] }));
+              return { ...prev, community_cards: [...prev.community_cards, ...newCards] };
+            });
+            // Play deal sound
+            if (message.data.street === 'FLOP') {
+              flopSoundRef.current?.play().catch(() => {});
+            } else {
+              cardSoundRef.current?.play().catch(() => {});
+            }
+            break;
+          case 'showdown_hands_revealed':
+            console.log('Showdown hands revealed:', message.data.player_hands);
+            setShowdownHands(message.data.player_hands);
+            // Reveal hole cards in gameState players
+            setGameState(prev => {
+              if (!prev) return prev;
+              const hands = message.data.player_hands;
+              const newPlayers = prev.players.map(p => {
+                const h = hands.find((ph: any) => ph.player_id === p.player_id);
+                return h ? { ...p, cards: h.cards } : p;
+              });
+              return { ...prev, players: newPlayers };
+            });
+            break;
+          case 'pot_winners_determined':
+            console.log('Pot winners determined:', message.data.pots);
+            setPotWinners(message.data.pots);
+            break;
+          case 'chips_distributed':
+            console.log('Chips distributed to winners, new game state:', message.data);
+            setChipsDistributed(true);
+            setGameState(message.data);
+            break;
+          case 'hand_visually_concluded':
+            console.log('Hand visually concluded');
+            setHandVisuallyConcluded(true);
+            break;
           case 'game_state':
             console.log('Game state received with player count:', 
               message.data?.players?.length || 'unknown');
@@ -1344,6 +1443,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     lastMessage,
     getConnectionHealth,
     // Betting pot and animations
+    accumulatedPot,
     currentStreetPot,
     betsToAnimate,
     flashMainPot,
@@ -1353,6 +1453,12 @@ export const useGameWebSocket = (wsUrl: string) => {
     currentTurnPlayerId,
     showTurnHighlight,
     processingAITurn,
-    foldedPlayerId
+    foldedPlayerId,
+    roundBetsFinalized,
+    streetDealt,
+    showdownHands,
+    potWinners,
+    chipsDistributed,
+    handVisuallyConcluded
   };
 };
