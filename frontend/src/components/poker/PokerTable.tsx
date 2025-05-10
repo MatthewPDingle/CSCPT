@@ -49,6 +49,8 @@ interface PokerTableProps {
   currentTurnPlayerId?: string | null;
   showTurnHighlight?: boolean;
   foldedPlayerId?: string | null;
+  /** ID of the human player, so we can show their hole cards face-up */
+  humanPlayerId?: string;
   /** End-of-hand: final reveal and animation events */
   streetDealt?: { street: string; cards: string[] } | null;
   showdownHands?: { player_id: string; cards: string[] }[] | null;
@@ -121,11 +123,7 @@ const PotDisplay = styled.div<PotDisplayProps>`
   ${props => props.flash && css`
     animation: potFlash 0.6s ease-out;
   `}
-  /* Transition for pot-to-winner move */
-  transition: transform 0.5s ease-out;
-  ${props => props.$moving && props.$moveDelta && css`
-    transform: translate(${props.$moveDelta.dx}px, ${props.$moveDelta.dy}px);
-  `}
+  /* Removed pot-to-winner translation; handled via chip animations */
 
   @keyframes potFlash {
     0% {
@@ -257,7 +255,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
   handWinners = [],
   currentTurnPlayerId = null,
   showTurnHighlight = false,
-  foldedPlayerId = null
+  foldedPlayerId = null,
+  humanPlayerId
   , streetDealt = null
   , showdownHands = null
   , potWinners = null
@@ -454,8 +453,6 @@ const PokerTable: React.FC<PokerTableProps> = ({
         <PotDisplay
           ref={potDisplayRef}
           flash={flashPot}
-          $moveDelta={potMoveDelta || undefined}
-          $moving={potMoveActive}
         >
           Pot: {displayedPot}
         </PotDisplay>
@@ -503,14 +500,15 @@ const PokerTable: React.FC<PokerTableProps> = ({
           if (!playerObj || !potDisplayRef.current || !tableContainerRef.current) return null;
           const tableRect = tableContainerRef.current.getBoundingClientRect();
           const potRect = potDisplayRef.current.getBoundingClientRect();
-          const potCx = potRect.left + potRect.width / 2;
-          const potCy = potRect.top + potRect.height / 2;
-          // Compute seat center in pixels
+          // Compute from position (center of pot) relative to table container
+          const potCx = (potRect.left - tableRect.left) + potRect.width / 2;
+          const potCy = (potRect.top  - tableRect.top ) + potRect.height / 2;
+          // Compute target position (seat center) relative to table container
           const seatPercent = getPlayerPosition(playerObj);
-          const targetCx = tableRect.left + (parseFloat(seatPercent.x) / 100) * tableRect.width;
-          const targetCy = tableRect.top + (parseFloat(seatPercent.y) / 100) * tableRect.height;
+          const targetCx = (parseFloat(seatPercent.x) / 100) * tableRect.width;
+          const targetCy = (parseFloat(seatPercent.y) / 100) * tableRect.height;
           const fromPos = { x: `${potCx}px`, y: `${potCy}px` };
-          const toPos = { x: `${targetCx}px`, y: `${targetCy}px` };
+          const toPos   = { x: `${targetCx}px`, y: `${targetCy}px` };
           return (
             <AnimatingBetChip
               key={`win-anim-${i}-${anim.playerId}`}
@@ -608,7 +606,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   key={playerId}
                   player={sanitizedPlayer}
                   position={position}
-                  isHuman={playerId.toLowerCase().includes('you')}
+                  // Human player sees their hole cards face-up
+                  isHuman={humanPlayerId === playerId}
                   showdownActive={showdownActive}
                   isCurrentTurn={isPlayerCurrentTurn}
                   showTurnHighlight={showTurnHighlight && isPlayerCurrentTurn}

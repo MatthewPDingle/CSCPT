@@ -137,14 +137,23 @@ const parseCard = (cardString: string) => {
 };
 
 const Card: React.FC<CardProps> = ({ card, faceDown = false, isCommunity = false, flash = false }) => {
+  // If no card data, render an empty placeholder (for community cards)
   if (!card) {
     return <EmptyCard $isCommunity={!!isCommunity} />;
   }
-  
+  // If the card should be face-down (card back), render only the back styling
+  if (faceDown) {
+    return (
+      <CardContainer
+        $faceDown={true}
+        $isCommunity={!!isCommunity}
+      />
+    );
+  }
+  // Face-up card: show value and suit
   const { value, suit, color } = parseCard(card);
-  
   return (
-    <CardContainer $faceDown={!!faceDown} $isCommunity={!!isCommunity} $flash={!!flash}>
+    <CardContainer $faceDown={false} $isCommunity={!!isCommunity} $flash={!!flash}>
       <CardValue color={color} $isCommunity={!!isCommunity}>{value}</CardValue>
       <CardSymbol color={color} $isCommunity={!!isCommunity}>{suit}</CardSymbol>
     </CardContainer>

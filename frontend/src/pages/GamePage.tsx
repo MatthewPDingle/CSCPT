@@ -887,6 +887,8 @@ const connectionIndicator = (
       {/* Audio initialization now handled automatically in useGameWebSocket */}
       
       <PokerTable
+        // Pass the human player's ID for correct hole-card display
+        humanPlayerId={initData?.playerId}
         players={transformPlayersForTable()}
         communityCards={(effectiveGameState?.community_cards || []).map(card =>
           card ? `${card.rank}${card.suit}` : null

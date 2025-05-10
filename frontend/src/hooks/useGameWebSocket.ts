@@ -304,12 +304,20 @@ export const useGameWebSocket = (wsUrl: string) => {
   useEffect(() => {
     if (!roundBetsFinalized) return;
     const { player_bets, pot } = roundBetsFinalized;
-    // Wait for chip-to-pot animation (0.5s), then clear bets and flash pot
+    // 1) Clear individual bets (move to pot) and flash pot
     const timer = setTimeout(() => {
+      // clear all player bet badges
       setBetsToAnimate([]);
-      setFlashMainPot(true);
+      // update pot and flash
       setAccumulatedPot(pot);
+      setFlashMainPot(true);
       setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION);
+      // also clear currentStreetPot in gameState players
+      setGameState(prev => {
+        if (!prev) return prev;
+        const clearedPlayers = prev.players.map(p => ({ ...p, current_bet: 0 }));
+        return { ...prev, players: clearedPlayers };
+      });
     }, CHIP_ANIM_DURATION);
     return () => clearTimeout(timer);
   }, [roundBetsFinalized]);
@@ -581,17 +589,9 @@ export const useGameWebSocket = (wsUrl: string) => {
                   }
                 }
               }
-              // Live update of current street pot and flash (skip flash on folds)
+              // Live update of current street pot without automatic flash
               if (newStreetSum !== currentStreetPot) {
                 setCurrentStreetPot(newStreetSum);
-                // Only flash when chips are added (not when folding)
-                if (
-                  newStreetSum > currentStreetPot &&
-                  lastAction?.action?.toUpperCase() !== 'FOLD'
-                ) {
-                  setFlashCurrentStreetPot(true);
-                  setTimeout(() => setFlashCurrentStreetPot(false), 600);
-                }
               }
               // New hand reset: from SHOWDOWN to PREFLOP or first state
               if (
@@ -702,6 +702,13 @@ export const useGameWebSocket = (wsUrl: string) => {
 
             const actionUpper = (message.data.action || '').toUpperCase();
             playActionSound(actionUpper);
+            // Flash Bets box when any player commits chips (bet, raise, call, all-in)
+            const commitActs = ['BET', 'RAISE', 'CALL', 'ALL_IN'];
+            const commitAmount = message.data.amount;
+            if (commitActs.includes(actionUpper) && typeof commitAmount === 'number' && commitAmount > 0) {
+              setFlashCurrentStreetPot(true);
+              setTimeout(() => setFlashCurrentStreetPot(false), POT_FLASH_DURATION);
+            }
 
             // Check if this action belongs to the player who currently has the turn
             const matchesCurrentTurn = message.data.player_id === currentTurnPlayerId;
@@ -716,7 +723,7 @@ export const useGameWebSocket = (wsUrl: string) => {
               
               // 3. Player made their play (this action message)
               // Update the last action immediately
-              setLastAction(message.data);
+            setLastAction(message.data);
               
               // 3a. If fold, first show gold highlight, then set foldedPlayerId to
               // trigger gray highlight after a delay but before removing the highlight completely
@@ -725,7 +732,8 @@ export const useGameWebSocket = (wsUrl: string) => {
               
               // For fold actions, control the fold styling sequence
               if (isFoldAction) {
-                // Start with gold highlight (already set earlier)
+                // Suppress any pending Bets box flash on fold
+                setFlashCurrentStreetPot(false);
                 // Then set the foldedPlayerId to show gray styling AFTER the action completes
                 setFoldedPlayerId(message.data.player_id);
                 console.log(`Setting foldedPlayerId: ${message.data.player_id} for fold action`);
