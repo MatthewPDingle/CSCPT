@@ -349,7 +349,63 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
   
-  // Pot state and animation tracking
+  // Animation queue for end-of-round / end-of-hand events
+  const [animQueue, setAnimQueue] = useState<WebSocketMessage[]>([]);
+  const [currentAnim, setCurrentAnim] = useState<WebSocketMessage | null>(null);
+  // Enqueue an animation event
+  const enqueueAnim = useCallback((msg: WebSocketMessage) => {
+    setAnimQueue(q => [...q, msg]);
+  }, []);
+  // Process next animation when idle
+  useEffect(() => {
+    if (!currentAnim && animQueue.length > 0) {
+      setCurrentAnim(animQueue[0]);
+      setAnimQueue(q => q.slice(1));
+    }
+  }, [animQueue, currentAnim]);
+  // Effect to run the current animation
+  useEffect(() => {
+    if (!currentAnim) return;
+    const { type, data } = currentAnim;
+    if (type === 'round_bets_finalized') {
+      // Animate bets to pot then pot pulse
+      const anims = data.player_bets.map((b: any) => ({
+        playerId: b.player_id,
+        amount: b.amount,
+        fromPosition: playerSeatPositionsRef.current.get(b.player_id)
+      }));
+      setBetsToAnimate(anims);
+      setTimeout(() => {
+        setBetsToAnimate([]);
+        setAccumulatedPot(acc => acc + data.player_bets.reduce((s: number, b: any) => s + b.amount, 0));
+        setFlashMainPot(true);
+        setTimeout(() => {
+          setFlashMainPot(false);
+          setCurrentAnim(null);
+        }, POT_FLASH_DURATION);
+      }, CHIP_ANIM_DURATION);
+    } else if (type === 'street_dealt') {
+      // Reveal next street after pot animation
+      setStreetDealt({ street: data.street, cards: data.cards });
+      setTimeout(() => {
+        setGameState(prev => prev ? { ...prev, community_cards: [...prev.community_cards, ...data.cards.map((c: string) => ({ rank: c[0], suit: c[1] }))] } : prev);
+        // play sound
+        if (data.street === 'FLOP') flopSoundRef.current?.play().catch(() => {});
+        else cardSoundRef.current?.play().catch(() => {});
+        setCurrentAnim(null);
+      }, POT_FLASH_DURATION);
+    } else if (type === 'pot_winners_determined') {
+      // Trigger pot-to-player animations via PokerTable prop
+      console.log('Triggering pot winners in UI');
+      setPotWinners(data.pots);
+      setCurrentAnim(null);
+    } else {
+      // pass through other messages immediately
+      setCurrentAnim(null);
+    }
+  }, [currentAnim]);
+  
+  // Remove inline chips-to-pot and street reveal in handleMessage in favor of anim queue
   // accumulatedPot: chips collected from completed betting rounds
   const [accumulatedPot, setAccumulatedPot] = useState<number>(0);
   // currentStreetPot: sum of bets in the active betting round
@@ -435,33 +491,12 @@ export const useGameWebSocket = (wsUrl: string) => {
       try {
         switch (message.type) {
           case 'round_bets_finalized':
-            console.log('Round bets finalized:', message.data);
-            setRoundBetsFinalized(message.data);
-            // Reset street pot display
-            setCurrentStreetPot(0);
-            // Prepare betsToAnimate for UI
-            const anims = message.data.player_bets.map((b: any) => ({
-              playerId: b.player_id,
-              amount: b.amount,
-              fromPosition: playerSeatPositionsRef.current.get(b.player_id)
-            }));
-            setBetsToAnimate(anims);
+            console.log('Round bets finalized, enqueuing animation');
+            enqueueAnim(message);
             break;
           case 'street_dealt':
-            console.log('Street dealt:', message.data.street, message.data.cards);
-            setStreetDealt(message.data);
-            // Append new cards into community cards in gameState
-            setGameState(prev => {
-              if (!prev) return prev;
-              const newCards = message.data.cards.map((cs: string) => ({ rank: cs[0], suit: cs[1] }));
-              return { ...prev, community_cards: [...prev.community_cards, ...newCards] };
-            });
-            // Play deal sound
-            if (message.data.street === 'FLOP') {
-              flopSoundRef.current?.play().catch(() => {});
-            } else {
-              cardSoundRef.current?.play().catch(() => {});
-            }
+            console.log('Street dealt, enqueuing animation');
+            enqueueAnim(message);
             break;
           case 'showdown_hands_revealed':
             console.log('Showdown hands revealed:', message.data.player_hands);
@@ -478,8 +513,8 @@ export const useGameWebSocket = (wsUrl: string) => {
             });
             break;
           case 'pot_winners_determined':
-            console.log('Pot winners determined:', message.data.pots);
-            setPotWinners(message.data.pots);
+            console.log('Pot winners determined, enqueuing animation');
+            enqueueAnim(message);
             break;
           case 'chips_distributed':
             console.log('Chips distributed to winners, new game state:', message.data);

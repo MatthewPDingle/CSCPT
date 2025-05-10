@@ -30,6 +30,8 @@ interface PlayerSeatProps {
   isWinner?: boolean;
   /** Callback to register the bet-stack position for animations */
   updatePlayerSeatPosition: (playerId: string, pos: { x: string; y: string }) => void;
+  /** Register exact chip-stack position for pot→player animation */
+  registerChipPosition?: (playerId: string, pos: { x: string; y: string }) => void;
   /** Ref to the table container for coordinate calculations */
   tableContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Suppress static bet stack display (when animating to pot) */
@@ -255,10 +257,12 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
   isWinner = false,
   updatePlayerSeatPosition,
   tableContainerRef,
-  suppressBetStack = false
+  suppressBetStack = false,
+  registerChipPosition
 }) => {
-  // Ref for player's bet-stack container to register position for chip animations
+  // Refs for animation anchors
   const betStackRef = useRef<HTMLDivElement>(null);
+  const chipRef = useRef<HTMLDivElement>(null);
   // Animated chip count for smooth chip distribution
   const [displayChips, setDisplayChips] = React.useState(player.chips);
   React.useEffect(() => {
@@ -281,6 +285,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
     }
   }, [player.chips]);
   // Report bet-stack position relative to the table container
+  // Report bet-stack position to parent (use fractional % for chip-to-pot)
   useEffect(() => {
     if (betStackRef.current && tableContainerRef.current) {
       const betRect = betStackRef.current.getBoundingClientRect();
@@ -290,6 +295,17 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       updatePlayerSeatPosition(player.id, { x: `${relX}%`, y: `${relY}%` });
     }
   }, [player.currentBet, updatePlayerSeatPosition, tableContainerRef]);
+  
+  // Report chip-stack position to parent for pot-to-player animation (use px coords)
+  useEffect(() => {
+    if (registerChipPosition && chipRef.current && tableContainerRef.current) {
+      const chipRect = chipRef.current.getBoundingClientRect();
+      const tableRect = tableContainerRef.current.getBoundingClientRect();
+      const x = (chipRect.left + chipRect.width / 2 - tableRect.left) + 'px';
+      const y = (chipRect.top + chipRect.height / 2 - tableRect.top) + 'px';
+      registerChipPosition(player.id, { x, y });
+    }
+  }, [registerChipPosition, player.chips, tableContainerRef]);
   // Determine seat direction based on seat index (player.position)
   const seatIndex = player.position;
   let direction: StackDirection;
@@ -341,7 +357,7 @@ const PlayerSeat: React.FC<PlayerSeatProps> = ({
       >
         <PlayerName $isHuman={isHuman}>{player.name}</PlayerName>
         { !player.isDealer && (
-          <ChipCount $isHuman={isHuman}>{displayChips}</ChipCount>
+        <ChipCount ref={chipRef} $isHuman={isHuman}>{displayChips}</ChipCount>
         )}
         
         {/* Container for all markers */}

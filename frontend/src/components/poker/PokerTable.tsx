@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import styled, { css } from 'styled-components';
 import PlayerSeat from './PlayerSeat';
 import Card from './Card';
@@ -557,6 +557,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
             showTurnHighlight={false}
             isFolding={false}
             updatePlayerSeatPosition={updatePlayerSeatPosition}
+            registerChipPosition={registerChipPosition}
             tableContainerRef={tableContainerRef}
           />
           
@@ -613,6 +614,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   showTurnHighlight={showTurnHighlight && isPlayerCurrentTurn}
                   isFolding={isFolding}
                   updatePlayerSeatPosition={updatePlayerSeatPosition}
+                  registerChipPosition={registerChipPosition}
                   tableContainerRef={tableContainerRef}
                   // Suppress static bet display when animating chips to pot
                   suppressBetStack={betsToAnimate.some(b => b.playerId === playerId)}

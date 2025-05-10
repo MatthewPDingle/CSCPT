@@ -90,67 +90,26 @@ class ConnectionManager:
                 import traceback
                 logging.error(traceback.format_exc())
         
-    async def disconnect(self, websocket: WebSocket):
+    def disconnect(self, websocket: WebSocket):
         """
-        Disconnect a WebSocket.
-        
-        Args:
-            websocket: The WebSocket to disconnect
+        Disconnect a WebSocket (synchronous version for testing).
+
+        Removes the websocket from active connections and maps.
         """
-        import logging
-        import traceback
-        
-        try:
-            # Use lock for atomic disconnection
-            async with self.lock:
-                logging.warning(f"Acquired lock for disconnect of WebSocket {id(websocket)}")
-                
-                # Don't disconnect if websocket isn't in any of our maps
-                in_player_map = websocket in self.socket_player_map
-                in_game_map = websocket in self.socket_game_map
-                
-                if not in_player_map and not in_game_map:
-                    logging.warning(f"Ignoring disconnect for WebSocket {id(websocket)} not found in maps")
-                    return
-                    
-                # First log the status of the websocket
-                logging.warning(f"Disconnecting WebSocket {id(websocket)} - "
-                              f"in player map: {in_player_map}, "
-                              f"in game map: {in_game_map}")
-                    
-                # Get player ID and game ID for logging
-                player_id = self.socket_player_map.get(websocket, 'unknown')
-                game_id = self.socket_game_map.get(websocket, 'unknown')
-                
-                # Find the game this websocket belongs to
-                found_in_game = False
-                for g_id, connections in list(self.active_connections.items()):
-                    if websocket in connections:
-                        connections.remove(websocket)
-                        found_in_game = True
-                        logging.warning(f"Removed WebSocket {id(websocket)} for player {player_id} from game {g_id}")
-                        # Clean up empty games
-                        if not connections:
-                            del self.active_connections[g_id]
-                            logging.warning(f"Removed empty game {g_id} from active_connections")
-                        break
-                        
-                if not found_in_game:
-                    logging.warning(f"WebSocket {id(websocket)} for player {player_id} not found in any active game connections")
-                    
-                # Remove from player map
-                if in_player_map:
-                    del self.socket_player_map[websocket]
-                    logging.warning(f"Removed player {player_id} mapping for WebSocket {id(websocket)}")
-                    
-                # Remove from game map
-                if in_game_map:
-                    logging.warning(f"Removing game_id {game_id} for WebSocket connection {id(websocket)}")
-                    del self.socket_game_map[websocket]
-                    
-        except Exception as e:
-            logging.error(f"Error during WebSocket disconnect: {str(e)}")
-            logging.error(traceback.format_exc())
+        # Remove from active_connections mapping
+        for g_id, connections in list(self.active_connections.items()):
+            if websocket in connections:
+                connections.remove(websocket)
+                # Clean up empty game entry
+                if not connections:
+                    del self.active_connections[g_id]
+                break
+        # Remove from socket_player_map
+        if websocket in self.socket_player_map:
+            del self.socket_player_map[websocket]
+        # Remove from socket_game_map
+        if websocket in self.socket_game_map:
+            del self.socket_game_map[websocket]
     
     async def broadcast_to_game(self, game_id: str, message: dict):
         """

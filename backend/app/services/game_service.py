@@ -354,19 +354,9 @@ class GameService:
             chips=buy_in
         )
         
-    async def start_game(self, game_id: str) -> Game:
+    async def _start_game_async(self, game_id: str) -> Game:
         """
-        Start a poker game.
-        
-        Args:
-            game_id: ID of the game to start
-            
-        Returns:
-            The updated Game entity
-            
-        Raises:
-            ValueError: If the game cannot be started
-            KeyError: If the game doesn't exist
+        Async implementation for starting a poker game.
         """
         return self._start_game_internal(game_id, is_async=True)
         
@@ -381,6 +371,17 @@ class GameService:
             The updated Game entity
         """
         return self._start_game_internal(game_id, is_async=False)
+    
+    def start_game(self, game_id: str) -> Game:
+        """Wrapper to support both sync and async invocation of start_game."""
+        import asyncio
+        try:
+            # if called within an async event loop, return coroutine
+            loop = asyncio.get_running_loop()
+            return self._start_game_async(game_id)
+        except RuntimeError:
+            # no running loop, synchronous call
+            return self.start_game_sync(game_id)
         
     def _start_game_internal(self, game_id: str, is_async: bool = False) -> Game:
         """
@@ -885,11 +886,11 @@ class GameService:
         
         return game
 
-    async def process_action(
-        self, 
-        game_id: str, 
-        player_id: str, 
-        action: PlayerAction, 
+    async def _process_action_impl(
+        self,
+        game_id: str,
+        player_id: str,
+        action: PlayerAction,
         amount: Optional[int] = None
     ) -> Game:
         """
@@ -1226,6 +1227,25 @@ class GameService:
             Player statistics object
         """
         return self.hand_history_repo.get_player_stats(player_id, game_id)
+        
+    def process_action(
+        self,
+        game_id: str,
+        player_id: str,
+        action: PlayerAction,
+        amount: Optional[int] = None
+    ) -> Game:
+        """Wrapper to support both sync and async invocation of process_action."""
+        import asyncio
+        try:
+            # if in an async event loop, return coroutine
+            loop = asyncio.get_running_loop()
+            return self._process_action_impl(game_id, player_id, action, amount)
+        except RuntimeError:
+            # no running loop, execute synchronously
+            return asyncio.get_event_loop().run_until_complete(
+                self._process_action_impl(game_id, player_id, action, amount)
+            )
         
     async def _request_and_process_ai_action(self, game_id: str, player_id: str):
         """
