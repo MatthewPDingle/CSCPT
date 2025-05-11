@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import styled, { css } from 'styled-components';
 import PlayerSeat from './PlayerSeat';
 import Card from './Card';
 import AnimatingBetChip from './AnimatingBetChip';
+import { CARD_STAGGER_DELAY_MS, POST_STREET_PAUSE_MS, POT_FLASH_DURATION_MS, CHIP_ANIMATION_DURATION_MS } from '../../constants/animation';
 
 interface Player {
   id: string;
@@ -38,6 +39,8 @@ interface PokerTableProps {
   animationTargetPosition?: { x: string; y: string };
   /** Callback for PlayerSeat to register its bet-stack position */
   updatePlayerSeatPosition?: (playerId: string, pos: { x: string; y: string }) => void;
+  /** Register exact chip-stack position for end-of-hand animations */
+  registerChipPosition?: (playerId: string, pos: { x: string; y: string }) => void;
   /** Flash main pot pulse */
   flashMainPot?: boolean;
   /** Flash current street pot pulse */
@@ -51,19 +54,15 @@ interface PokerTableProps {
   foldedPlayerId?: string | null;
   /** ID of the human player, so we can show their hole cards face-up */
   humanPlayerId?: string;
-  /** End-of-hand: final reveal and animation events */
-  streetDealt?: { street: string; cards: string[] } | null;
+  /** Animation trigger for upcoming community street reveal */
+  pendingStreetReveal?: { street: string; cards: string[] } | null;
   showdownHands?: { player_id: string; cards: string[] }[] | null;
   potWinners?: { pot_id: string; amount: number; winners: { player_id: string; hand_rank: string; share: number }[] }[] | null;
   chipsDistributed?: boolean;
   handVisuallyConcluded?: boolean;
 }
 
-// Animation timing constants
-const CHIP_ANIM_DURATION = 500;    // ms for chip-to-pot and pot-to-player animations
-const POT_FLASH_DURATION = 500;    // ms for pot flash effect
-const CARD_STAGGER = 500;          // ms between card reveals
-const SHOWDOWN_PAUSE = 1000;       // ms pause after reveal before next action
+// Note: animation timing constants are centralized in constants/animation.ts
 
 const TableContainer = styled.div`
   position: relative;
@@ -248,6 +247,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   currentStreetTotal = 0,
   betsToAnimate = [],
   updatePlayerSeatPosition = () => {},
+  registerChipPosition = () => {},
   flashMainPot = false,
   flashCurrentStreetPot = false,
   showdownActive = false,
@@ -256,12 +256,12 @@ const PokerTable: React.FC<PokerTableProps> = ({
   currentTurnPlayerId = null,
   showTurnHighlight = false,
   foldedPlayerId = null,
-  humanPlayerId
-  , streetDealt = null
-  , showdownHands = null
-  , potWinners = null
-  , chipsDistributed = false
-  , handVisuallyConcluded = false
+  humanPlayerId,
+  pendingStreetReveal = null,
+  showdownHands = null,
+  potWinners = null,
+  chipsDistributed = false,
+  handVisuallyConcluded = false
 }) => {
   // Refs for table container and pot display (for animation coordinate calculations)
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -269,13 +269,12 @@ const PokerTable: React.FC<PokerTableProps> = ({
   const [animationTargetPosition, setAnimationTargetPosition] = useState<{ x: string; y: string }>({ x: '50%', y: '50%' });
   // Compute animation target (center of pot display) relative to table
   /**
-   * Handle street_dealt: frontend reveals new community cards
+   * Handle pendingStreetReveal: stage reveal of new community street cards
    */
   useEffect(() => {
-    if (!streetDealt) return;
-    // Stage reveal of new community cards for this street
-    setPendingRevealCount(prev => prev + streetDealt.cards.length);
-  }, [streetDealt]);
+    if (!pendingStreetReveal) return;
+    setPendingRevealCount(prev => prev + pendingStreetReveal.cards.length);
+  }, [pendingStreetReveal]);
   
   /**
    * Handle showdown_hands_revealed: reveal player hole cards
@@ -315,7 +314,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
     if (pot !== displayedPot) {
       setDisplayedPot(pot);
       setFlashPot(true);
-      setTimeout(() => setFlashPot(false), POT_FLASH_DURATION);
+      setTimeout(() => setFlashPot(false), POT_FLASH_DURATION_MS);
     }
   }, [pot]);
   // Ensure players array is valid and handle potential undefined/null values
@@ -382,16 +381,16 @@ const PokerTable: React.FC<PokerTableProps> = ({
         setDisplayCount(d => d + 3);
         flopAudioRef.current?.play().catch(() => {});
         if (count > 3) {
-          // Turn: reveal 4th card after CARD_STAGGER
+        // Turn: reveal 4th card after stagger delay
           setTimeout(() => {
             setDisplayCount(d => d + 1);
             cardAudioRef.current?.play().catch(() => {});
-          }, CARD_STAGGER);
-          // River: reveal 5th card after 2 * CARD_STAGGER
+          }, CARD_STAGGER_DELAY_MS);
+          // River: reveal 5th card after 2× stagger delay
           setTimeout(() => {
             setDisplayCount(d => d + 1);
             cardAudioRef.current?.play().catch(() => {});
-          }, CARD_STAGGER * 2);
+          }, CARD_STAGGER_DELAY_MS * 2);
         }
       } else if (count === 2) {
         // Turn+River: reveal turn, then river
@@ -400,7 +399,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
       setTimeout(() => {
           setDisplayCount(d => d + 1);
           cardAudioRef.current?.play().catch(() => {});
-        }, CARD_STAGGER);
+        }, CARD_STAGGER_DELAY_MS);
       } else if (count === 1) {
         // Single card (turn or river)
         setDisplayCount(d => d + 1);
@@ -439,8 +438,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
         setPotToPlayerAnimations([]);
         setHighlightWinnerActive(true);
         // Then clear highlight after pulse duration
-        setTimeout(() => setHighlightWinnerActive(false), POT_FLASH_DURATION);
-      }, CHIP_ANIM_DURATION);
+        setTimeout(() => setHighlightWinnerActive(false), POT_FLASH_DURATION_MS);
+      }, CHIP_ANIMATION_DURATION_MS);
     }
   }, [potWinners]);
   

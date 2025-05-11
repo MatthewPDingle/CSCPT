@@ -317,7 +317,7 @@ const GamePage: React.FC = () => {
     flashCurrentStreetPot,
     updatePlayerSeatPosition,
     // Community card reveal events
-    streetDealt,
+    pendingStreetReveal,
     // Showdown hole cards
     showdownHands,
     // Pot winners and chip distribution
@@ -900,7 +900,7 @@ const connectionIndicator = (
         betsToAnimate={betsToAnimate}
         updatePlayerSeatPosition={updatePlayerSeatPosition}
         flashCurrentStreetPot={flashCurrentStreetPot}
-        streetDealt={streetDealt}
+        pendingStreetReveal={pendingStreetReveal}
         showdownHands={showdownHands}
         potWinners={potWinners}
         chipsDistributed={chipsDistributed}

@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { CARD_STAGGER_DELAY_MS, POST_STREET_PAUSE_MS, POT_FLASH_DURATION_MS, CHIP_ANIMATION_DURATION_MS } from '../constants/animation';
 import { useWebSocket } from './useWebSocket';
 
 // Define message types based on API spec
@@ -102,9 +103,6 @@ interface WebSocketMessage {
  * React hook for managing game WebSocket communication
  */
 export const useGameWebSocket = (wsUrl: string) => {
-  // Animation timing constants (ms)
-  const CHIP_ANIM_DURATION = 500;
-  const POT_FLASH_DURATION = 500;
   // Store player ID for checking turns
   const [playerId, setPlayerId] = useState<string | undefined>();
   
@@ -294,7 +292,8 @@ export const useGameWebSocket = (wsUrl: string) => {
   
   // End-of-hand sequence state
   const [roundBetsFinalized, setRoundBetsFinalized] = useState<{ player_bets: { player_id: string; amount: number; }[]; pot: number; } | null>(null);
-  const [streetDealt, setStreetDealt] = useState<{ street: string; cards: any[]; } | null>(null);
+  // Pending street reveal animation data (street: FLOP/TURN/RIVER, cards to reveal)
+  const [pendingStreetReveal, setPendingStreetReveal] = useState<{ street: string; cards: any[] } | null>(null);
   const [showdownHands, setShowdownHands] = useState<{ player_id: string; cards: string[]; }[] | null>(null);
   const [potWinners, setPotWinners] = useState<any[] | null>(null);
   const [chipsDistributed, setChipsDistributed] = useState<boolean>(false);
@@ -311,14 +310,14 @@ export const useGameWebSocket = (wsUrl: string) => {
       // update pot and flash
       setAccumulatedPot(pot);
       setFlashMainPot(true);
-      setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION);
+      setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION_MS);
       // also clear currentStreetPot in gameState players
       setGameState(prev => {
         if (!prev) return prev;
         const clearedPlayers = prev.players.map(p => ({ ...p, current_bet: 0 }));
         return { ...prev, players: clearedPlayers };
       });
-    }, CHIP_ANIM_DURATION);
+    }, CHIP_ANIMATION_DURATION_MS);
     return () => clearTimeout(timer);
   }, [roundBetsFinalized]);
   
@@ -333,7 +332,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     });
     // Reset end-of-hand states for next hand
     setRoundBetsFinalized(null);
-    setStreetDealt(null);
+    setPendingStreetReveal(null);
     setShowdownHands(null);
     setPotWinners(null);
     setChipsDistributed(false);
@@ -382,18 +381,30 @@ export const useGameWebSocket = (wsUrl: string) => {
         setTimeout(() => {
           setFlashMainPot(false);
           setCurrentAnim(null);
-        }, POT_FLASH_DURATION);
-      }, CHIP_ANIM_DURATION);
+        }, POT_FLASH_DURATION_MS);
+      }, CHIP_ANIMATION_DURATION_MS);
     } else if (type === 'street_dealt') {
-      // Reveal next street after pot animation
-      setStreetDealt({ street: data.street, cards: data.cards });
-      setTimeout(() => {
-        setGameState(prev => prev ? { ...prev, community_cards: [...prev.community_cards, ...data.cards.map((c: string) => ({ rank: c[0], suit: c[1] }))] } : prev);
-        // play sound
-        if (data.street === 'FLOP') flopSoundRef.current?.play().catch(() => {});
-        else cardSoundRef.current?.play().catch(() => {});
+      // Animate revelation of a new community street
+      console.log(`[ANIM_QUEUE] Processing street_dealt: ${data.street} with cards:`, data.cards);
+      setPendingStreetReveal({ street: data.street, cards: data.cards });
+      // Play appropriate sound
+      if (data.street === 'FLOP') {
+        flopSoundRef.current!.currentTime = 0;
+        flopSoundRef.current!.play().catch(e => console.error('Flop sound error', e));
+      } else {
+        cardSoundRef.current!.currentTime = 0;
+        cardSoundRef.current!.play().catch(e => console.error('Card sound error', e));
+      }
+      // Calculate total animation duration: card reveal + post-street pause
+      const cardRevealDuration = data.cards.length * CARD_STAGGER_DELAY_MS;
+      const totalDuration = cardRevealDuration + POST_STREET_PAUSE_MS;
+      console.log(`[ANIM_QUEUE] Street ${data.street}, reveal duration: ${cardRevealDuration}ms, pause: ${POST_STREET_PAUSE_MS}ms, total: ${totalDuration}ms`);
+      const timer = setTimeout(() => {
+        console.log(`[ANIM_QUEUE] Animation & pause for street ${data.street} completed.`);
+        setPendingStreetReveal(null);
         setCurrentAnim(null);
-      }, POT_FLASH_DURATION);
+      }, totalDuration);
+      return () => clearTimeout(timer);
     } else if (type === 'pot_winners_determined') {
       // Trigger pot-to-player animations via PokerTable prop
       console.log('Triggering pot winners in UI');
@@ -742,7 +753,7 @@ export const useGameWebSocket = (wsUrl: string) => {
             const commitAmount = message.data.amount;
             if (commitActs.includes(actionUpper) && typeof commitAmount === 'number' && commitAmount > 0) {
               setFlashCurrentStreetPot(true);
-              setTimeout(() => setFlashCurrentStreetPot(false), POT_FLASH_DURATION);
+              setTimeout(() => setFlashCurrentStreetPot(false), POT_FLASH_DURATION_MS);
             }
 
             // Check if this action belongs to the player who currently has the turn
@@ -1498,7 +1509,7 @@ export const useGameWebSocket = (wsUrl: string) => {
     processingAITurn,
     foldedPlayerId,
     roundBetsFinalized,
-    streetDealt,
+    pendingStreetReveal,
     showdownHands,
     potWinners,
     chipsDistributed,
