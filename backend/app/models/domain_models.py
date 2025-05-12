@@ -338,3 +338,8 @@ class Game(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    
+    def __await__(self):  # make Game awaitable for API async compatibility
+        async def _await_game():
+            return self
+        return _await_game().__await__()

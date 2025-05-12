@@ -60,6 +60,10 @@ interface PokerTableProps {
   potWinners?: { pot_id: string; amount: number; winners: { player_id: string; hand_rank: string; share: number }[] }[] | null;
   chipsDistributed?: boolean;
   handVisuallyConcluded?: boolean;
+  /** Current animation step from orchestrator */
+  currentStep?: { type: string; data: any } | null;
+  /** Callback when a visual animation step is fully complete */
+  onAnimationDone?: (stepType: string) => void;
 }
 
 // Note: animation timing constants are centralized in constants/animation.ts
@@ -261,7 +265,9 @@ const PokerTable: React.FC<PokerTableProps> = ({
   showdownHands = null,
   potWinners = null,
   chipsDistributed = false,
-  handVisuallyConcluded = false
+  handVisuallyConcluded = false,
+  currentStep = null,
+  onAnimationDone
 }) => {
   // Refs for table container and pot display (for animation coordinate calculations)
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -277,12 +283,14 @@ const PokerTable: React.FC<PokerTableProps> = ({
   }, [pendingStreetReveal]);
   
   /**
-   * Handle showdown_hands_revealed: reveal player hole cards
+   * Handle showdown_hands_revealed: reveal player hole cards and pause
    */
   useEffect(() => {
     if (!showdownHands) return;
-    // No additional action here; hole cards are provided via handResultPlayers prop
-  }, [showdownHands]);
+    // Pause to allow players to see revealed hole cards
+    const timer = setTimeout(() => onAnimationDone?.('showdown_hands_revealed'), POST_STREET_PAUSE_MS);
+    return () => clearTimeout(timer);
+  }, [showdownHands, onAnimationDone]);
   
   /**
    * Handle pot_winners_determined: animate pots to winners
@@ -377,36 +385,26 @@ const PokerTable: React.FC<PokerTableProps> = ({
       setPendingRevealCount(0);
       // Handle staged reveal of community cards
       if (count >= 3) {
-        // Flop: reveal 3 cards immediately
         setDisplayCount(d => d + 3);
         flopAudioRef.current?.play().catch(() => {});
         if (count > 3) {
-        // Turn: reveal 4th card after stagger delay
-          setTimeout(() => {
-            setDisplayCount(d => d + 1);
-            cardAudioRef.current?.play().catch(() => {});
-          }, CARD_STAGGER_DELAY_MS);
-          // River: reveal 5th card after 2× stagger delay
-          setTimeout(() => {
-            setDisplayCount(d => d + 1);
-            cardAudioRef.current?.play().catch(() => {});
-          }, CARD_STAGGER_DELAY_MS * 2);
+          setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
+          setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS * 2);
         }
       } else if (count === 2) {
-        // Turn+River: reveal turn, then river
         setDisplayCount(d => d + 1);
         cardAudioRef.current?.play().catch(() => {});
-      setTimeout(() => {
-          setDisplayCount(d => d + 1);
-          cardAudioRef.current?.play().catch(() => {});
-        }, CARD_STAGGER_DELAY_MS);
+        setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
       } else if (count === 1) {
-        // Single card (turn or river)
         setDisplayCount(d => d + 1);
         cardAudioRef.current?.play().catch(() => {});
       }
+      // Notify orchestrator when street reveal animation completes
+      const totalRevealTime = count * CARD_STAGGER_DELAY_MS + POST_STREET_PAUSE_MS;
+      const doneTimer = setTimeout(() => onAnimationDone?.('street_dealt'), totalRevealTime);
+      return () => clearTimeout(doneTimer);
     }
-  }, [betsToAnimate, pendingRevealCount]);
+  }, [betsToAnimate, pendingRevealCount, onAnimationDone]);
 
   // Pot-to-winner animations
   const [potMoveDelta, setPotMoveDelta] = useState<{ dx: number; dy: number } | null>(null);
@@ -420,8 +418,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
 
   useEffect(() => {
     if (!potWinners) return;
-    console.log('PokerTable: Pot winners, triggering chip transfer animations', potWinners);
-    // Prepare animations for each winner of main pot only (or multiple pots)
+    console.log('PokerTable: Pot winners determined, triggering chip transfer animations', potWinners);
     const anims: Array<{ playerId: string; amount: number }> = [];
     potWinners.forEach(pot => {
       const share = pot.winners.length > 0 ? pot.amount / pot.winners.length : 0;
@@ -432,16 +429,43 @@ const PokerTable: React.FC<PokerTableProps> = ({
     if (anims.length > 0) {
       setPotToPlayerAnimations(anims);
       setPotMoveActive(true);
-      // After animation (.5s), clear animations and highlight winners
-      setTimeout(() => {
+      // After chip-transfer animation (0.5s), highlight winners and notify orchestrator
+      const transferTime = CHIP_ANIMATION_DURATION_MS;
+      const transferTimer = setTimeout(() => {
         setPotMoveActive(false);
         setPotToPlayerAnimations([]);
         setHighlightWinnerActive(true);
-        // Then clear highlight after pulse duration
+        // Pulse duration
         setTimeout(() => setHighlightWinnerActive(false), POT_FLASH_DURATION_MS);
-      }, CHIP_ANIMATION_DURATION_MS);
+        // Notify orchestrator
+        onAnimationDone?.('pot_winners_determined');
+      }, transferTime);
+      return () => clearTimeout(transferTimer);
     }
   }, [potWinners]);
+  
+  /**
+   * Handle chips_distributed: update chip stacks visually then continue
+   */
+  useEffect(() => {
+    if (chipsDistributed) {
+      onAnimationDone?.('chips_distributed');
+    }
+  }, [chipsDistributed, onAnimationDone]);
+  
+  /**
+   * Handle hand_visually_concluded: show final winner pulse and pause
+   */
+  useEffect(() => {
+    if (handVisuallyConcluded) {
+      setHighlightWinnerActive(true);
+      const timer = setTimeout(() => {
+        setHighlightWinnerActive(false);
+        onAnimationDone?.('hand_visually_concluded');
+      }, POT_FLASH_DURATION_MS + POST_STREET_PAUSE_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [handVisuallyConcluded, onAnimationDone]);
   
   // Ensure pot is a valid number
   const validPot = typeof pot === 'number' && !isNaN(pot) ? pot : 0;

@@ -1159,7 +1159,7 @@ class GameService:
                             logging.error(f"Error pulsing winner seat: {e}")
 
                         # 6) Pause before starting next hand
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(2.5)
 
                         # 7) Start a fresh hand and notify clients of the new state
                         logging.info("Starting new hand…")

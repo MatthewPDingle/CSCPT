@@ -329,7 +329,10 @@ const GamePage: React.FC = () => {
     currentTurnPlayerId,
     showTurnHighlight,
     processingAITurn,
-    foldedPlayerId
+    foldedPlayerId,
+    // Animation orchestrator
+    currentStep,
+    onAnimationDone
   } = useGameWebSocket(wsUrl);
   
   // Store game state in local state when received
@@ -908,10 +911,14 @@ const connectionIndicator = (
         handResultPlayers={handResult?.players}
         // IDs of winning players for pulsing their cards
         handWinners={handResult?.winners.map(w => w.player_id) ?? []}
-        showdownActive={isShowdown}
+        // Showdown active when hole cards have been revealed
+        showdownActive={!!showdownHands}
         currentTurnPlayerId={currentTurnPlayerId}
         showTurnHighlight={showTurnHighlight}
         foldedPlayerId={foldedPlayerId}
+        // Animation orchestrator props
+        currentStep={currentStep}
+        onAnimationDone={onAnimationDone}
       />
       
       {/* Debug logging handled before the return statement */}

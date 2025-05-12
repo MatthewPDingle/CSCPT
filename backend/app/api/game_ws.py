@@ -18,8 +18,24 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # Dependency to get the game service
 def get_game_service() -> GameService:
-    """Get the game service singleton."""
-    return GameService.get_instance()
+    """Get the game service singleton (wrapped for sync/async consistency)."""
+    svc = GameService.get_instance()
+    # Proxy to ensure async methods are awaitable even on sync implementations or mocks
+    class GameServiceProxy:
+        def __init__(self, service):
+            self._svc = service
+        def __getattr__(self, name):
+            return getattr(self._svc, name)
+        async def _await_if_needed(self, result):
+            import asyncio
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+        async def start_game(self, game_id: str):
+            return await self._await_if_needed(self._svc.start_game(game_id))
+        async def process_action(self, game_id: str, player_id: str, action, amount=None):
+            return await self._await_if_needed(self._svc.process_action(game_id, player_id, action, amount))
+    return GameServiceProxy(svc)
 
 
 @router.websocket("/game/{game_id}")
@@ -84,25 +100,8 @@ async def websocket_endpoint(
     game = service.get_game(game_id)
     if not game:
         logging.error(f"WebSocket connection failed - Game {game_id} not found")
-        # Send a specific error that the frontend can detect before closing
-        try:
-            await websocket.accept()
-            await connection_manager.send_personal_message(
-                websocket,
-                {
-                    "type": "error",
-                    "data": {
-                        "code": "game_not_found",
-                        "message": f"Game {game_id} not found. It may have expired or been deleted."
-                    }
-                }
-            )
-        except Exception as e:
-            logging.error(f"Error sending game not found message: {str(e)}")
-        
-        # Close with a standard reason code
-        await websocket.close(code=1008, reason="Game not found")
-        return
+        # Immediately disconnect
+        raise WebSocketDisconnect(code=1001)
 
     # Get the poker game
     poker_game = service.poker_games.get(game_id)
@@ -352,6 +351,34 @@ async def websocket_endpoint(
                                 await game_notifier.notify_game_update(game_id, poker_game)
                     except Exception as e:
                         logging.error(f"Error sending pong: {str(e)}")
+                elif message.get("type") == "animation_done":
+                    # Client signals a visual animation step is complete
+                    step = message.get("data", {}).get("stepType")
+                    if step == "hand_visually_concluded":
+                        # Advance dealer button and start next hand
+                        poker_game = service.poker_games.get(game_id)
+                        poker_game.move_button()
+                        logging.info(f"Animation handshake: moved button to {poker_game.button_position}")
+                        game_model = service.get_game(game_id)
+                        if game_model:
+                            new_hand = service._start_new_hand(game_model)
+                            await game_notifier.notify_new_hand(game_id, new_hand.hand_number)
+                            updated = service.poker_games.get(game_id)
+                            if updated:
+                                await game_notifier.notify_game_update(game_id, updated)
+                                # Trigger next turn (AI or human)
+                                idx = updated.current_player_idx
+                                if 0 <= idx < len(updated.players):
+                                    next_p = updated.players[idx]
+                                    domain = next((p for p in game_model.players if p.id == next_p.player_id), None)
+                                    if domain and not domain.is_human:
+                                        # AI turn
+                                        asyncio.create_task(
+                                            service._request_and_process_ai_action(game_id, next_p.player_id)
+                                        )
+                                    else:
+                                        # Human turn
+                                        await game_notifier.notify_action_request(game_id, updated)
             except json.JSONDecodeError as e:
                 logging.error(f"JSON decode error: {str(e)}")
                 await connection_manager.send_personal_message(
@@ -643,25 +670,10 @@ async def process_action_message(
 
     # If hand is complete, notify about results and start next hand
     if poker_game.current_round == BettingRound.SHOWDOWN:
-        try:
-            # Broadcast hand results
-            await game_notifier.notify_hand_result(game_id, poker_game)
-            # Start next hand via GameService
-            from app.services.game_service import GameService
-            import logging
-            svc = service  # alias
-            game_model = svc.get_game(game_id)
-            if game_model:
-                new_hand = svc._start_new_hand(game_model)
-                # Notify clients of new hand start
-                await game_notifier.notify_new_hand(game_id, new_hand.hand_number)
-                # Refresh game state to clients
-                updated_poker = svc.poker_games.get(game_id)
-                if updated_poker:
-                    await game_notifier.notify_game_update(game_id, updated_poker)
-        except Exception as e:
-            import logging
-            logging.error(f"Error auto-starting next hand: {e}")
+        # Broadcast final hand results (winner action_log messages)
+        await game_notifier.notify_hand_result(game_id, poker_game)
+        # Next hand will be started when client signals animation_done('hand_visually_concluded')
+        return
     else:
         # Check if the next player is a human player and send action request
         if 0 <= poker_game.current_player_idx < len(poker_game.players):

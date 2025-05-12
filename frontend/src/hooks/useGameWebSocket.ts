@@ -348,73 +348,73 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
   
-  // Animation queue for end-of-round / end-of-hand events
-  const [animQueue, setAnimQueue] = useState<WebSocketMessage[]>([]);
-  const [currentAnim, setCurrentAnim] = useState<WebSocketMessage | null>(null);
-  // Enqueue an animation event
-  const enqueueAnim = useCallback((msg: WebSocketMessage) => {
-    setAnimQueue(q => [...q, msg]);
+  // Animation step queue & finite‐state sequencing
+  const [stepQueue, setStepQueue] = useState<WebSocketMessage[]>([]);
+  const [currentStep, setCurrentStep] = useState<WebSocketMessage | null>(null);
+
+  // Enqueue an animation step
+  const enqueueStep = useCallback((msg: WebSocketMessage) => {
+    setStepQueue(q => [...q, msg]);
   }, []);
-  // Process next animation when idle
+
+  // Process next step whenever idle
+  const processNextStep = useCallback(() => {
+    setStepQueue(queue => {
+      if (queue.length === 0) return [];
+      const [next, ...rest] = queue;
+      setCurrentStep(next);
+      return rest;
+    });
+  }, []);
+
+  // Kick off the next animation when there is no current step
   useEffect(() => {
-    if (!currentAnim && animQueue.length > 0) {
-      setCurrentAnim(animQueue[0]);
-      setAnimQueue(q => q.slice(1));
+    if (!currentStep && stepQueue.length > 0) {
+      processNextStep();
     }
-  }, [animQueue, currentAnim]);
-  // Effect to run the current animation
+  }, [stepQueue, currentStep, processNextStep]);
+
+  // When a new step begins, clear previous animation states and set up this step
   useEffect(() => {
-    if (!currentAnim) return;
-    const { type, data } = currentAnim;
-    if (type === 'round_bets_finalized') {
-      // Animate bets to pot then pot pulse
-      const anims = data.player_bets.map((b: any) => ({
-        playerId: b.player_id,
-        amount: b.amount,
-        fromPosition: playerSeatPositionsRef.current.get(b.player_id)
-      }));
-      setBetsToAnimate(anims);
-      setTimeout(() => {
-        setBetsToAnimate([]);
-        setAccumulatedPot(acc => acc + data.player_bets.reduce((s: number, b: any) => s + b.amount, 0));
-        setFlashMainPot(true);
-        setTimeout(() => {
-          setFlashMainPot(false);
-          setCurrentAnim(null);
-        }, POT_FLASH_DURATION_MS);
-      }, CHIP_ANIMATION_DURATION_MS);
-    } else if (type === 'street_dealt') {
-      // Animate revelation of a new community street
-      console.log(`[ANIM_QUEUE] Processing street_dealt: ${data.street} with cards:`, data.cards);
-      setPendingStreetReveal({ street: data.street, cards: data.cards });
-      // Play appropriate sound
-      if (data.street === 'FLOP') {
-        flopSoundRef.current!.currentTime = 0;
-        flopSoundRef.current!.play().catch(e => console.error('Flop sound error', e));
-      } else {
-        cardSoundRef.current!.currentTime = 0;
-        cardSoundRef.current!.play().catch(e => console.error('Card sound error', e));
-      }
-      // Calculate total animation duration: card reveal + post-street pause
-      const cardRevealDuration = data.cards.length * CARD_STAGGER_DELAY_MS;
-      const totalDuration = cardRevealDuration + POST_STREET_PAUSE_MS;
-      console.log(`[ANIM_QUEUE] Street ${data.street}, reveal duration: ${cardRevealDuration}ms, pause: ${POST_STREET_PAUSE_MS}ms, total: ${totalDuration}ms`);
-      const timer = setTimeout(() => {
-        console.log(`[ANIM_QUEUE] Animation & pause for street ${data.street} completed.`);
-        setPendingStreetReveal(null);
-        setCurrentAnim(null);
-      }, totalDuration);
-      return () => clearTimeout(timer);
-    } else if (type === 'pot_winners_determined') {
-      // Trigger pot-to-player animations via PokerTable prop
-      console.log('Triggering pot winners in UI');
-      setPotWinners(data.pots);
-      setCurrentAnim(null);
-    } else {
-      // pass through other messages immediately
-      setCurrentAnim(null);
+    // Reset all animation flags
+    setBetsToAnimate([]);
+    setAccumulatedPot(0);
+    setFlashMainPot(false);
+    setPendingStreetReveal(null);
+    setShowdownHands(null);
+    setPotWinners(null);
+    setChipsDistributed(false);
+    setHandVisuallyConcluded(false);
+
+    if (!currentStep) return;
+    const { type, data } = currentStep;
+    switch (type) {
+      case 'round_bets_finalized':
+        setRoundBetsFinalized(data);
+        break;
+      case 'street_dealt':
+        setPendingStreetReveal({ street: data.street, cards: data.cards });
+        break;
+      case 'showdown_hands_revealed':
+        setShowdownHands(data.player_hands);
+        break;
+      case 'pot_winners_determined':
+        setAccumulatedPot(0);
+        setPotWinners(data.pots);
+        break;
+      case 'chips_distributed':
+        setChipsDistributed(true);
+        setGameState(data);
+        break;
+      case 'hand_visually_concluded':
+        setHandVisuallyConcluded(true);
+        break;
+      default:
+        // No animation for other message types
+        setCurrentStep(null);
+        break;
     }
-  }, [currentAnim]);
+  }, [currentStep]);
   
   // Remove inline chips-to-pot and street reveal in handleMessage in favor of anim queue
   // accumulatedPot: chips collected from completed betting rounds
@@ -502,39 +502,13 @@ export const useGameWebSocket = (wsUrl: string) => {
       try {
         switch (message.type) {
           case 'round_bets_finalized':
-            console.log('Round bets finalized, enqueuing animation');
-            enqueueAnim(message);
-            break;
           case 'street_dealt':
-            console.log('Street dealt, enqueuing animation');
-            enqueueAnim(message);
-            break;
           case 'showdown_hands_revealed':
-            console.log('Showdown hands revealed:', message.data.player_hands);
-            setShowdownHands(message.data.player_hands);
-            // Reveal hole cards in gameState players
-            setGameState(prev => {
-              if (!prev) return prev;
-              const hands = message.data.player_hands;
-              const newPlayers = prev.players.map(p => {
-                const h = hands.find((ph: any) => ph.player_id === p.player_id);
-                return h ? { ...p, cards: h.cards } : p;
-              });
-              return { ...prev, players: newPlayers };
-            });
-            break;
           case 'pot_winners_determined':
-            console.log('Pot winners determined, enqueuing animation');
-            enqueueAnim(message);
-            break;
           case 'chips_distributed':
-            console.log('Chips distributed to winners, new game state:', message.data);
-            setChipsDistributed(true);
-            setGameState(message.data);
-            break;
           case 'hand_visually_concluded':
-            console.log('Hand visually concluded');
-            setHandVisuallyConcluded(true);
+            console.log(`Enqueuing animation step: ${message.type}`);
+            enqueueStep(message);
             break;
           case 'game_state':
             console.log('Game state received with player count:', 
@@ -1480,6 +1454,18 @@ export const useGameWebSocket = (wsUrl: string) => {
     }
     return metrics;
   }, [status, getConnectionMetrics]);
+  
+  /**
+   * Callback invoked by UI when an animation step completes
+   */
+  const onAnimationDone = useCallback((stepType: string) => {
+    if (currentStep?.type === stepType) {
+      // Advance to next step in our orchestrator
+      setCurrentStep(null);
+      // Notify server that the animation step is complete
+      sendMessage({ type: 'animation_done', data: { stepType } });
+    }
+  }, [currentStep, sendMessage]);
 
   return {
     status,
@@ -1508,6 +1494,8 @@ export const useGameWebSocket = (wsUrl: string) => {
     showTurnHighlight,
     processingAITurn,
     foldedPlayerId,
+    currentStep,
+    onAnimationDone,
     roundBetsFinalized,
     pendingStreetReveal,
     showdownHands,

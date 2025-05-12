@@ -32,8 +32,27 @@ router = APIRouter(prefix="/game", tags=["game"])
 
 # Dependency to get the game service
 def get_game_service() -> GameService:
-    """Get the game service singleton."""
-    return GameService.get_instance()
+    """Get the game service singleton (wrapped for sync/async consistency)."""
+    svc = GameService.get_instance()
+    # Proxy routes start_game and process_action to always return an awaitable in async contexts
+    class GameServiceProxy:
+        def __init__(self, service):
+            self._svc = service
+        def __getattr__(self, name):
+            return getattr(self._svc, name)
+        async def start_game(self, game_id: str):
+            import asyncio
+            res = self._svc.start_game(game_id)
+            if asyncio.iscoroutine(res):
+                return await res
+            return res
+        async def process_action(self, game_id: str, player_id: str, action, amount=None):
+            import asyncio
+            res = self._svc.process_action(game_id, player_id, action, amount)
+            if asyncio.iscoroutine(res):
+                return await res
+            return res
+    return GameServiceProxy(svc)
 
 
 @router.post("/create", response_model=GameStateModel)

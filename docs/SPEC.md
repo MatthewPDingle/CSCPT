@@ -75,25 +75,38 @@ This specification outlines the development of an interactive poker training app
 - **Constructive Criticism:**
   - Detailed feedback on suboptimal moves, reasoning, and alternative strategies.
 
-#### End-of-Hand Animation Sequence
+### End-of-Betting-Round Sequence
 
-At the end of each hand, the frontend follows this canonical sequence to ensure smooth, consistent animations and state updates:
+When a betting round completes (and the hand continues), the frontend must follow these non-overlapping steps:
+1. The last player action is received and applied.
+2. The Bets text box resets to 0.
+3. All player bet indicators from that round animate into the Pot text box (0.5s).
+4. The Pot text box updates to the new total and pulses yellow (0.5s).
+5. If additional streets remain (Flop, Turn, River), reveal the next street:
+   a. Flop: reveal three cards at once with sound, then pause 1s.
+   b. Turn: reveal one card with sound, then pause 1s.
+   c. River: reveal one card with sound, then pause 1s.
+6. After the pause, gameplay resumes with the next betting round.
 
-1. The final player action is received and applied.
-2. The current street's Bets box is reset to 0.
-3. All individual player bet indicators from that street animate into the main Pot box (duration: 0.5s).
-4. The main Pot box updates its total amount and pulses yellow (duration: 0.5s).
-5. If there are undealt community cards (flop/turn/river), each street is revealed in turn:
-   a. Flop: reveal 3 cards together, play the flop sound, then pause 1s.
-   b. Turn: reveal 1 card, play the card-deal sound, then pause 1s.
-   c. River: reveal 1 card, play the card-deal sound, then pause 1s.
-6. Once all community cards are shown, the main Pot box resets to 0.
-7. A new Pot representation animates from the table pot to the winning player’s seat (duration: 0.5s).
-8. The winning player's chip count updates to include their winnings.
-9. The winning player's seat pulses with a yellow border (duration: 0.5s).
-10. The UI pauses for 1s to allow the player to absorb the result.
-11. The action log displays the winner announcement.
-12. The table is cleaned and the next hand is set up and dealt.
+### Showdown Sequence (All-In Runout)
+
+When the hand proceeds to showdown, the frontend must follow these non-overlapping steps:
+1. The last player action is received and applied.
+2. The Bets text box resets to 0.
+3. Player bets animate into the Pot text box (0.5s).
+4. The Pot text box updates to the new total and pulses yellow (0.5s).
+5. All players reveal their hole cards face-up (pause 1s).
+6. If undealt community cards remain, reveal each street with sound and a 1s pause:
+   a. Flop: three cards reveal, sound, pause 1s.
+   b. Turn: one card reveal, sound, pause 1s.
+   c. River: one card reveal, sound, pause 1s.
+7. Repeat steps 5–6 until all streets are shown.
+8. Reset the Pot text box to 0.
+9. Animate the Pot icon moving to the winning player(s) (0.5s).
+10. Update the winning player(s)’ chip count.
+11. Pulse the winning player(s)’ seat with a yellow border (0.5s).
+12. Pause 1s to allow players to absorb the result.
+13. Proceed to set up and deal the next hand.
 
 ### Technical Architecture
 
