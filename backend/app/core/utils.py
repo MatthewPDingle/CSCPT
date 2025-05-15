@@ -146,6 +146,22 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
 
         # Calculate total pot amount
         total_pot = sum(pot.amount for pot in pots)
+        # Debug logging: pot details and total
+        try:
+            logging.info(f"[game_to_model DEBUG] game_id={game_id}, current_round={current_round_name}")
+            # Log each PotModel
+            for idx, pmodel in enumerate(pots):
+                logging.info(f"[game_to_model DEBUG] PotModel[{idx}]: name={pmodel.name}, amount={pmodel.amount}")
+            # Also log raw PokerGame.pots if available
+            try:
+                raw_sum = sum(p.amount for p in game.pots)
+                logging.info(f"[game_to_model DEBUG] Sum of raw PokerGame.pots: {raw_sum}")
+            except Exception:
+                pass
+            logging.info(f"[game_to_model DEBUG] Returning GameStateModel.total_pot={total_pot}")
+        except Exception:
+            # Ignore logging errors
+            pass
 
         # Safely get game attributes with defaults
         current_round = getattr(game, 'current_round', None)

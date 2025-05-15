@@ -573,11 +573,13 @@ export const useGameWebSocket = (wsUrl: string) => {
                       }
                     });
                     setBetsToAnimate(anims);
-                    // After 0.5s animation, update main pot and clear animations
+                    // After chip animation, update main pot to authoritative total and clear animations
                     setTimeout(() => {
-                      setAccumulatedPot((acc) => acc + lastStreetSum);
+                      // Derive main pot display: total_pot minus current street bets
+                      const newTotal = message.data.total_pot;
+                      setAccumulatedPot(newTotal - newStreetSum);
                       setFlashMainPot(true);
-                      setTimeout(() => setFlashMainPot(false), 600);
+                      setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION_MS);
                       setBetsToAnimate([]);
                       // After chip animation, play sound for community cards reveal
                       try {
@@ -591,7 +593,7 @@ export const useGameWebSocket = (wsUrl: string) => {
                       } catch (e) {
                         console.error('Error playing deal sound after animation:', e);
                       }
-                    }, 500);
+                    }, CHIP_ANIMATION_DURATION_MS);
                   }
                 }
                 // No chip animations but cards dealt: play sound immediately
