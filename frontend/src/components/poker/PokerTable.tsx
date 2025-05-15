@@ -608,11 +608,11 @@ const PokerTable: React.FC<PokerTableProps> = ({
                 isSB: !!player.isSB,
                 isBB: !!player.isBB
               };
-              // If showdown, override cards from handResultPlayers for this player
-              if (showdownActive && handResultPlayers) {
-                const hr = handResultPlayers.find(h => h.player_id === playerId);
-                if (hr && Array.isArray(hr.cards)) {
-                  sanitizedPlayer.cards = hr.cards;
+              // If showdown, override cards with revealed hole cards from server
+              if (showdownActive && showdownHands) {
+                const sh = showdownHands.find(h => h.player_id === playerId);
+                if (sh && Array.isArray(sh.cards)) {
+                  sanitizedPlayer.cards = sh.cards;
                 }
               }
               

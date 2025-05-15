@@ -298,6 +298,8 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [potWinners, setPotWinners] = useState<any[] | null>(null);
   const [chipsDistributed, setChipsDistributed] = useState<boolean>(false);
   const [handVisuallyConcluded, setHandVisuallyConcluded] = useState<boolean>(false);
+  // Deferred game state for post-showdown chip distribution
+  const [pendingGameState, setPendingGameState] = useState<GameState | null>(null);
   
   // Orchestrate bet-to-pot animation when bets are finalized
   useEffect(() => {
@@ -347,6 +349,15 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [actionLog, setActionLog] = useState<string[]>([]);
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
+  
+  // Apply deferred game state update after chip distribution animation step
+  useEffect(() => {
+    if (chipsDistributed && pendingGameState) {
+      // Update the game state to reflect new chip counts
+      setGameState(pendingGameState);
+      setPendingGameState(null);
+    }
+  }, [chipsDistributed, pendingGameState]);
   
   // Animation step queue & finite‐state sequencing
   const [stepQueue, setStepQueue] = useState<WebSocketMessage[]>([]);
@@ -399,12 +410,14 @@ export const useGameWebSocket = (wsUrl: string) => {
         setShowdownHands(data.player_hands);
         break;
       case 'pot_winners_determined':
+        // Clear accumulated pot and show pot winners info for animation
         setAccumulatedPot(0);
         setPotWinners(data.pots);
         break;
       case 'chips_distributed':
+        // Trigger chip-distribution animation, but defer applying new game state until animation completes
         setChipsDistributed(true);
-        setGameState(data);
+        setPendingGameState(data);
         break;
       case 'hand_visually_concluded':
         setHandVisuallyConcluded(true);
@@ -539,6 +552,10 @@ export const useGameWebSocket = (wsUrl: string) => {
                 0
               );
               const prevState = previousGameStateRef.current;
+              // Reset current street pot to zero when round changes (e.g., entering showdown or next street)
+              if (prevState && prevState.current_round !== message.data.current_round) {
+                setCurrentStreetPot(0);
+              }
               // On round change, collect and animate last street's bets
               // Skip animating at end-of-hand transition from SHOWDOWN to PREFLOP
               if (
