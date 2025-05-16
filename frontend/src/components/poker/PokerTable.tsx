@@ -363,48 +363,42 @@ const PokerTable: React.FC<PokerTableProps> = ({
     }
   }, []);
   
-  // Detect changes in communityCards prop to stage reveal
+  // Stage reveal based only on orchestrator's pendingStreetReveal prop
+  // pendingStreetReveal effect will increment pendingRevealCount
+  // Reset prevCommCountRef for hand resets (optional)
   useEffect(() => {
-    const newCount = validCommunityCards.length;
-    const prevCount = prevCommCountRef.current;
-    if (newCount > prevCount) {
-      setPendingRevealCount(newCount - prevCount);
-      setDisplayCount(prevCount);
-    } else if (newCount === 0) {
-      // New hand reset
+    if (validCommunityCards.length === 0) {
       setDisplayCount(0);
       setPendingRevealCount(0);
     }
-    prevCommCountRef.current = newCount;
-  }, [validCommunityCards]);
+  }, [validCommunityCards.length]);
   
-  // Reveal staged cards after chip animations complete
+  // Reveal staged community cards upon orchestrator's pendingStreetReveal event
   useEffect(() => {
-    if (betsToAnimate && betsToAnimate.length === 0 && pendingRevealCount > 0) {
-      const count = pendingRevealCount;
-      setPendingRevealCount(0);
-      // Handle staged reveal of community cards
-      if (count >= 3) {
-        setDisplayCount(d => d + 3);
-        flopAudioRef.current?.play().catch(() => {});
-        if (count > 3) {
-          setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
-          setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS * 2);
-        }
-      } else if (count === 2) {
-        setDisplayCount(d => d + 1);
-        cardAudioRef.current?.play().catch(() => {});
+    if (pendingRevealCount <= 0) return;
+    const count = pendingRevealCount;
+    setPendingRevealCount(0);
+    // Handle batch reveal
+    if (count >= 3) {
+      setDisplayCount(d => d + 3);
+      flopAudioRef.current?.play().catch(() => {});
+      if (count > 3) {
         setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
-      } else if (count === 1) {
-        setDisplayCount(d => d + 1);
-        cardAudioRef.current?.play().catch(() => {});
+        setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS * 2);
       }
-      // Notify orchestrator when street reveal animation completes
-      const totalRevealTime = count * CARD_STAGGER_DELAY_MS + POST_STREET_PAUSE_MS;
-      const doneTimer = setTimeout(() => onAnimationDone?.('street_dealt'), totalRevealTime);
-      return () => clearTimeout(doneTimer);
+    } else if (count === 2) {
+      setDisplayCount(d => d + 1);
+      cardAudioRef.current?.play().catch(() => {});
+      setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
+    } else if (count === 1) {
+      setDisplayCount(d => d + 1);
+      cardAudioRef.current?.play().catch(() => {});
     }
-  }, [betsToAnimate, pendingRevealCount, onAnimationDone]);
+    // Notify orchestrator when street reveal animation completes
+    const totalRevealTime = count * CARD_STAGGER_DELAY_MS + POST_STREET_PAUSE_MS;
+    const doneTimer = window.setTimeout(() => onAnimationDone?.('street_dealt'), totalRevealTime);
+    return () => window.clearTimeout(doneTimer);
+  }, [pendingRevealCount, onAnimationDone]);
 
   // Pot-to-winner animations
   const [potMoveDelta, setPotMoveDelta] = useState<{ dx: number; dy: number } | null>(null);

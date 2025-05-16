@@ -305,31 +305,37 @@ export const useGameWebSocket = (wsUrl: string) => {
 // Animate end-of-betting-round: collect bets into pot, flash, then advance orchestrator
 useEffect(() => {
   if (!roundBetsFinalized) return;
-  const { pot } = roundBetsFinalized;
-  // After chip animation delay, clear bets and flash main pot
+  const { player_bets, pot } = roundBetsFinalized;
+  // Step 3: animate each player's bet into the pot
+  const anims = (player_bets || []).map(pb => ({
+    playerId: pb.player_id,
+    amount: pb.amount,
+    fromPosition: playerSeatPositionsRef.current.get(pb.player_id)
+  }));
+  setBetsToAnimate(anims);
+  // After chip animation, move to pot and flash
   const chipTimer = window.setTimeout(() => {
     setBetsToAnimate([]);
     setAccumulatedPot(pot);
     setFlashMainPot(true);
-    // After pot-flash, clear flash and notify server & orchestrator
+    // After pot flash, clear and signal completion
     const flashTimer = window.setTimeout(() => {
       setFlashMainPot(false);
-      // Clear current animation step and notify server
+      // clear currentStep to allow next animation
       setCurrentStep(null);
+      // notify server that animation is complete
       if (sendMessageRef.current) {
         sendMessageRef.current({ type: 'animation_done', data: { stepType: 'round_bets_finalized' } });
       }
     }, POT_FLASH_DURATION_MS);
-    // clear players' current bets for UI
+    // clear individual bets in UI
     setGameState(prev => {
       if (!prev) return prev;
-      const clearedPlayers = prev.players.map(p => ({ ...p, current_bet: 0 }));
-      return { ...prev, players: clearedPlayers };
+      const cleared = prev.players.map(p => ({ ...p, current_bet: 0 }));
+      return { ...prev, players: cleared };
     });
   }, CHIP_ANIMATION_DURATION_MS);
-  return () => {
-    window.clearTimeout(chipTimer);
-  };
+  return () => window.clearTimeout(chipTimer);
 }, [roundBetsFinalized]);
   
   // Append winner messages after the final pulse
@@ -553,101 +559,19 @@ useEffect(() => {
             // Removed immediate sound playback; sounds will play after chip animations
             const currentCommunityCardsCount = message.data?.community_cards?.length || 0;
             prevCommunityCardsRef.current = currentCommunityCardsCount;
-            // --- Pot and chip animation logic for end-of-round ---
+            // Live update of current street pot
             {
-              // Sum of bets in the new state (current street)
               const newStreetSum = message.data.players.reduce(
                 (sum: number, p: any) => sum + (p.current_bet || 0),
                 0
               );
-              const prevState = previousGameStateRef.current;
-              // Reset current street pot to zero when round changes (e.g., entering showdown or next street)
-              if (prevState && prevState.current_round !== message.data.current_round) {
-                setCurrentStreetPot(0);
-              }
-              // On round change, collect and animate last street's bets
-              // Skip animating at end-of-hand transition from SHOWDOWN to PREFLOP
-              if (
-                prevState &&
-                prevState.current_round !== message.data.current_round &&
-                !(prevState.current_round === 'SHOWDOWN' && message.data.current_round === 'PREFLOP')
-              ) {
-                const lastStreetSum = prevState.players.reduce(
-                  (sum, p: any) => sum + (p.current_bet || 0),
-                  0
-                );
-                if (lastStreetSum > 0) {
-                  const anims = prevState.players
-                    .filter((p: any) => p.current_bet && p.current_bet > 0)
-                    .map((p: any) => ({
-                      playerId: p.player_id,
-                      amount: p.current_bet,
-                      fromPosition: playerSeatPositionsRef.current.get(
-                        p.player_id
-                      ),
-                    }));
-                  if (anims.length) {
-                    // Reset street pot display before animating chips to pot
-                    setCurrentStreetPot(0);
-                    // Prevent Bets box flash during chip animation
-                    setFlashCurrentStreetPot(false);
-                    // Suppress individual bets in game state (optimistic update)
-                    const animingIds = new Set(anims.map(a => a.playerId));
-                    message.data.players.forEach((p: any) => {
-                      if (animingIds.has(p.player_id)) {
-                        p.current_bet = 0;
-                      }
-                    });
-                    setBetsToAnimate(anims);
-                    // After chip animation, update main pot to authoritative total and clear animations
-                    setTimeout(() => {
-                      // Derive main pot display: total_pot minus current street bets
-                      const newTotal = message.data.total_pot;
-                      setAccumulatedPot(newTotal - newStreetSum);
-                      setFlashMainPot(true);
-                      setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION_MS);
-                      setBetsToAnimate([]);
-                      // After chip animation, play sound for community cards reveal
-                      try {
-                        const prevCount = prevState.community_cards?.length || 0;
-                        const currCount = message.data.community_cards.length;
-                        if (prevCount === 0 && currCount === 3) {
-                          flopSoundRef.current?.play().catch(() => {});
-                        } else if ((prevCount === 3 && currCount === 4) || (prevCount === 4 && currCount === 5)) {
-                          cardSoundRef.current?.play().catch(() => {});
-                        }
-                      } catch (e) {
-                        console.error('Error playing deal sound after animation:', e);
-                      }
-                    }, CHIP_ANIMATION_DURATION_MS);
-                  }
-                }
-                // No chip animations but cards dealt: play sound immediately
-                else if (prevState.community_cards.length < message.data.community_cards.length) {
-                  try {
-                    const prevCount = prevState.community_cards.length;
-                    const currCount = message.data.community_cards.length;
-                    if (prevCount === 0 && currCount === 3) {
-                      flopSoundRef.current?.play().catch(() => {});
-                    } else if ((prevCount === 3 && currCount === 4) || (prevCount === 4 && currCount === 5)) {
-                      cardSoundRef.current?.play().catch(() => {});
-                    }
-                  } catch (e) {
-                    console.error('Error playing deal sound without animation:', e);
-                  }
-                }
-              }
-              // Live update of current street pot without automatic flash
               if (newStreetSum !== currentStreetPot) {
                 setCurrentStreetPot(newStreetSum);
               }
-              // New hand reset: from SHOWDOWN to PREFLOP or first state
+              // New hand reset: clear accumulated pot on new preflop
               if (
-                (!previousGameStateRef.current &&
-                  message.data.current_round === 'PREFLOP') ||
-                (previousGameStateRef.current &&
-                  previousGameStateRef.current.current_round === 'SHOWDOWN' &&
-                  message.data.current_round === 'PREFLOP')
+                (!previousGameStateRef.current && message.data.current_round === 'PREFLOP') ||
+                (previousGameStateRef.current?.current_round === 'SHOWDOWN' && message.data.current_round === 'PREFLOP')
               ) {
                 setAccumulatedPot(0);
                 setCurrentStreetPot(newStreetSum);
