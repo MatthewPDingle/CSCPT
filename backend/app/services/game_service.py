@@ -1137,7 +1137,8 @@ class GameService:
                             logging.error(f"Error announcing pot winners: {e}")
 
                         # 4) Distribute chips to winners (update chip counts)
-                        await asyncio.sleep(0.5)
+                        # Wait for pot-to-winner chip animation (0.5s) and winner pulse (0.6s)
+                        await asyncio.sleep(1.1)
                         try:
                             # Update domain model chip counts from poker_game
                             for p in game.players:
@@ -1159,7 +1160,8 @@ class GameService:
                             logging.error(f"Error pulsing winner seat: {e}")
 
                         # 6) Pause before starting next hand
-                        await asyncio.sleep(2.5)
+                        # Pause before starting next hand (final pause ~1s)
+                        await asyncio.sleep(1.0)
 
                         # 7) Start a fresh hand and notify clients of the new state
                         logging.info("Starting new hand…")

@@ -302,26 +302,35 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [pendingGameState, setPendingGameState] = useState<GameState | null>(null);
   
   // Orchestrate bet-to-pot animation when bets are finalized
-  useEffect(() => {
-    if (!roundBetsFinalized) return;
-    const { player_bets, pot } = roundBetsFinalized;
-    // 1) Clear individual bets (move to pot) and flash pot
-    const timer = setTimeout(() => {
-      // clear all player bet badges
-      setBetsToAnimate([]);
-      // update pot and flash
-      setAccumulatedPot(pot);
-      setFlashMainPot(true);
-      setTimeout(() => setFlashMainPot(false), POT_FLASH_DURATION_MS);
-      // also clear currentStreetPot in gameState players
-      setGameState(prev => {
-        if (!prev) return prev;
-        const clearedPlayers = prev.players.map(p => ({ ...p, current_bet: 0 }));
-        return { ...prev, players: clearedPlayers };
-      });
-    }, CHIP_ANIMATION_DURATION_MS);
-    return () => clearTimeout(timer);
-  }, [roundBetsFinalized]);
+// Animate end-of-betting-round: collect bets into pot, flash, then advance orchestrator
+useEffect(() => {
+  if (!roundBetsFinalized) return;
+  const { pot } = roundBetsFinalized;
+  // After chip animation delay, clear bets and flash main pot
+  const chipTimer = window.setTimeout(() => {
+    setBetsToAnimate([]);
+    setAccumulatedPot(pot);
+    setFlashMainPot(true);
+    // After pot-flash, clear flash and notify server & orchestrator
+    const flashTimer = window.setTimeout(() => {
+      setFlashMainPot(false);
+      // Clear current animation step and notify server
+      setCurrentStep(null);
+      if (sendMessageRef.current) {
+        sendMessageRef.current({ type: 'animation_done', data: { stepType: 'round_bets_finalized' } });
+      }
+    }, POT_FLASH_DURATION_MS);
+    // clear players' current bets for UI
+    setGameState(prev => {
+      if (!prev) return prev;
+      const clearedPlayers = prev.players.map(p => ({ ...p, current_bet: 0 }));
+      return { ...prev, players: clearedPlayers };
+    });
+  }, CHIP_ANIMATION_DURATION_MS);
+  return () => {
+    window.clearTimeout(chipTimer);
+  };
+}, [roundBetsFinalized]);
   
   // Append winner messages after the final pulse
   useEffect(() => {
