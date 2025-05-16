@@ -1864,10 +1864,9 @@ class PokerGame:
         if all_in_players:
             self._create_side_pots()
             
-            # If all players are all-in except at most one, go straight to showdown
-            # This is critical for all-in confrontations - but only proceed if all players have acted
-            if len(active_not_all_in) <= 1 and len(all_in_players) >= 1:
-                logging.info(f"[END-ROUND-{execution_id}] All-in confrontation detected, dealing remaining community cards and skipping to showdown")
+            # If no active (non–all-in) players remain, proceed directly to showdown
+            if len(active_not_all_in) == 0:
+                logging.info(f"[END-ROUND-{execution_id}] All-in showdown: dealing remaining community cards and skipping to showdown")
                 # Deal all remaining community cards to complete the board
                 while len(self.community_cards) < 5:
                     if len(self.community_cards) == 0:
