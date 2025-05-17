@@ -9,6 +9,7 @@ import tempfile
 import shutil
 from pprint import pprint
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 # Import our local modules
 from ai.agents.models.opponent_profile import OpponentProfile, StatisticValue, OpponentNote
@@ -38,7 +39,11 @@ class MemoryIntegration:
     _memory_enabled = False
     
     @classmethod
-    def initialize(cls, memory_service=None, enable_memory=True):
+    def initialize(
+        cls,
+        memory_service: Optional[MemoryService] = None,
+        enable_memory: bool = True,
+    ) -> MemoryConnector:
         """
         Initialize the memory integration.
         
@@ -71,14 +76,14 @@ class MemoryIntegration:
         return connector
     
     @classmethod
-    def is_memory_enabled(cls):
+    def is_memory_enabled(cls) -> bool:
         """Check if memory system is enabled."""
         if hasattr(cls, '_memory_enabled'):
             return cls._memory_enabled
         return False
     
     @classmethod
-    def enable_memory(cls):
+    def enable_memory(cls) -> None:
         """Enable the memory system."""
         connector = MemoryConnector.get_instance()
         connector.enable()
@@ -86,14 +91,14 @@ class MemoryIntegration:
         cls._memory_service = connector.memory_service
         
     @classmethod
-    def disable_memory(cls):
+    def disable_memory(cls) -> None:
         """Disable the memory system."""
         connector = MemoryConnector.get_instance()
         connector.disable()
         cls._memory_enabled = False
     
     @classmethod
-    def get_all_profiles(cls):
+    def get_all_profiles(cls) -> List[Dict[str, Any]]:
         """Get all player profiles."""
         if not cls._memory_service:
             return []
@@ -104,7 +109,7 @@ class MemoryIntegration:
         ]
     
     @classmethod
-    def get_player_profile(cls, player_id):
+    def get_player_profile(cls, player_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific player's profile."""
         if not cls._memory_service:
             return None
