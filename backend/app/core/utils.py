@@ -146,6 +146,11 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
 
         # Calculate total pot amount
         total_pot = sum(pot.amount for pot in pots)
+
+        # Safely get game attributes with defaults needed for logging
+        current_round = getattr(game, 'current_round', None)
+        current_round_name = current_round.name if current_round else "PREFLOP"
+
         # Debug logging: pot details and total
         try:
             logging.info(f"[game_to_model DEBUG] game_id={game_id}, current_round={current_round_name}")
@@ -164,8 +169,6 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             pass
 
         # Safely get game attributes with defaults
-        current_round = getattr(game, 'current_round', None)
-        current_round_name = current_round.name if current_round else "PREFLOP"
         button_position = getattr(game, 'button_position', 0)
         current_player_idx = getattr(game, 'current_player_idx', 0)
         current_bet = getattr(game, 'current_bet', 0)
