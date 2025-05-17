@@ -38,6 +38,23 @@ The `street_dealt` event notifies clients that a new community card street has b
 - `street` – name of the street dealt (`FLOP`, `TURN`, or `RIVER`)
 - `cards` – list of card strings revealed for this street
 
+## `new_round`
+The `new_round` event is emitted whenever the flop, turn, or river is dealt and includes all community cards currently on the board.
+
+### Payload
+```json
+{
+  "type": "new_round",
+  "data": {
+    "round": "TURN",
+    "cards": ["Ah", "Kd", "Qs", "Jc"]
+  }
+}
+```
+
+- `round` – current stage of the hand (`FLOP`, `TURN`, or `RIVER`)
+- `cards` – list of community cards now visible on the table
+
 ## `showdown_hands_revealed`
 The `showdown_hands_revealed` event instructs clients to flip over the hole cards of all remaining players. It follows `round_bets_finalized` when a hand reaches showdown.
 
