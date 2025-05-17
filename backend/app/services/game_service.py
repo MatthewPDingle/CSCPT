@@ -1132,6 +1132,11 @@ class GameService:
                                     'amount': amount,
                                     'winners': winners_list
                                 })
+
+                            # Zero pots so display resets before animations
+                            for pot in poker_game.pots:
+                                pot.amount = 0
+
                             await game_notifier.notify_pot_winners_determined(game_id, pots_info)
                         except Exception as e:
                             logging.error(f"Error announcing pot winners: {e}")
@@ -1657,6 +1662,11 @@ class GameService:
                                 'amount': amount,
                                 'winners': winners_list
                             })
+
+                        # Set pots to zero so table clears before animations
+                        for pot in poker_game.pots:
+                            pot.amount = 0
+
                         await game_notifier.notify_pot_winners_determined(game_id, pots_info)
                     except Exception as e:
                         logging.error(f"Error announcing pot winners (AI path): {e}")

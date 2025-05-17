@@ -19,10 +19,10 @@ from ai.llm_service import LLMService
 
 # Import agent definitions if available
 try:
-    from agents.base_agent import PokerAgent
-    from agents.tag_agent import TAGAgent
-    from agents.lag_agent import LAGAgent
-    from agents.adaptable_agent import AdaptableAgent
+    from ai.agents.base_agent import PokerAgent
+    from ai.agents.tag_agent import TAGAgent
+    from ai.agents.lag_agent import LAGAgent
+    from ai.agents.adaptable_agent import AdaptableAgent
     AGENTS_AVAILABLE = True
 except ImportError:
     AGENTS_AVAILABLE = False
