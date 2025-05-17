@@ -22,7 +22,7 @@ class TestGeminiProvider(unittest.TestCase):
     
     # Constants for model testing
     GEMINI_2_5_PRO = "gemini-2.5-pro"
-    GEMINI_2_5_PRO_ID = "gemini-2.5-pro-exp-03-25"
+    GEMINI_2_5_PRO_ID = "gemini-2.5-pro-preview-03-25"
     GEMINI_2_0_FLASH = "gemini-2.0-flash"
     GEMINI_2_0_FLASH_ID = "gemini-2.0-flash-001"
     GEMINI_2_0_FLASH_THINKING = "gemini-2.0-flash-thinking"
