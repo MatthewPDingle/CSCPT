@@ -16,6 +16,11 @@ from app.core.poker_game import (
 )
 
 
+def run_action(game: PokerGame, player: Player, action: PlayerAction, amount=None):
+    """Helper to run async process_action synchronously."""
+    return asyncio.run(game.process_action(player, action, amount))
+
+
 def setup_test_game(num_players=4, starting_chips=1000):
     """Set up a test game with a specific number of players."""
     game = PokerGame(small_blind=10, big_blind=20)
@@ -108,7 +113,7 @@ def test_update_blinds_and_antes():
     # Complete the hand
     for _ in range(4):
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CALL)
+        run_action(game, player, PlayerAction.CALL)
     
     # Update blinds for next level
     game.update_blinds(small_blind=25, big_blind=50, ante=10)
@@ -228,22 +233,22 @@ def test_progressive_blinds():
     # Fast-forward through the hand (all players check/call)
     for _ in range(4):
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CALL)
+        run_action(game, player, PlayerAction.CALL)
     assert game.current_round == BettingRound.FLOP
     
     for _ in range(4):
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CHECK)
+        run_action(game, player, PlayerAction.CHECK)
     assert game.current_round == BettingRound.TURN
     
     for _ in range(4):
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CHECK)
+        run_action(game, player, PlayerAction.CHECK)
     assert game.current_round == BettingRound.RIVER
     
     for _ in range(4):
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CHECK)
+        run_action(game, player, PlayerAction.CHECK)
     assert game.current_round == BettingRound.SHOWDOWN
     
     # Update blinds and antes for next level
@@ -301,7 +306,7 @@ def test_min_raise_with_blind_increases():
     
     # First player raises minimum amount
     player = game.players[game.current_player_idx]
-    game.process_action(player, PlayerAction.RAISE, 200)  # 100 call + 100 min raise
+    run_action(game, player, PlayerAction.RAISE, 200)  # 100 call + 100 min raise
     
     # Check min_raise is still the same
     assert game.min_raise == 100
@@ -309,7 +314,7 @@ def test_min_raise_with_blind_increases():
     # Complete the hand
     for _ in range(12):  # Skip through remaining actions to end the hand
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CALL)
+        run_action(game, player, PlayerAction.CALL)
         
     # Update blinds
     game.update_blinds(small_blind=100, big_blind=200, ante=0)
@@ -326,7 +331,7 @@ def test_min_raise_with_blind_increases():
     
     # First player raises minimum amount
     player = game.players[game.current_player_idx]
-    game.process_action(player, PlayerAction.RAISE, 400)  # 200 call + 200 min raise
+    run_action(game, player, PlayerAction.RAISE, 400)  # 200 call + 200 min raise
     
     # Check min_raise is still correct
     assert game.min_raise == 200
@@ -383,7 +388,7 @@ def test_full_tournament_blind_progression():
         # Play through the hand
         for _ in range(6):  # One action per player
             player = game.players[game.current_player_idx]
-            game.process_action(player, PlayerAction.FOLD)
+            run_action(game, player, PlayerAction.FOLD)
             
             # Break if hand is over
             if game.current_round == BettingRound.SHOWDOWN:
@@ -397,30 +402,30 @@ def test_preflop_betting_round():
     
     # Player 3 calls (UTG)
     player3 = game.players[3]
-    game.process_action(player3, PlayerAction.CALL)
+    run_action(game, player3, PlayerAction.CALL)
     assert player3.chips == 980
     assert game.pots[0].amount == 50
     
     # Player 0 raises (Button)
     player0 = game.players[0]
-    game.process_action(player0, PlayerAction.RAISE, 60)
+    run_action(game, player0, PlayerAction.RAISE, 60)
     assert player0.chips == 940
     assert game.pots[0].amount == 110
     assert game.current_bet == 60
     
     # Player 1 calls (SB)
     player1 = game.players[1]
-    game.process_action(player1, PlayerAction.CALL)
+    run_action(game, player1, PlayerAction.CALL)
     assert player1.chips == 940  # 1000 - 10 - 50
     assert game.pots[0].amount == 160
     
     # Player 2 folds (BB)
     player2 = game.players[2]
-    game.process_action(player2, PlayerAction.FOLD)
+    run_action(game, player2, PlayerAction.FOLD)
     assert player2.status == PlayerStatus.FOLDED
     
     # Player 3 has already bet 20, needs to add 40 more to match the 60 raise
-    game.process_action(player3, PlayerAction.CALL)
+    run_action(game, player3, PlayerAction.CALL)
     assert player3.chips == 940  # 1000 - 20 - 40
     assert game.pots[0].amount == 200
     
@@ -437,7 +442,7 @@ def test_flop_betting_round():
     # Go through preflop betting - all players call to reach the flop
     for _ in range(4):  # 4 active players
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CALL)
+        run_action(game, player, PlayerAction.CALL)
     
     # We should now be at the flop
     assert game.current_round == BettingRound.FLOP
@@ -445,30 +450,30 @@ def test_flop_betting_round():
     
     # Player 1 checks (SB)
     player1 = game.players[1]
-    game.process_action(player1, PlayerAction.CHECK)
+    run_action(game, player1, PlayerAction.CHECK)
     
     # Player 2 checks (BB)
     player2 = game.players[2]
-    game.process_action(player2, PlayerAction.CHECK)
+    run_action(game, player2, PlayerAction.CHECK)
     
     # Player 3 bets (UTG)
     player3 = game.players[3]
-    game.process_action(player3, PlayerAction.BET, 40)
+    run_action(game, player3, PlayerAction.BET, 40)
     assert player3.chips == 940
     assert game.pots[0].amount == 120  # 80 from preflop + 40 bet
     
     # Player 0 calls (Button)
     player0 = game.players[0]
-    game.process_action(player0, PlayerAction.CALL)
+    run_action(game, player0, PlayerAction.CALL)
     assert player0.chips == 940  # After calling 40 chips
     assert game.pots[0].amount == 160  # 120 + 40 (Player 0's call)
     
     # Player 1 folds (SB)
-    game.process_action(player1, PlayerAction.FOLD)
+    run_action(game, player1, PlayerAction.FOLD)
     assert player1.status == PlayerStatus.FOLDED
     
     # Player 2 calls (BB)
-    game.process_action(player2, PlayerAction.CALL)
+    run_action(game, player2, PlayerAction.CALL)
     assert player2.chips == 940
     assert game.pots[0].amount == 200  # 160 + 40 (Player 2's call)
     
@@ -490,19 +495,19 @@ def test_all_in_and_side_pots():
     
     # Player 3 raises
     player3 = game.players[3]
-    game.process_action(player3, PlayerAction.RAISE, 100)
+    run_action(game, player3, PlayerAction.RAISE, 100)
     assert player3.chips == 700
     assert game.pots[0].amount == 130  # SB + BB + raise
     
     # Player 0 calls
     player0 = game.players[0]
-    game.process_action(player0, PlayerAction.CALL)
+    run_action(game, player0, PlayerAction.CALL)
     assert player0.chips == 900
     assert game.pots[0].amount == 230
     
     # Player 1 (SB) goes all-in (has only 190 left)
     player1 = game.players[1]
-    game.process_action(player1, PlayerAction.ALL_IN)
+    run_action(game, player1, PlayerAction.ALL_IN)
     assert player1.chips == 0
     assert player1.status == PlayerStatus.ALL_IN
     assert game.pots[0].amount == 420  # 230 + 190
@@ -510,14 +515,14 @@ def test_all_in_and_side_pots():
     # Player 2 (BB) calls - actual implementation behavior differs
     player2 = game.players[2]
     # In actual implementation, player2 bets 200 total (posting BB + calling all-in)
-    game.process_action(player2, PlayerAction.CALL)
+    run_action(game, player2, PlayerAction.CALL)
     assert player2.chips == 300  # 500 - 200 (actual implementation)
     
     # Complete the betting round to create side pots
     player3 = game.players[3]
-    game.process_action(player3, PlayerAction.CALL)  # Player 3 calls
+    run_action(game, player3, PlayerAction.CALL)  # Player 3 calls
     player0 = game.players[0]
-    game.process_action(player0, PlayerAction.CALL)  # Player 0 calls
+    run_action(game, player0, PlayerAction.CALL)  # Player 0 calls
     
     # Verify side pot creation
     assert len(game.pots) == 2
@@ -697,16 +702,16 @@ def test_partial_raise_with_insufficient_chips():
     assert all_in_options[0][1] == 45
     
     # Player 3 goes all-in with insufficient chips for full raise
-    game.process_action(p3, PlayerAction.ALL_IN)
+    run_action(game, p3, PlayerAction.ALL_IN)
     
     # Player 0 calls
-    game.process_action(p0, PlayerAction.CALL)
+    run_action(game, p0, PlayerAction.CALL)
     
     # Player 1 calls
-    game.process_action(p1, PlayerAction.CALL)
+    run_action(game, p1, PlayerAction.CALL)
     
     # Player 2 calls
-    game.process_action(p2, PlayerAction.CALL)
+    run_action(game, p2, PlayerAction.CALL)
     
     # Verify min raise was not reset (since all-in wasn't a full raise)
     assert game.min_raise == 20
@@ -798,30 +803,30 @@ def test_complex_multiple_all_in_scenario():
     game.start_hand()
     
     # Player 3 raises
-    game.process_action(p3, PlayerAction.RAISE, 100)
+    run_action(game, p3, PlayerAction.RAISE, 100)
     assert game.pots[0].amount == 130  # SB + BB + raise
     
     # Player 0 raises again
-    game.process_action(p0, PlayerAction.RAISE, 250)
+    run_action(game, p0, PlayerAction.RAISE, 250)
     
     # Player 1 goes all-in (300 total - already posted 10)
-    game.process_action(p1, PlayerAction.ALL_IN)
+    run_action(game, p1, PlayerAction.ALL_IN)
     assert p1.chips == 0
     assert p1.status == PlayerStatus.ALL_IN
     
     # Player 2 goes all-in (500 total - already posted 20)
-    game.process_action(p2, PlayerAction.ALL_IN)
+    run_action(game, p2, PlayerAction.ALL_IN)
     assert p2.chips == 0
     assert p2.status == PlayerStatus.ALL_IN
     
     # Player 3 also goes all-in
-    game.process_action(p3, PlayerAction.ALL_IN)
+    run_action(game, p3, PlayerAction.ALL_IN)
     # Note: We don't assert p3.chips == 0 here since the test scenario
     # involves a complex all-in where player 3 wins the pot
     assert p3.status == PlayerStatus.ALL_IN
     
     # Player 0 calls (doesn't go all-in)
-    game.process_action(p0, PlayerAction.CALL)
+    run_action(game, p0, PlayerAction.CALL)
     
     # Verify correct number of side pots created
     assert len(game.pots) >= 3
@@ -973,14 +978,14 @@ def test_invalid_bet_sizes():
     min_raise_amount = 20  # Min raise equals the BB
     min_total = call_amount + min_raise_amount  # Should be 40
     
-    invalid_result = game.process_action(player3, PlayerAction.RAISE, 25)
+    invalid_result = run_action(game, player3, PlayerAction.RAISE, 25)
     
     # Should not process the invalid raise
     assert invalid_result is False
     assert player3.chips == 1000  # Chips unchanged
     
     # Now try with valid raise to 40 (call 20 + min raise 20)
-    valid_result = game.process_action(player3, PlayerAction.RAISE, 40)
+    valid_result = run_action(game, player3, PlayerAction.RAISE, 40)
     assert valid_result is not False
     assert player3.chips == 960  # 1000 - 40
 
@@ -1006,14 +1011,14 @@ def test_heads_up_blinds_and_play():
     assert game.current_player_idx == 0
     
     # SB player calls (adds 10 more to match BB)
-    game.process_action(p0, PlayerAction.CALL)
+    run_action(game, p0, PlayerAction.CALL)
     assert p0.chips == 980  # 1000 - 10 - 10
     
     # Now BB player's turn
     assert game.current_player_idx == 1
     
     # BB checks
-    game.process_action(p1, PlayerAction.CHECK)
+    run_action(game, p1, PlayerAction.CHECK)
     
     # Betting round should end, moving to flop
     assert game.current_round == BettingRound.FLOP
@@ -1033,7 +1038,7 @@ def test_betting_across_multiple_rounds():
     # Everyone calls to reach the flop
     for _ in range(3):
         player = game.players[game.current_player_idx]
-        game.process_action(player, PlayerAction.CALL)
+        run_action(game, player, PlayerAction.CALL)
     
     # Now we're on the flop, where there's no bet yet
     assert game.current_round == BettingRound.FLOP
@@ -1042,20 +1047,20 @@ def test_betting_across_multiple_rounds():
     # First player tries invalid bet amount
     player = game.players[game.current_player_idx]
     # Use BET action with too small of a bet (below BB)
-    invalid_bet_result = game.process_action(player, PlayerAction.BET, 10)
+    invalid_bet_result = run_action(game, player, PlayerAction.BET, 10)
     assert invalid_bet_result is False
     
     # Same player tries valid bet
-    valid_bet_result = game.process_action(player, PlayerAction.BET, 20)
+    valid_bet_result = run_action(game, player, PlayerAction.BET, 20)
     assert valid_bet_result is not False
     
     # Second player tries too small raise (below minimum)
     player = game.players[game.current_player_idx]
-    invalid_raise_result = game.process_action(player, PlayerAction.RAISE, 30)  # Valid raise would be 40+
+    invalid_raise_result = run_action(game, player, PlayerAction.RAISE, 30)  # Valid raise would be 40+
     assert invalid_raise_result is False
     
     # Second player makes a valid raise
-    valid_raise_result = game.process_action(player, PlayerAction.RAISE, 50)
+    valid_raise_result = run_action(game, player, PlayerAction.RAISE, 50)
     assert valid_raise_result is not False
 
 
@@ -1076,7 +1081,7 @@ async def test_round_bets_finalized_notification(monkeypatch):
         "app.core.websocket.game_notifier.notify_round_bets_finalized", mock_notify
     )
 
-    game._end_betting_round()
+    await game._end_betting_round()
 
     await asyncio.sleep(0.1)
 

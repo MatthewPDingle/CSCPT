@@ -2,8 +2,14 @@
 Tests specifically for side pot scenarios in the poker game.
 """
 import pytest
+import asyncio
 from app.core.cards import Card, Rank, Suit
 from app.core.poker_game import PokerGame, Player, PlayerAction, PlayerStatus, BettingRound, Pot
+
+
+def run_action(game: PokerGame, player: Player, action: PlayerAction, amount=None):
+    """Helper to run async process_action synchronously."""
+    return asyncio.run(game.process_action(player, action, amount))
 
 
 def test_basic_side_pot_creation():
@@ -84,29 +90,29 @@ def test_multiple_all_ins_multiple_side_pots():
     game.start_hand()
     
     # Player 4 (UTG+1) raises to 80
-    game.process_action(p4, PlayerAction.RAISE, 80)
+    run_action(game, p4, PlayerAction.RAISE, 80)
     
     # Player 0 (Button) calls
-    game.process_action(p0, PlayerAction.CALL)
+    run_action(game, p0, PlayerAction.CALL)
     
     # Player 1 (SB) goes all-in with 100 total (90 more)
-    game.process_action(p1, PlayerAction.ALL_IN)
+    run_action(game, p1, PlayerAction.ALL_IN)
     assert p1.status == PlayerStatus.ALL_IN
     assert p1.chips == 0
     
     # Player 2 (BB) goes all-in with 250 total
-    game.process_action(p2, PlayerAction.ALL_IN)
+    run_action(game, p2, PlayerAction.ALL_IN)
     assert p2.status == PlayerStatus.ALL_IN
     assert p2.chips == 0
     
     # Player 3 (UTG) goes all-in with 400 total
-    game.process_action(p3, PlayerAction.ALL_IN)
+    run_action(game, p3, PlayerAction.ALL_IN)
     assert p3.status == PlayerStatus.ALL_IN
     assert p3.chips == 0
     
     # Player 4 and Player 0 call all the all-ins
-    game.process_action(p4, PlayerAction.CALL)
-    game.process_action(p0, PlayerAction.CALL)
+    run_action(game, p4, PlayerAction.CALL)
+    run_action(game, p0, PlayerAction.CALL)
     
     # Force side pot creation
     game._create_side_pots()

@@ -1020,7 +1020,7 @@ class GameService:
                     poker_action = getattr(PokerPlayerAction, action_map[action])
                     
                     # Process the action
-                    poker_game.process_action(poker_player, poker_action, amount)
+                    await poker_game.process_action(poker_player, poker_action, amount)
                     
                     # ------------------------------------------------------------------
                     # HAND COMPLETE – HANDLE SHOWDOWN SEQUENCE FOR **HUMAN** ACTION PATH
@@ -1498,7 +1498,7 @@ class GameService:
             async with game_lock:
                 logging.info(f"[AI-ACTION-{execution_id}] Lock acquired - Processing {poker_action.name} {action_amount if action_amount is not None else ''} in PokerGame")
                 logging.info(f"[AI-ACTION-{execution_id}] Before process_action - to_act: {poker_game.to_act}")
-                success = poker_game.process_action(poker_player, poker_action, action_amount)
+                success = await poker_game.process_action(poker_player, poker_action, action_amount)
                 logging.info(f"[AI-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
                 logging.info(f"[AI-ACTION-{execution_id}] PokerGame process_action result: {success}")
                 # If invalid, force a fold to advance game state
@@ -1507,7 +1507,7 @@ class GameService:
                     logging.error(f"[AI-ACTION-{execution_id}] Invalid AI action {poker_action.name} {action_amount}. Forcing FOLD to prevent stall.")
                     # Force fold
                     fold_action = PokerPlayerAction.FOLD
-                    poker_game.process_action(poker_player, fold_action, None)
+                    await poker_game.process_action(poker_player, fold_action, None)
                     # Notify forced fold
                     from app.core.websocket import game_notifier
                     await game_notifier.notify_player_action(
@@ -1828,13 +1828,13 @@ class GameService:
                 if poker_player and poker_game:
                     logging.warning(f"AI Action Error: Using fallback {fallback_action_name} for player {player_id}")
                     # Process the fallback action
-                    action_success = poker_game.process_action(poker_player, poker_action, None)
+                    action_success = await poker_game.process_action(poker_player, poker_action, None)
                     if not action_success and fallback_action_name != "FOLD":
                         # If the chosen action fails, fall back to FOLD
                         logging.warning(f"AI Action Error: {fallback_action_name} failed, forcing FOLD")
                         poker_action = PokerPlayerAction.FOLD
                         fallback_action_name = "FOLD"
-                        poker_game.process_action(poker_player, poker_action, None)
+                        await poker_game.process_action(poker_player, poker_action, None)
                     # Compute totals for log
                     fs_post_street = poker_player.current_bet
                     fs_post_hand = poker_player.total_bet

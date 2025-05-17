@@ -326,7 +326,7 @@ async def player_action(
         game = await service.process_action(
             game_id, player.player_id, domain_action, action_request.amount
         )
-        success = poker_game.process_action(player, action, action_request.amount)
+        success = await poker_game.process_action(player, action, action_request.amount)
 
         if not success:
             return ActionResponse(
