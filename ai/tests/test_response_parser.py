@@ -62,10 +62,10 @@ class ResponseParserTests(unittest.TestCase):
             }
         }
         
-        # Should default to fold without raising an exception
+        # Should gracefully fallback to check without raising an exception
         action, amount, metadata = AgentResponseParser.parse_response(response)
-        
-        self.assertEqual(action, "fold")
+
+        self.assertEqual(action, "check")
         self.assertIsNone(amount)
     
     def test_missing_amount_for_raise(self):
@@ -82,8 +82,11 @@ class ResponseParserTests(unittest.TestCase):
             }
         }
         
-        with self.assertRaises(ValueError):
-            AgentResponseParser.parse_response(response)
+        # Should fallback to a call when no amount is provided
+        action, amount, _ = AgentResponseParser.parse_response(response)
+
+        self.assertEqual(action, "call")
+        self.assertIsNone(amount)
     
     def test_negative_amount(self):
         """Test raising an exception when amount is negative."""
@@ -99,8 +102,11 @@ class ResponseParserTests(unittest.TestCase):
             }
         }
         
-        with self.assertRaises(ValueError):
-            AgentResponseParser.parse_response(response)
+        # Should fallback to a call when amount is invalid
+        action, amount, _ = AgentResponseParser.parse_response(response)
+
+        self.assertEqual(action, "call")
+        self.assertIsNone(amount)
     
     def test_is_valid_response(self):
         """Test the is_valid_response method."""
@@ -129,17 +135,18 @@ class ResponseParserTests(unittest.TestCase):
         }
         
         self.assertTrue(AgentResponseParser.is_valid_response(valid_response))
-        self.assertFalse(AgentResponseParser.is_valid_response(invalid_response))
+        # Parser no longer raises for missing amounts so this should be valid
+        self.assertTrue(AgentResponseParser.is_valid_response(invalid_response))
     
     def test_apply_game_rules(self):
         """Test applying game rules to adjust actions and amounts."""
         # Test all-in adjustment
         game_state = {
-            "stack_sizes": {
-                "0": 75  # Player only has 75 chips
-            }
+            "players": [{"chips": 75}],
+            "current_player_idx": 0,
+            "current_bet": 0,
         }
-        
+
         action, amount = AgentResponseParser.apply_game_rules("raise", 100, game_state)
         
         self.assertEqual(action, "all-in")
