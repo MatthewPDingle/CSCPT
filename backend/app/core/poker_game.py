@@ -1915,12 +1915,39 @@ class PokerGame:
         # Move to the next round
         if self.current_round == BettingRound.PREFLOP:
             self.deal_flop()
+            if self.game_id:
+                try:
+                    from app.core.websocket import game_notifier
+                    await game_notifier.notify_new_round(
+                        self.game_id, self.current_round.name, self.community_cards
+                    )
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logging.error(f"Error sending new round notification: {e}")
             return False
         elif self.current_round == BettingRound.FLOP:
             self.deal_turn()
+            if self.game_id:
+                try:
+                    from app.core.websocket import game_notifier
+                    await game_notifier.notify_new_round(
+                        self.game_id, self.current_round.name, self.community_cards
+                    )
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logging.error(f"Error sending new round notification: {e}")
             return False
         elif self.current_round == BettingRound.TURN:
             self.deal_river()
+            if self.game_id:
+                try:
+                    from app.core.websocket import game_notifier
+                    await game_notifier.notify_new_round(
+                        self.game_id, self.current_round.name, self.community_cards
+                    )
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logging.error(f"Error sending new round notification: {e}")
             return False
         elif self.current_round == BettingRound.RIVER:
             return self._handle_showdown()

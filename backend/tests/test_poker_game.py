@@ -1064,8 +1064,8 @@ async def test_round_bets_finalized_notification(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_new_round_notification(monkeypatch) -> None:
-    """Ensure new_round event is emitted when a new betting round begins."""
+async def test_new_round_notification(monkeypatch):
+    """Ensure notify_new_round is called when advancing rounds."""
     game = PokerGame(small_blind=5, big_blind=10, game_id="test_game")
 
     game.add_player("p1", "Player 1", 100)
@@ -1073,12 +1073,14 @@ async def test_new_round_notification(monkeypatch) -> None:
 
     game.start_hand()
 
+    game.to_act = set()
+
     mock_notify = AsyncMock()
     monkeypatch.setattr(
-        "app.core.websocket.game_notifier.notify_new_round", mock_notify
+        "app.core.websocket.game_notifier.notify_new_round",
+        mock_notify,
     )
 
-    game.to_act = set()
     await game._end_betting_round()
 
     await asyncio.sleep(0.1)
