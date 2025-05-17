@@ -354,6 +354,8 @@ async def websocket_endpoint(
                 elif message.get("type") == "animation_done":
                     # Client signals a visual animation step is complete
                     step = message.get("data", {}).get("stepType")
+                    if step:
+                        game_notifier.signal_animation_done(game_id, step)
                     if step == "hand_visually_concluded":
                         # Advance dealer button and start next hand
                         poker_game = service.poker_games.get(game_id)
