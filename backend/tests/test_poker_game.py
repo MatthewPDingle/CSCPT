@@ -1050,6 +1050,12 @@ async def test_round_bets_finalized_notification(monkeypatch):
     monkeypatch.setattr(
         "app.core.websocket.game_notifier.notify_round_bets_finalized", mock_notify
     )
+    monkeypatch.setattr(
+        "app.core.websocket.game_notifier.wait_for_animation", AsyncMock()
+    )
+    monkeypatch.setattr(
+        "app.core.websocket.game_notifier.notify_action_request", AsyncMock()
+    )
 
     await game._end_betting_round()
 
@@ -1080,6 +1086,12 @@ async def test_new_round_notification(monkeypatch):
         "app.core.websocket.game_notifier.notify_new_round",
         mock_notify,
     )
+    monkeypatch.setattr(
+        "app.core.websocket.game_notifier.wait_for_animation", AsyncMock()
+    )
+    monkeypatch.setattr(
+        "app.core.websocket.game_notifier.notify_action_request", AsyncMock()
+    )
 
     await game._end_betting_round()
 
@@ -1090,3 +1102,4 @@ async def test_new_round_notification(monkeypatch):
     assert args[0] == "test_game"
     assert args[1] == "FLOP"
     assert isinstance(args[2], list)
+    assert args[3] is False

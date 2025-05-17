@@ -1,7 +1,7 @@
 """
 WebSocket connection management for real-time game updates.
 """
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, Tuple
 from fastapi import WebSocket
 import json
 import copy
@@ -412,9 +412,11 @@ connection_manager = ConnectionManager()
 
 class GameStateNotifier:
     """Utility for broadcasting game state updates."""
-    
+
     def __init__(self, connection_mgr: ConnectionManager):
         self.connection_manager = connection_mgr
+        # Map of (game_id, step_type) -> asyncio.Event for animation handshakes
+        self.animation_events: Dict[Tuple[str, str], asyncio.Event] = {}
         
     async def notify_new_hand(self, game_id: str, hand_number: int):
         """
@@ -434,7 +436,13 @@ class GameStateNotifier:
         
         await self.connection_manager.broadcast_to_game(game_id, message)
         
-    async def notify_new_round(self, game_id: str, round_name: str, community_cards: list):
+    async def notify_new_round(
+        self,
+        game_id: str,
+        round_name: str,
+        community_cards: list,
+        auto_request: bool = True,
+    ):
         """
         Notify all clients about a new betting round.
         
@@ -442,6 +450,7 @@ class GameStateNotifier:
             game_id: The ID of the game
             round_name: The name of the new round (FLOP, TURN, RIVER)
             community_cards: The current community cards
+            auto_request: Whether to immediately request the next action
         """
         # Format cards for display
         card_str = ' '.join([str(card) for card in community_cards])
@@ -465,16 +474,18 @@ class GameStateNotifier:
         }
         
         await self.connection_manager.broadcast_to_game(game_id, message)
-        # After new round, automatically send action request to the next player
-        try:
-            from app.services.game_service import GameService
-            game = GameService.get_instance().poker_games.get(game_id)
-            if game:
-                import asyncio
-                asyncio.create_task(self.notify_action_request(game_id, game))
-        except Exception as e:
-            import logging
-            logging.error(f"Error scheduling action request after new round: {e}")
+        if auto_request:
+            try:
+                from app.services.game_service import GameService
+                game = GameService.get_instance().poker_games.get(game_id)
+                if game:
+                    import asyncio
+                    asyncio.create_task(self.notify_action_request(game_id, game))
+            except Exception as e:
+                import logging
+                logging.error(
+                    f"Error scheduling action request after new round: {e}"
+                )
     
     async def notify_round_bets_finalized(self, game_id: str, player_bets: list, current_pot: int):
         """
@@ -578,6 +589,23 @@ class GameStateNotifier:
             }
         }
         await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def wait_for_animation(self, game_id: str, step_type: str, timeout: float = 2.0) -> None:
+        """Wait until the client confirms an animation is finished."""
+        event = asyncio.Event()
+        self.animation_events[(game_id, step_type)] = event
+        try:
+            await asyncio.wait_for(event.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            self.animation_events.pop((game_id, step_type), None)
+
+    def signal_animation_done(self, game_id: str, step_type: str) -> None:
+        """Signal that an animation step has completed."""
+        event = self.animation_events.get((game_id, step_type))
+        if event:
+            event.set()
         
     async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func=None):
         """

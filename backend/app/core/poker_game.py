@@ -1919,9 +1919,18 @@ class PokerGame:
                 try:
                     from app.core.websocket import game_notifier
                     await game_notifier.notify_new_round(
-                        self.game_id, self.current_round.name, self.community_cards
+                        self.game_id,
+                        self.current_round.name,
+                        self.community_cards,
+                        auto_request=False,
                     )
-                    await asyncio.sleep(0.1)
+                    try:
+                        await game_notifier.wait_for_animation(
+                            self.game_id, "street_dealt", timeout=2.0
+                        )
+                    except Exception:
+                        await asyncio.sleep(1.0)
+                    await game_notifier.notify_action_request(self.game_id, self)
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             return False
@@ -1931,9 +1940,18 @@ class PokerGame:
                 try:
                     from app.core.websocket import game_notifier
                     await game_notifier.notify_new_round(
-                        self.game_id, self.current_round.name, self.community_cards
+                        self.game_id,
+                        self.current_round.name,
+                        self.community_cards,
+                        auto_request=False,
                     )
-                    await asyncio.sleep(0.1)
+                    try:
+                        await game_notifier.wait_for_animation(
+                            self.game_id, "street_dealt", timeout=2.0
+                        )
+                    except Exception:
+                        await asyncio.sleep(1.0)
+                    await game_notifier.notify_action_request(self.game_id, self)
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             return False
@@ -1943,9 +1961,18 @@ class PokerGame:
                 try:
                     from app.core.websocket import game_notifier
                     await game_notifier.notify_new_round(
-                        self.game_id, self.current_round.name, self.community_cards
+                        self.game_id,
+                        self.current_round.name,
+                        self.community_cards,
+                        auto_request=False,
                     )
-                    await asyncio.sleep(0.1)
+                    try:
+                        await game_notifier.wait_for_animation(
+                            self.game_id, "street_dealt", timeout=2.0
+                        )
+                    except Exception:
+                        await asyncio.sleep(1.0)
+                    await game_notifier.notify_action_request(self.game_id, self)
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             return False
