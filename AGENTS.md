@@ -33,6 +33,13 @@ Extracted from `docs/CONTRIBUTING.md`:
 - Ensure all tests pass and update documentation when needed.
 - Follow PEP 8 and Airbnb JavaScript style guides with type annotations.
 
+## General Engineering Practices
+- Adhere to common software engineering best practices such as version control, code reviews, and automated tests.
+- Apply sound software architecture principles like separation of concerns and loose coupling when designing components.
+- Research and fully understand new features or bugs before implementation. Create a detailed plan and follow it during development.
+- Ensure fixes address the root cause of issues rather than masking symptoms.
+- If the reason for a bug is unclear, add logging or other debugging steps to gather more information.
+
 ## Additional Documentation
 Consult the codex files in each directory and the `docs/` folder for complete architecture, API design, and other project details.
 
