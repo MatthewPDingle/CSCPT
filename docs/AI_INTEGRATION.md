@@ -1247,7 +1247,7 @@ async def _request_and_process_ai_action(self, game_id: str, player_id: str):
         action, amount, metadata = AgentResponseParser.parse_response(ai_decision)
         
         # Process the action in the poker game
-        poker_game.process_action(poker_player, poker_action, action_amount)
+        await poker_game.process_action(poker_player, poker_action, action_amount)
         
         # Notify clients
         await game_notifier.notify_player_action(game_id, player_id, action_type, action_amount)
@@ -1273,7 +1273,7 @@ async def _request_and_process_ai_action(self, game_id: str, player_id: str):
         
     except Exception as e:
         # Default to fold on error
-        poker_game.process_action(poker_player, PokerPlayerAction.FOLD, None)
+        await poker_game.process_action(poker_player, PokerPlayerAction.FOLD, None)
 ```
 
 #### WebSocket Game Flow Updates
@@ -1284,7 +1284,7 @@ The WebSocket handler has been updated to check for AI players and trigger their
 async def process_action_message(websocket, game_id, message, player_id, service):
     """Process a player action WebSocket message."""
     # Process the human player's action
-    success = poker_game.process_action(player, action_type, action_amount)
+    success = await poker_game.process_action(player, action_type, action_amount)
     
     # Notify about updated game state
     await game_notifier.notify_game_update(game_id, poker_game)

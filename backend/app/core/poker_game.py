@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import defaultdict
 import random
 import logging
+import asyncio
 logger = logging.getLogger(__name__)
 import uuid
 
@@ -1178,7 +1179,7 @@ class PokerGame:
                 
         return results
     
-    def process_action(self, player: Player, action: PlayerAction, amount: Optional[int] = None) -> bool:
+    async def process_action(self, player: Player, action: PlayerAction, amount: Optional[int] = None) -> bool:
         """
         Process a player's action during betting.
         
@@ -1619,7 +1620,7 @@ class PokerGame:
 
         if round_over:
             logging.info(f"[ACTION-{execution_id}] Betting round is complete, advancing to next round")
-            if not self._end_betting_round(): # end_betting_round returns True if hand is over
+            if not await self._end_betting_round():  # end_betting_round returns True if hand is over
                 # Betting round ended, but hand continues. Next player already set in _reset_betting_round.
                 current_player = None
                 if 0 <= self.current_player_idx < len(self.players):
@@ -1831,7 +1832,7 @@ class PokerGame:
         else:
             return f"Position {rel_pos}"
     
-    def _end_betting_round(self) -> bool:
+    async def _end_betting_round(self) -> bool:
         """
         End the current betting round and move to the next phase.
         
@@ -1895,7 +1896,6 @@ class PokerGame:
         if self.game_id:
             try:
                 from app.core.websocket import game_notifier
-                import asyncio
 
                 player_bets = [
                     {"player_id": p.player_id, "amount": p.current_bet}
@@ -1903,13 +1903,10 @@ class PokerGame:
                 ]
                 total_pot = sum(pot.amount for pot in self.pots)
 
-                async def _notify():
-                    await game_notifier.notify_round_bets_finalized(
-                        self.game_id, player_bets, total_pot
-                    )
-                    await asyncio.sleep(0.5)
-
-                asyncio.create_task(_notify())
+                await game_notifier.notify_round_bets_finalized(
+                    self.game_id, player_bets, total_pot
+                )
+                await asyncio.sleep(0.5)
             except Exception as e:
                 logging.error(
                     f"Error sending round bets finalized notification: {e}"

@@ -633,7 +633,7 @@ async def process_action_message(
         
         # Process directly in poker game for current state
         logging.info(f"[WS-ACTION-{execution_id}] About to call process_action with player {player.name}, action {action_type}, amount {action_amount}")
-        success = poker_game.process_action(player, action_type, action_amount)
+        success = await poker_game.process_action(player, action_type, action_amount)
         
         logging.info(f"[WS-ACTION-{execution_id}] After process_action - to_act: {poker_game.to_act}")
         logging.info(f"[WS-ACTION-{execution_id}] PokerGame process_action result: {success}")

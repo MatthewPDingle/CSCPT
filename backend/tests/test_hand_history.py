@@ -3,6 +3,7 @@ Tests for the hand history tracking functionality.
 """
 import unittest
 import json
+import asyncio
 from datetime import datetime
 
 # Custom JSON encoder to handle datetime objects
@@ -16,6 +17,11 @@ from app.core.poker_game import PokerGame, PlayerAction, PlayerStatus
 from app.services.hand_history_service import HandHistoryRecorder
 from app.repositories.in_memory import HandHistoryRepository, RepositoryFactory
 from app.models.domain_models import HandHistory, PotResult, ActionDetail, PlayerHandSnapshot, HandMetrics
+
+
+def run_action(game: PokerGame, player, action, amount=None):
+    """Helper to run async process_action synchronously."""
+    return asyncio.run(game.process_action(player, action, amount))
 
 
 class TestHandHistory(unittest.TestCase):
@@ -43,6 +49,10 @@ class TestHandHistory(unittest.TestCase):
         
         # Start hand
         self.game.start_hand()
+
+    def run_action(self, player, action, amount=None):
+        """Helper to run async process_action synchronously."""
+        return asyncio.run(self.game.process_action(player, action, amount))
 
     def test_hand_history_creation(self):
         """Test that hand history is created when starting a hand."""
@@ -92,9 +102,9 @@ class TestHandHistory(unittest.TestCase):
     def test_action_recording(self):
         """Test that player actions are recorded in the hand history."""
         # Play some actions
-        self.game.process_action(self.player1, PlayerAction.FOLD)
-        self.game.process_action(self.player2, PlayerAction.RAISE, 60)
-        self.game.process_action(self.player3, PlayerAction.CALL, 60)
+        self.run_action(self.player1, PlayerAction.FOLD)
+        self.run_action(self.player2, PlayerAction.RAISE, 60)
+        self.run_action(self.player3, PlayerAction.CALL, 60)
         
         # Get hand history from repo
         hand_history = self.hand_history_repo.get(self.game.current_hand_id)
@@ -160,7 +170,7 @@ class TestHandHistory(unittest.TestCase):
         hand_id = game.current_hand_id
         
         # Basic actions - player1 folds, player2 wins
-        game.process_action(player1, PlayerAction.FOLD)
+        run_action(game, player1, PlayerAction.FOLD)
         
         # Hand should be over
         self.assertEqual(game.current_round.name, "SHOWDOWN")
@@ -206,8 +216,8 @@ class TestHandHistory(unittest.TestCase):
         hand_id = game.current_hand_id
         
         # Everyone folds except player3
-        game.process_action(player1, PlayerAction.FOLD)
-        game.process_action(player2, PlayerAction.FOLD)
+        run_action(game, player1, PlayerAction.FOLD)
+        run_action(game, player2, PlayerAction.FOLD)
         
         # Hand should be over
         self.assertEqual(game.current_round.name, "SHOWDOWN")
@@ -263,10 +273,10 @@ class TestHandHistory(unittest.TestCase):
         hand_id = game.current_hand_id
         
         # Player1 raises, player2 reraises, player3 all-in, player1 calls
-        game.process_action(player1, PlayerAction.RAISE, 60)
-        game.process_action(player2, PlayerAction.RAISE, 120)
-        game.process_action(player3, PlayerAction.ALL_IN, 100)
-        game.process_action(player1, PlayerAction.CALL, 80)
+        run_action(game, player1, PlayerAction.RAISE, 60)
+        run_action(game, player2, PlayerAction.RAISE, 120)
+        run_action(game, player3, PlayerAction.ALL_IN, 100)
+        run_action(game, player1, PlayerAction.CALL, 80)
         
         # All players have acted, so betting round should end and we should get to showdown
         # (since player3 is all-in and there's no more betting to do)
@@ -334,7 +344,7 @@ class TestHandHistory(unittest.TestCase):
         hand_id = game.current_hand_id
         
         # Simple hand - player1 folds, player2 wins
-        game.process_action(player1, PlayerAction.FOLD)
+        run_action(game, player1, PlayerAction.FOLD)
         
         # Get player stats
         stats1 = self.hand_history_repo.get_player_stats("player1")
@@ -375,7 +385,7 @@ class TestHandHistory(unittest.TestCase):
         hand_id = game.current_hand_id
         
         # Simple hand - player1 folds
-        game.process_action(player1, PlayerAction.FOLD)
+        run_action(game, player1, PlayerAction.FOLD)
         
         # Get hand history
         hand_history = self.hand_history_repo.get(hand_id)
@@ -440,7 +450,7 @@ class TestHandHistory(unittest.TestCase):
         first_hand_id = game.current_hand_id
         
         # Simple hand - player1 folds
-        game.process_action(player1, PlayerAction.FOLD)
+        run_action(game, player1, PlayerAction.FOLD)
         
         # Start second hand
         game.move_button()
@@ -451,7 +461,7 @@ class TestHandHistory(unittest.TestCase):
         self.assertNotEqual(first_hand_id, second_hand_id)
         
         # Play second hand - player2 folds
-        game.process_action(player2, PlayerAction.FOLD)
+        run_action(game, player2, PlayerAction.FOLD)
         
         # Get hands by game
         game_hands = self.hand_history_repo.get_by_game("test_game_id")

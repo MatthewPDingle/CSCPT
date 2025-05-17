@@ -126,7 +126,7 @@ async def test_ai_turn_triggering(reset_game_service, mock_memory_integration):
         # If current player is human, make a move to get to AI's turn
         if from_domain_current_player.is_human:
             # Mock process_action to make a human action
-            poker_game.process_action(current_player, PokerPlayerAction.CALL, None)
+            asyncio.run(poker_game.process_action(current_player, PokerPlayerAction.CALL, None))
             
             # Update current_player to the next player
             active_players = [p for p in poker_game.players 
@@ -329,7 +329,7 @@ async def test_error_handling_in_ai_action(reset_game_service, mock_memory_integ
         # If current player is human, make a move to get to AI's turn
         if from_domain_current_player.is_human:
             # Mock process_action to make a human action
-            poker_game.process_action(current_player, PokerPlayerAction.CALL, None)
+            asyncio.run(poker_game.process_action(current_player, PokerPlayerAction.CALL, None))
             
             # Update current_player to the next player
             active_players = [p for p in poker_game.players 
