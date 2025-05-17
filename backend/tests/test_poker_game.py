@@ -1,9 +1,19 @@
 """
 Tests for the poker game logic.
 """
+import asyncio
+from unittest.mock import AsyncMock
+
 import pytest
 from app.core.cards import Card, Rank, Suit
-from app.core.poker_game import PokerGame, Player, PlayerAction, PlayerStatus, BettingRound, Pot
+from app.core.poker_game import (
+    PokerGame,
+    Player,
+    PlayerAction,
+    PlayerStatus,
+    BettingRound,
+    Pot,
+)
 
 
 def setup_test_game(num_players=4, starting_chips=1000):
@@ -1047,3 +1057,32 @@ def test_betting_across_multiple_rounds():
     # Second player makes a valid raise
     valid_raise_result = game.process_action(player, PlayerAction.RAISE, 50)
     assert valid_raise_result is not False
+
+
+@pytest.mark.asyncio
+async def test_round_bets_finalized_notification(monkeypatch):
+    """Ensure round_bets_finalized event is emitted when a round ends."""
+    game = PokerGame(small_blind=5, big_blind=10, game_id="test_game")
+
+    game.add_player("p1", "Player 1", 100)
+    game.add_player("p2", "Player 2", 100)
+
+    game.start_hand()
+
+    game.to_act = set()
+
+    mock_notify = AsyncMock()
+    monkeypatch.setattr(
+        "app.core.websocket.game_notifier.notify_round_bets_finalized", mock_notify
+    )
+
+    game._end_betting_round()
+
+    await asyncio.sleep(0.1)
+
+    mock_notify.assert_called_once()
+    args = mock_notify.call_args[0]
+    assert args[0] == "test_game"
+    assert isinstance(args[1], list)
+    assert args[2] == sum(pot.amount for pot in game.pots)
+    assert game.current_round == BettingRound.FLOP
