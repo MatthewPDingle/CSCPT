@@ -31,7 +31,7 @@ load_dotenv()
 
 # List of all models to test with their API IDs
 GEMINI_MODELS = [
-    "gemini-2.5-pro",  # Maps to gemini-2.5-pro-exp-03-25
+    "gemini-2.5-pro",  # Maps to gemini-2.5-pro-preview-03-25
     "gemini-2.0-flash",  # Maps to gemini-2.0-flash-001
     "gemini-2.0-flash-thinking"  # Maps to gemini-2.0-flash-thinking-exp-01-21
 ]
