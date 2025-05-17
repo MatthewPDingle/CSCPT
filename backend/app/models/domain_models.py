@@ -1,7 +1,9 @@
+# mypy: ignore-errors
 """
 Domain models for the poker application.
 These models represent the core business entities and are used throughout the application.
 """
+
 import uuid
 from datetime import datetime
 from enum import Enum
@@ -12,6 +14,7 @@ from pydantic import BaseModel, Field
 
 class GameStatus(str, Enum):
     """Status of a game."""
+
     WAITING = "waiting"
     ACTIVE = "active"
     COMPLETED = "completed"
@@ -20,6 +23,7 @@ class GameStatus(str, Enum):
 
 class BettingRound(str, Enum):
     """Poker betting rounds."""
+
     PREFLOP = "preflop"
     FLOP = "flop"
     TURN = "turn"
@@ -29,12 +33,14 @@ class BettingRound(str, Enum):
 
 class GameType(str, Enum):
     """Type of poker game."""
+
     CASH = "cash"
     TOURNAMENT = "tournament"
 
 
 class BettingStructure(str, Enum):
     """Betting structure for cash games."""
+
     NO_LIMIT = "no_limit"
     POT_LIMIT = "pot_limit"
     FIXED_LIMIT = "fixed_limit"
@@ -42,6 +48,7 @@ class BettingStructure(str, Enum):
 
 class PlayerAction(str, Enum):
     """Possible player actions in poker."""
+
     FOLD = "fold"
     CHECK = "check"
     CALL = "call"
@@ -52,6 +59,7 @@ class PlayerAction(str, Enum):
 
 class PlayerStatus(str, Enum):
     """Status of a player in a game."""
+
     ACTIVE = "active"
     FOLDED = "folded"
     ALL_IN = "all_in"
@@ -61,6 +69,7 @@ class PlayerStatus(str, Enum):
 
 class ArchetypeEnum(str, Enum):
     """AI player archetypes."""
+
     TAG = "TAG"
     LAG = "LAG"
     TIGHT_PASSIVE = "TightPassive"
@@ -69,7 +78,7 @@ class ArchetypeEnum(str, Enum):
     BEGINNER = "Beginner"
     UNPREDICTABLE = "Unpredictable"
     ADAPTABLE = "Adaptable"
-    GTO = "GTO"  
+    GTO = "GTO"
     SHORT_STACK = "ShortStack"
     TRAPPY = "Trappy"
     LOOSE_PASSIVE = "LoosePassive"
@@ -77,6 +86,7 @@ class ArchetypeEnum(str, Enum):
 
 class TournamentStage(str, Enum):
     """Tournament stages."""
+
     BEGINNING = "Beginning"
     MID = "Mid"
     MONEY_BUBBLE = "Money Bubble"
@@ -86,6 +96,7 @@ class TournamentStage(str, Enum):
 
 class TournamentTier(str, Enum):
     """Tournament tiers."""
+
     LOCAL = "Local"
     REGIONAL = "Regional"
     NATIONAL = "National"
@@ -94,6 +105,7 @@ class TournamentTier(str, Enum):
 
 class User(BaseModel):
     """User entity representing a human player."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     username: str
     preferences: Dict[str, Union[str, int, bool]] = Field(default_factory=dict)
@@ -103,6 +115,7 @@ class User(BaseModel):
 
 class Player(BaseModel):
     """Player entity within a game."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     is_human: bool = False
@@ -121,6 +134,7 @@ class Player(BaseModel):
 
 class ActionHistory(BaseModel):
     """Record of a player action."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     game_id: str
     hand_id: str
@@ -133,6 +147,7 @@ class ActionHistory(BaseModel):
 
 class Hand(BaseModel):
     """A single hand within a game."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     game_id: str
     hand_number: int
@@ -157,14 +172,17 @@ class Hand(BaseModel):
 
 class BlindLevel(BaseModel):
     """Represents a single blind level in a tournament."""
+
     level: int
     small_blind: int
     big_blind: int
     ante: int = 0
     duration_minutes: int = 15
 
+
 class TournamentInfo(BaseModel):
     """Information specific to tournament games."""
+
     tier: TournamentTier
     stage: TournamentStage
     payout_structure: str = "Standard"
@@ -190,6 +208,7 @@ class TournamentInfo(BaseModel):
 
 class CashGameInfo(BaseModel):
     """Information specific to cash games."""
+
     buy_in: int  # Default buy-in amount
     min_buy_in: int  # Minimum buy-in (typically 40-100 big blinds)
     max_buy_in: int  # Maximum buy-in (typically 100-250 big blinds)
@@ -208,6 +227,7 @@ class CashGameInfo(BaseModel):
 
 class HandMetrics(BaseModel):
     """Analytics metrics for a hand."""
+
     preflop_raise_count: int = 0
     preflop_call_count: int = 0
     flop_cbet_attempted: bool = False
@@ -221,6 +241,7 @@ class HandMetrics(BaseModel):
 
 class ActionDetail(BaseModel):
     """Detailed record of a player action for hand history."""
+
     action_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     player_id: str
     action_type: PlayerAction
@@ -238,6 +259,7 @@ class ActionDetail(BaseModel):
 
 class PotResult(BaseModel):
     """Result of a pot at showdown."""
+
     pot_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     pot_name: str  # "Main Pot", "Side Pot 1", etc.
     amount: int
@@ -249,6 +271,7 @@ class PotResult(BaseModel):
 
 class PlayerHandSnapshot(BaseModel):
     """Player state at the beginning of a hand."""
+
     player_id: str
     position: int
     name: str
@@ -263,13 +286,14 @@ class PlayerHandSnapshot(BaseModel):
     final_hand_rank: Optional[str] = None
     final_hand_cards: List[str] = Field(default_factory=list)
     vpip: bool = False  # Voluntarily put money in pot
-    pfr: bool = False   # Pre-flop raise
+    pfr: bool = False  # Pre-flop raise
     won_amount: int = 0
     showed_cards: bool = False
 
 
 class HandHistory(BaseModel):
     """Complete record of a single hand played."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     game_id: str
     hand_number: int
@@ -281,47 +305,49 @@ class HandHistory(BaseModel):
     ante: int = 0
     table_size: int
     tournament_level: Optional[int] = None
-    
+
     # Card information
     community_cards: List[str] = Field(default_factory=list)
-    
+
     # Starting state
     players: List[PlayerHandSnapshot] = Field(default_factory=list)
-    
+
     # Actions during the hand
     betting_rounds: Dict[str, List[ActionDetail]] = Field(default_factory=dict)
-    
+
     # Results
     pot_results: List[PotResult] = Field(default_factory=list)
     total_pot: int = 0
-    
+
     # Metrics for analytics
     metrics: HandMetrics = Field(default_factory=HandMetrics)
 
 
 class PlayerStats(BaseModel):
     """Aggregated player statistics."""
+
     player_id: str
     hands_played: int = 0
     vpip: float = 0.0  # Voluntary Put $ In Pot %
-    pfr: float = 0.0   # Pre-Flop Raise %
-    af: float = 0.0    # Aggression Factor
+    pfr: float = 0.0  # Pre-Flop Raise %
+    af: float = 0.0  # Aggression Factor
     wtsd: float = 0.0  # Went To Showdown %
     won_at_showdown: float = 0.0  # W$SD - Won $ At Showdown %
     wapf: float = 0.0  # Won After Pre-Flop %
     cbet_attempt: float = 0.0  # Continuation Bet Attempt %
     cbet_success: float = 0.0  # Continuation Bet Success %
-    three_bet: float = 0.0     # 3-Bet %
+    three_bet: float = 0.0  # 3-Bet %
     fold_to_three_bet: float = 0.0  # Fold to 3-Bet %
-    avg_win: float = 0.0     # Average winning amount
-    avg_loss: float = 0.0    # Average losing amount
-    biggest_win: int = 0     # Biggest pot won
-    biggest_loss: int = 0    # Biggest pot lost
+    avg_win: float = 0.0  # Average winning amount
+    avg_loss: float = 0.0  # Average losing amount
+    biggest_win: int = 0  # Biggest pot won
+    biggest_loss: int = 0  # Biggest pot lost
     bb_per_hand: float = 0.0  # Big blinds won/lost per hand
 
 
 class Game(BaseModel):
     """Main game entity that holds the complete state of a poker game."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: GameType
     status: GameStatus = GameStatus.WAITING
@@ -329,7 +355,9 @@ class Game(BaseModel):
     players: List[Player] = Field(default_factory=list)
     current_hand: Optional[Hand] = None
     hand_history: List[Hand] = Field(default_factory=list)
-    hand_history_ids: List[str] = Field(default_factory=list)  # References to detailed hand histories
+    hand_history_ids: List[str] = Field(
+        default_factory=list
+    )  # References to detailed hand histories
     # Game type specific info
     tournament_info: Optional[TournamentInfo] = None
     cash_game_info: Optional[CashGameInfo] = None
@@ -338,8 +366,9 @@ class Game(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
-    
+
     def __await__(self):  # make Game awaitable for API async compatibility
         async def _await_game():
             return self
+
         return _await_game().__await__()

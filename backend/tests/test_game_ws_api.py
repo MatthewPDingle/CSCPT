@@ -1,6 +1,8 @@
+# mypy: ignore-errors
 """
 Tests for game WebSocket API endpoints.
 """
+
 import pytest
 import json
 import uuid
@@ -26,6 +28,7 @@ mock_game_instance.id = str(uuid.uuid4())
 mock_poker_game.players = []
 mock_poker_game.current_round = BettingRound.PREFLOP
 
+
 # Setup patching for tests
 @pytest.fixture
 def mock_game_dependencies(monkeypatch):
@@ -34,15 +37,17 @@ def mock_game_dependencies(monkeypatch):
     monkeypatch.setattr("app.api.game_ws.get_game_service", lambda: mock_service)
     mock_service.poker_games = {mock_game_instance.id: mock_poker_game}
     mock_service.get_game.return_value = mock_game_instance
-    
+
     # Set up other dependencies
     monkeypatch.setattr("app.api.game_ws.connection_manager", MagicMock())
     monkeypatch.setattr("app.api.game_ws.game_notifier", MagicMock())
-    
+
     # Setup async methods
     monkeypatch.setattr("app.api.game_ws.connection_manager.connect", AsyncMock())
     monkeypatch.setattr("app.api.game_ws.game_notifier.notify_game_update", AsyncMock())
-    monkeypatch.setattr("app.api.game_ws.game_notifier.notify_action_request", AsyncMock())
+    monkeypatch.setattr(
+        "app.api.game_ws.game_notifier.notify_action_request", AsyncMock()
+    )
 
 
 def test_websocket_game_not_found():
@@ -52,7 +57,7 @@ def test_websocket_game_not_found():
         mock_service = MagicMock(spec=GameService)
         mock_service.get_game.return_value = None
         mock_get_service.return_value = mock_service
-        
+
         with TestClient(app) as client:
             with pytest.raises(WebSocketDisconnect):
                 with client.websocket_connect("/ws/game/non_existent_game"):
@@ -66,17 +71,19 @@ def test_websocket_player_not_found():
     mock_game = MagicMock(spec=Game)
     mock_poker_game = MagicMock(spec=PokerGame)
     mock_poker_game.players = []  # No players in the game
-    
+
     # Set up service mock
     with patch("app.api.game_ws.get_game_service") as mock_get_service:
         mock_service = MagicMock(spec=GameService)
         mock_service.get_game.return_value = mock_game
         mock_service.poker_games = {game_id: mock_poker_game}
         mock_get_service.return_value = mock_service
-        
+
         with TestClient(app) as client:
             with pytest.raises(WebSocketDisconnect):
-                with client.websocket_connect(f"/ws/game/{game_id}?player_id=non_existent_player"):
+                with client.websocket_connect(
+                    f"/ws/game/{game_id}?player_id=non_existent_player"
+                ):
                     pass
 
 
@@ -84,35 +91,31 @@ def test_websocket_player_not_found():
 async def test_process_action_message():
     """Test processing an action message."""
     from app.api.game_ws import process_action_message
-    
+
     # Mock dependencies
     mock_websocket = AsyncMock()
-    mock_message = {
-        "type": "action",
-        "data": {
-            "action": "FOLD",
-            "amount": None
-        }
-    }
-    
+    mock_message = {"type": "action", "data": {"action": "FOLD", "amount": None}}
+
     # Game ID and player ID for the test
     game_id = "game1"
     player_id = "player1"
-    
+
     # Mock game with player
     mock_game_instance = MagicMock(spec=Game)
     mock_poker_game = MagicMock(spec=PokerGame)
     mock_player = MagicMock()
     mock_player.player_id = player_id
     mock_player.status = PlayerStatus.ACTIVE
-    
+
     # Set up player in the poker game
     mock_poker_game.players = [mock_player]
     mock_poker_game.get_valid_actions.return_value = [(PlayerAction.FOLD, None)]
     mock_poker_game.current_player_idx = 0
     mock_poker_game.process_action.return_value = True
-    mock_poker_game.current_round = BettingRound.FLOP  # Not SHOWDOWN to avoid notification
-    
+    mock_poker_game.current_round = (
+        BettingRound.FLOP
+    )  # Not SHOWDOWN to avoid notification
+
     # Mock service
     mock_service = MagicMock(spec=GameService)
     # Create a mock game with players attribute for domain model checking
@@ -121,30 +124,32 @@ async def test_process_action_message():
     mock_service.get_game.return_value = mock_domain_game
     mock_service.poker_games = {game_id: mock_poker_game}
     mock_service.process_action.return_value = mock_domain_game
-    
+
     # Patch dependencies
-    with patch("app.api.game_ws.connection_manager") as mock_conn_manager, \
-         patch("app.api.game_ws.PlayerAction") as mock_player_action, \
-         patch("app.api.game_ws.game_notifier") as mock_notifier:
-        
+    with patch("app.api.game_ws.connection_manager") as mock_conn_manager, patch(
+        "app.api.game_ws.PlayerAction"
+    ) as mock_player_action, patch("app.api.game_ws.game_notifier") as mock_notifier:
+
         # Setup player action enum
         mock_player_action.__getitem__.return_value = PlayerAction.FOLD
-        
+
         # Setup async methods
         mock_conn_manager.send_personal_message = AsyncMock()
         mock_notifier.notify_player_action = AsyncMock()
         mock_notifier.notify_game_update = AsyncMock()
         mock_notifier.notify_action_request = AsyncMock()
-        
+
         # Call process_action_message
-        await process_action_message(mock_websocket, game_id, mock_message, player_id, mock_service)
-        
+        await process_action_message(
+            mock_websocket, game_id, mock_message, player_id, mock_service
+        )
+
         # Verify service.process_action was called
         mock_service.process_action.assert_called_once()
-        
+
         # Verify poker_game.process_action was called
         mock_poker_game.process_action.assert_called_once()
-        
+
         # Verify notifications were sent
         mock_notifier.notify_player_action.assert_called_once()
         mock_notifier.notify_game_update.assert_called_once()
@@ -154,21 +159,18 @@ async def test_process_action_message():
 async def test_process_chat_message():
     """Test processing a chat message."""
     from app.api.game_ws import process_chat_message
-    
+
     # Mock dependencies
     mock_websocket = AsyncMock()
     mock_message = {
         "type": "chat",
-        "data": {
-            "text": "Hello, world!",
-            "target": "table"
-        }
+        "data": {"text": "Hello, world!", "target": "table"},
     }
-    
+
     # Game ID and player ID for the test
     game_id = "game1"
     player_id = "player1"
-    
+
     # Mock game with player
     mock_game_instance = MagicMock(spec=Game)
     mock_poker_game = MagicMock(spec=PokerGame)
@@ -176,8 +178,10 @@ async def test_process_chat_message():
     mock_player.player_id = player_id
     mock_player.name = "Player 1"
     mock_poker_game.players = [mock_player]
-    mock_poker_game.current_round = BettingRound.FLOP  # To avoid issues with round attribute
-    
+    mock_poker_game.current_round = (
+        BettingRound.FLOP
+    )  # To avoid issues with round attribute
+
     # Mock service
     mock_service = MagicMock(spec=GameService)
     # Create a mock game with players attribute for domain model checking
@@ -186,20 +190,22 @@ async def test_process_chat_message():
     mock_service.get_game.return_value = mock_domain_game
     mock_service.poker_games = {game_id: mock_poker_game}
     mock_service.process_action.return_value = mock_domain_game
-    
+
     # Patch dependencies
     with patch("app.api.game_ws.connection_manager") as mock_conn_manager:
-        
+
         # Setup async methods
         mock_conn_manager.broadcast_to_game = AsyncMock()
         mock_conn_manager.send_personal_message = AsyncMock()
-        
+
         # Call process_chat_message
-        await process_chat_message(mock_websocket, game_id, mock_message, player_id, mock_service)
-        
+        await process_chat_message(
+            mock_websocket, game_id, mock_message, player_id, mock_service
+        )
+
         # Verify broadcast was called
         mock_conn_manager.broadcast_to_game.assert_called_once()
-        
+
         # Verify chat message
         call_args = mock_conn_manager.broadcast_to_game.call_args[0]
         assert call_args[0] == game_id

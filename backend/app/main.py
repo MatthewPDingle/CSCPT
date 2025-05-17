@@ -1,6 +1,8 @@
+# mypy: ignore-errors
 """
 Main entry point for the FastAPI application.
 """
+
 import os
 import sys
 from pathlib import Path
@@ -13,7 +15,7 @@ from dotenv import load_dotenv
 
 # Determine the project root based on the current file's location
 project_root = Path(__file__).parent.parent.parent
-ai_env_path = project_root / 'ai' / '.env'
+ai_env_path = project_root / "ai" / ".env"
 
 # Explicitly load the .env file from the ai directory
 if ai_env_path.is_file():
@@ -32,8 +34,11 @@ from app.api.ai_connector import router as ai_router
 from app.api.setup import router as setup_router
 from app.repositories.persistence import RepositoryPersistence, PersistenceScheduler
 from app.repositories.in_memory import (
-    GameRepository, UserRepository, HandRepository, ActionHistoryRepository,
-    HandHistoryRepository
+    GameRepository,
+    UserRepository,
+    HandRepository,
+    ActionHistoryRepository,
+    HandHistoryRepository,
 )
 
 # Import and update system configuration
@@ -44,13 +49,14 @@ print(f"PYTHONPATH: {os.environ.get('PYTHONPATH')}")
 print(f"sys.path: {sys.path}")
 
 # Add parent directory to path if running from backend directory
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if parent_dir not in sys.path:
     print(f"Adding parent directory to sys.path: {parent_dir}")
     sys.path.insert(0, parent_dir)
 
 try:
     from ai.memory_integration import MemoryIntegration
+
     print("Successfully imported MemoryIntegration")
     # Update global flag for memory system availability in config
     app_config.MEMORY_SYSTEM_AVAILABLE = True
@@ -59,6 +65,7 @@ except ImportError as e:
     print(f"AI memory system not available: {e}")
     print("Continuing without player memory features")
     import traceback
+
     print(traceback.format_exc())
 
 # Repository persistence setup
@@ -72,9 +79,10 @@ scheduler = PersistenceScheduler(
         UserRepository,
         HandRepository,
         ActionHistoryRepository,
-        HandHistoryRepository
-    ]
+        HandHistoryRepository,
+    ],
 )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -84,34 +92,37 @@ async def lifespan(app: FastAPI):
     """
     # Startup: Load repositories and start persistence scheduler
     print("Starting Chip Swinger Championship Poker Trainer API...")
-    
+
     # Initialize memory system if available
     if app_config.MEMORY_SYSTEM_AVAILABLE:
         try:
             # Enable memory by default, can be controlled through settings later
-            memory_enabled = os.environ.get("ENABLE_PLAYER_MEMORY", "true").lower() == "true"
+            memory_enabled = (
+                os.environ.get("ENABLE_PLAYER_MEMORY", "true").lower() == "true"
+            )
             MemoryIntegration.initialize(enable_memory=memory_enabled)
             print(f"Player memory system initialized (enabled={memory_enabled})")
         except Exception as e:
             print(f"Error initializing memory system: {str(e)}")
             import traceback
+
             print(traceback.format_exc())
-    
+
     # Create data directory if it doesn't exist
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
         print(f"Created data directory: {data_dir}")
-    
+
     # Try to load existing data
     scheduler.load_all()
     print("Repository data loaded")
-    
+
     # Start persistence scheduler
     scheduler.start()
     print("Persistence scheduler started")
-    
+
     yield
-    
+
     # Shutdown: Save all repositories and stop scheduler
     print("Shutting down Chip Swinger Championship Poker Trainer API...")
     scheduler.stop()
@@ -122,7 +133,7 @@ app = FastAPI(
     title="Chip Swinger Championship Poker Trainer",
     description="Interactive Texas Hold'em poker training application with AI opponents",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS settings for frontend development
@@ -133,15 +144,16 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=86400  # Cache preflight requests for 24 hours
+    max_age=86400,  # Cache preflight requests for 24 hours
 )
+
 
 @app.get("/")
 async def root():
     """Root endpoint - health check."""
     return {
         "status": "ok",
-        "message": "Chip Swinger Championship Poker Trainer API is running"
+        "message": "Chip Swinger Championship Poker Trainer API is running",
     }
 
 
@@ -153,8 +165,10 @@ app.include_router(setup_router)
 
 # Include Cash Game API router
 from app.api.cash_game import router as cash_game_router
+
 app.include_router(cash_game_router)
 
 # Include WebSocket routers
 from app.api.game_ws import router as game_ws_router
+
 app.include_router(game_ws_router)

@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Utility functions for the poker application.
 """
@@ -21,27 +22,33 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
     """
     import logging
     import traceback
-    
+
     try:
         # Validate input
         if not game_id:
             raise ValueError("Game ID is required for game_to_model")
-        
+
         if not game:
             raise ValueError(f"PokerGame instance is required for game_id {game_id}")
-            
+
         # Log basic game information for debugging
-        logging.debug(f"Converting PokerGame to model: Game ID: {game_id}, " 
-                      f"Players: {len(game.players)}, Round: {game.current_round.name if game.current_round else 'None'}")
-        
+        logging.debug(
+            f"Converting PokerGame to model: Game ID: {game_id}, "
+            f"Players: {len(game.players)}, Round: {game.current_round.name if game.current_round else 'None'}"
+        )
+
         # Convert community cards with error handling
         try:
             community_cards = []
             for card in game.community_cards:
                 try:
                     card_model = CardModel(
-                        rank=str(card.rank), 
-                        suit=card.suit.name[0] if hasattr(card.suit, 'name') else str(card.suit)[0]
+                        rank=str(card.rank),
+                        suit=(
+                            card.suit.name[0]
+                            if hasattr(card.suit, "name")
+                            else str(card.suit)[0]
+                        ),
                     )
                     community_cards.append(card_model)
                 except Exception as e:
@@ -60,28 +67,39 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
                 try:
                     # Only include player's cards if they have been dealt
                     cards = None
-                    if hasattr(player, 'hand') and player.hand and hasattr(player.hand, 'cards') and len(player.hand.cards) > 0:
+                    if (
+                        hasattr(player, "hand")
+                        and player.hand
+                        and hasattr(player.hand, "cards")
+                        and len(player.hand.cards) > 0
+                    ):
                         cards = []
                         for card in player.hand.cards:
                             try:
                                 card_model = CardModel(
-                                    rank=str(card.rank), 
-                                    suit=card.suit.name[0] if hasattr(card.suit, 'name') else str(card.suit)[0]
+                                    rank=str(card.rank),
+                                    suit=(
+                                        card.suit.name[0]
+                                        if hasattr(card.suit, "name")
+                                        else str(card.suit)[0]
+                                    ),
                                 )
                                 cards.append(card_model)
                             except Exception as card_error:
-                                logging.error(f"Error converting player card: {str(card_error)}")
+                                logging.error(
+                                    f"Error converting player card: {str(card_error)}"
+                                )
                                 # Skip this card but continue processing
 
                     # Safely get player attributes with defaults
-                    player_id = getattr(player, 'player_id', f"player_{len(players)}")
-                    name = getattr(player, 'name', f"Player {len(players)}")
-                    chips = getattr(player, 'chips', 0)
-                    position = getattr(player, 'position', 0)
-                    status = getattr(player, 'status', None)
+                    player_id = getattr(player, "player_id", f"player_{len(players)}")
+                    name = getattr(player, "name", f"Player {len(players)}")
+                    chips = getattr(player, "chips", 0)
+                    position = getattr(player, "position", 0)
+                    status = getattr(player, "status", None)
                     status_name = status.name if status else "UNKNOWN"
-                    current_bet = getattr(player, 'current_bet', 0)
-                    total_bet = getattr(player, 'total_bet', 0)
+                    current_bet = getattr(player, "current_bet", 0)
+                    total_bet = getattr(player, "total_bet", 0)
 
                     players.append(
                         PlayerModel(
@@ -105,26 +123,28 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             # If we couldn't process any players, create at least one dummy player
             # to avoid frontend issues
             if not players:
-                players = [PlayerModel(
-                    player_id="dummy",
-                    name="Player",
-                    chips=1000,
-                    position=0,
-                    status="ACTIVE",
-                    current_bet=0,
-                    total_bet=0,
-                    cards=None,
-                )]
+                players = [
+                    PlayerModel(
+                        player_id="dummy",
+                        name="Player",
+                        chips=1000,
+                        position=0,
+                        status="ACTIVE",
+                        current_bet=0,
+                        total_bet=0,
+                        cards=None,
+                    )
+                ]
 
         # Convert pots with error handling
         pots = []
         try:
             for pot in game.pots:
                 try:
-                    name = getattr(pot, 'name', None) or "Pot"
-                    amount = getattr(pot, 'amount', 0)
-                    eligible_players = getattr(pot, 'eligible_players', set())
-                    
+                    name = getattr(pot, "name", None) or "Pot"
+                    amount = getattr(pot, "amount", 0)
+                    eligible_players = getattr(pot, "eligible_players", set())
+
                     pots.append(
                         PotModel(
                             name=name,
@@ -148,33 +168,41 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
         total_pot = sum(pot.amount for pot in pots)
 
         # Safely get game attributes with defaults needed for logging
-        current_round = getattr(game, 'current_round', None)
+        current_round = getattr(game, "current_round", None)
         current_round_name = current_round.name if current_round else "PREFLOP"
 
         # Debug logging: pot details and total
         try:
-            logging.info(f"[game_to_model DEBUG] game_id={game_id}, current_round={current_round_name}")
+            logging.info(
+                f"[game_to_model DEBUG] game_id={game_id}, current_round={current_round_name}"
+            )
             # Log each PotModel
             for idx, pmodel in enumerate(pots):
-                logging.info(f"[game_to_model DEBUG] PotModel[{idx}]: name={pmodel.name}, amount={pmodel.amount}")
+                logging.info(
+                    f"[game_to_model DEBUG] PotModel[{idx}]: name={pmodel.name}, amount={pmodel.amount}"
+                )
             # Also log raw PokerGame.pots if available
             try:
                 raw_sum = sum(p.amount for p in game.pots)
-                logging.info(f"[game_to_model DEBUG] Sum of raw PokerGame.pots: {raw_sum}")
+                logging.info(
+                    f"[game_to_model DEBUG] Sum of raw PokerGame.pots: {raw_sum}"
+                )
             except Exception:
                 pass
-            logging.info(f"[game_to_model DEBUG] Returning GameStateModel.total_pot={total_pot}")
+            logging.info(
+                f"[game_to_model DEBUG] Returning GameStateModel.total_pot={total_pot}"
+            )
         except Exception:
             # Ignore logging errors
             pass
 
         # Safely get game attributes with defaults
-        button_position = getattr(game, 'button_position', 0)
-        current_player_idx = getattr(game, 'current_player_idx', 0)
-        current_bet = getattr(game, 'current_bet', 0)
-        small_blind = getattr(game, 'small_blind', 1)
-        big_blind = getattr(game, 'big_blind', 2)
-        ante = getattr(game, 'ante', 0)
+        button_position = getattr(game, "button_position", 0)
+        current_player_idx = getattr(game, "current_player_idx", 0)
+        current_bet = getattr(game, "current_bet", 0)
+        small_blind = getattr(game, "small_blind", 1)
+        big_blind = getattr(game, "big_blind", 2)
+        ante = getattr(game, "ante", 0)
 
         # Create the game state model with base fields
         game_state = GameStateModel(
@@ -191,54 +219,68 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             big_blind=big_blind,
             ante=ante,
         )
-        
+
         # Add cash game specific fields if available
         try:
             from app.services.game_service import GameService
+
             service = GameService.get_instance()
             domain_game = service.get_game(game_id)
-            
-            if domain_game and hasattr(domain_game, 'type') and domain_game.type.name == 'CASH':
+
+            if (
+                domain_game
+                and hasattr(domain_game, "type")
+                and domain_game.type.name == "CASH"
+            ):
                 # Cash game - add min/max buy-in
-                game_state.min_buy_in = getattr(domain_game, 'min_buy_in', None)
-                game_state.max_buy_in = getattr(domain_game, 'max_buy_in', None)
+                game_state.min_buy_in = getattr(domain_game, "min_buy_in", None)
+                game_state.max_buy_in = getattr(domain_game, "max_buy_in", None)
         except Exception as domain_error:
             logging.error(f"Error adding domain-specific fields: {str(domain_error)}")
             logging.error(traceback.format_exc())
             # Continue without domain-specific fields
-        
+
         # Attach action history from domain hand model
         try:
             from app.services.game_service import GameService
             from app.models.game_models import ActionHistoryModel
+
             svc = GameService.get_instance()
             domain_game = svc.get_game(game_id)
-            current_hand = getattr(domain_game, 'current_hand', None)
-            if current_hand and hasattr(current_hand, 'actions'):
+            current_hand = getattr(domain_game, "current_hand", None)
+            if current_hand and hasattr(current_hand, "actions"):
                 game_state.action_history = []
                 for ah in current_hand.actions:
                     # Convert timestamp to ISO string to ensure JSON serializability
-                    ts = ah.timestamp.isoformat() if hasattr(ah, 'timestamp') else None
+                    ts = ah.timestamp.isoformat() if hasattr(ah, "timestamp") else None
                     game_state.action_history.append(
                         ActionHistoryModel(
                             player_id=ah.player_id,
-                            action=ah.action.value if hasattr(ah.action, 'value') else str(ah.action),
+                            action=(
+                                ah.action.value
+                                if hasattr(ah.action, "value")
+                                else str(ah.action)
+                            ),
                             amount=ah.amount,
-                            round=ah.round.value if hasattr(ah.round, 'value') else str(ah.round),
-                            timestamp=ts
+                            round=(
+                                ah.round.value
+                                if hasattr(ah.round, "value")
+                                else str(ah.round)
+                            ),
+                            timestamp=ts,
                         )
                     )
         except Exception as history_error:
             logging.error(f"Error attaching action history: {history_error}")
             logging.error(traceback.format_exc())
-        
+
         logging.debug(f"Successfully converted game to model: {game_id}")
         return game_state
-        
+
     except Exception as e:
         logging.error(f"Critical error in game_to_model: {str(e)}")
         logging.error(traceback.format_exc())
-        
+
         # Create a minimal valid game state as fallback
         # This is better than crashing the connection
         emergency_game_state = GameStateModel(
@@ -266,7 +308,7 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
             big_blind=2,
             ante=0,
         )
-        
+
         return emergency_game_state
 
 

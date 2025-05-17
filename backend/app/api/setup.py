@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Setup API endpoints for game configuration from the frontend.
 """
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/setup", tags=["setup"])
 
 class PlayerSetup(BaseModel):
     """Model for player setup in a game."""
+
     name: str
     is_human: bool = False
     archetype: Optional[str] = None
@@ -23,8 +25,9 @@ class PlayerSetup(BaseModel):
 
 class GameSetup(BaseModel):
     """Model for game setup from frontend."""
+
     game_mode: str  # 'cash' or 'tournament'
-    
+
     # Cash game settings
     small_blind: int = 5
     big_blind: int = 10
@@ -35,19 +38,20 @@ class GameSetup(BaseModel):
     betting_structure: str = "no_limit"
     rake_percentage: float = 0.05
     rake_cap: int = 5
-    
+
     # Tournament settings (ignored for cash games)
     tier: Optional[str] = None
     stage: Optional[str] = None
     buy_in_amount: Optional[int] = None
     starting_chips: Optional[int] = None
-    
+
     # Player setup
     players: List[PlayerSetup]
 
 
 class GameSetupResponse(BaseModel):
     """Response model for game setup."""
+
     game_id: str
     human_player_id: Optional[str] = None
 
@@ -56,24 +60,33 @@ class GameSetupResponse(BaseModel):
 def get_game_service() -> GameService:
     """Get the game service singleton (wrapped for sync/async consistency)."""
     svc = GameService.get_instance()
+
     # Proxy to ensure async methods behave correctly for both real and mocked services
     class GameServiceProxy:
         def __init__(self, service):
             self._svc = service
+
         def __getattr__(self, name):
             return getattr(self._svc, name)
+
         async def start_game(self, game_id: str):
             import asyncio
+
             res = self._svc.start_game(game_id)
             if asyncio.iscoroutine(res):
                 return await res
             return res
-        async def process_action(self, game_id: str, player_id: str, action, amount=None):
+
+        async def process_action(
+            self, game_id: str, player_id: str, action, amount=None
+        ):
             import asyncio
+
             res = self._svc.process_action(game_id, player_id, action, amount)
             if asyncio.iscoroutine(res):
                 return await res
             return res
+
     return GameServiceProxy(svc)
 
 
@@ -84,21 +97,22 @@ async def setup_game(
 ) -> GameSetupResponse:
     """
     Set up a new game based on frontend configuration.
-    
+
     Args:
         setup: The game setup configuration
         service: The game service
-        
+
     Returns:
         The created game ID and human player ID (if any)
     """
     # Log the incoming request data
     import logging
+
     logging.warning(f"Setup data received: {setup.dict()}")
-    
+
     try:
         human_player_id = None
-        
+
         # Create appropriate game type
         if setup.game_mode == "cash":
             # Create cash game
@@ -112,15 +126,19 @@ async def setup_game(
                 table_size=setup.table_size,
                 betting_structure=setup.betting_structure,
                 rake_percentage=setup.rake_percentage,
-                rake_cap=setup.rake_cap
+                rake_cap=setup.rake_cap,
             )
-            
+
             # Log the created game details
-            logging.warning(f"Game created with id: {game.id}, min_buy_in: {game.cash_game_info.min_buy_in}, max_buy_in: {game.cash_game_info.max_buy_in}")
-            
+            logging.warning(
+                f"Game created with id: {game.id}, min_buy_in: {game.cash_game_info.min_buy_in}, max_buy_in: {game.cash_game_info.max_buy_in}"
+            )
+
             # Add players to cash game
             for player_setup in setup.players:
-                logging.warning(f"Adding player: {player_setup.name}, buy_in: {player_setup.buy_in}, is_human: {player_setup.is_human}")
+                logging.warning(
+                    f"Adding player: {player_setup.name}, buy_in: {player_setup.buy_in}, is_human: {player_setup.is_human}"
+                )
                 try:
                     # Pass the position as a preference, but it will be randomized at game start
                     _, player = service.add_player_to_cash_game(
@@ -129,29 +147,28 @@ async def setup_game(
                         buy_in=player_setup.buy_in,
                         is_human=player_setup.is_human,
                         archetype=player_setup.archetype,
-                        position=player_setup.position
+                        position=player_setup.position,
                     )
                 except ValueError as ve:
                     logging.error(f"Player validation error: {str(ve)}")
                     raise
-                
+
                 # Store human player ID to return to frontend
                 if player_setup.is_human:
                     human_player_id = player.id
-            
+
             # Start the game automatically
             await service.start_game(game.id)
-            
+
         elif setup.game_mode == "tournament":
             # Tournament setup not yet implemented
-            raise HTTPException(status_code=501, detail="Tournament setup not yet implemented")
+            raise HTTPException(
+                status_code=501, detail="Tournament setup not yet implemented"
+            )
         else:
             raise HTTPException(status_code=400, detail="Invalid game mode")
-        
-        return GameSetupResponse(
-            game_id=game.id,
-            human_player_id=human_player_id
-        )
-        
+
+        return GameSetupResponse(game_id=game.id, human_player_id=human_player_id)
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

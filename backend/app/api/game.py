@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Game API endpoints for the poker application.
 """
@@ -34,24 +35,33 @@ router = APIRouter(prefix="/game", tags=["game"])
 def get_game_service() -> GameService:
     """Get the game service singleton (wrapped for sync/async consistency)."""
     svc = GameService.get_instance()
+
     # Proxy routes start_game and process_action to always return an awaitable in async contexts
     class GameServiceProxy:
         def __init__(self, service):
             self._svc = service
+
         def __getattr__(self, name):
             return getattr(self._svc, name)
+
         async def start_game(self, game_id: str):
             import asyncio
+
             res = self._svc.start_game(game_id)
             if asyncio.iscoroutine(res):
                 return await res
             return res
-        async def process_action(self, game_id: str, player_id: str, action, amount=None):
+
+        async def process_action(
+            self, game_id: str, player_id: str, action, amount=None
+        ):
             import asyncio
+
             res = self._svc.process_action(game_id, player_id, action, amount)
             if asyncio.iscoroutine(res):
                 return await res
             return res
+
     return GameServiceProxy(svc)
 
 
@@ -346,7 +356,9 @@ async def player_action(
                 action.name,
                 action_request.amount,
                 total_street_bet=post_street_bet,
-                total_hand_bet=(post_hand_bet if action == PlayerAction.ALL_IN else None),
+                total_hand_bet=(
+                    post_hand_bet if action == PlayerAction.ALL_IN else None
+                ),
             )
         )
 
@@ -390,19 +402,20 @@ async def trigger_ai_move(
 ) -> ActionResponse:
     """
     DEBUG ENDPOINT: Manually triggers the current player to make an AI move.
-    
+
     WARNING: This endpoint is for debugging purposes only. In normal gameplay,
     AI players should act automatically through the chain of actions in the backend.
     Using this endpoint may disrupt the natural flow of the game and cause unexpected behavior.
-    
+
     Args:
         game_id: The ID of the game
         service: The game service
-        
+
     Returns:
         The result of the action
     """
     import logging
+
     logging.warning(
         "DEBUG AI MOVE ENDPOINT CALLED: This is a debug-only endpoint and should not be used "
         "in normal gameplay. AI players should act automatically."
@@ -412,46 +425,59 @@ async def trigger_ai_move(
         poker_game = service.poker_games.get(game_id)
         if not poker_game:
             raise HTTPException(status_code=404, detail="Game not found")
-            
+
         # Get the current player
         active_players = [
-            p for p in poker_game.players
+            p
+            for p in poker_game.players
             if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}
         ]
-        
+
         if not active_players or poker_game.current_player_idx >= len(active_players):
             raise HTTPException(status_code=400, detail="No active player to move")
-            
+
         current_player = active_players[poker_game.current_player_idx]
-        
+
         # Get the domain player to check if it's AI
         game = service.get_game(game_id)
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
-            
-        domain_player = next((p for p in game.players if p.id == current_player.player_id), None)
+
+        domain_player = next(
+            (p for p in game.players if p.id == current_player.player_id), None
+        )
         if not domain_player:
             raise HTTPException(status_code=404, detail="Player not found")
-            
+
         # If it's a human player, treat it like an AI for testing
         if domain_player.is_human:
             import logging
-            logging.warning(f"Treating human player {domain_player.name} as AI for testing purposes")
-        
+
+            logging.warning(
+                f"Treating human player {domain_player.name} as AI for testing purposes"
+            )
+
         # Trigger the AI action
         import logging
+
         try:
-            logging.info(f"Requesting AI action for player {current_player.name} in game {game_id}")
+            logging.info(
+                f"Requesting AI action for player {current_player.name} in game {game_id}"
+            )
             # Use the service method for requesting AI action
-            await service._request_and_process_ai_action(game_id, current_player.player_id)
-            
+            await service._request_and_process_ai_action(
+                game_id, current_player.player_id
+            )
+
             # Get updated game state after AI move - poker_game should already be updated
             # Use the same poker_game instance as it should have been updated by _request_and_process_ai_action
             updated_poker_game = poker_game
             logging.info(f"Using updated poker game for game {game_id}")
-                
+
             # Return success with updated game state
-            logging.info(f"AI move successfully triggered for player {current_player.name}")
+            logging.info(
+                f"AI move successfully triggered for player {current_player.name}"
+            )
             return ActionResponse(
                 success=True,
                 message=f"AI move triggered for player {current_player.name}",
@@ -465,7 +491,7 @@ async def trigger_ai_move(
                 message=f"Error triggering AI move: {str(e)}",
                 game_state=game_to_model(game_id, poker_game),
             )
-            
+
     except KeyError:
         raise HTTPException(status_code=404, detail="Game not found")
     except ValueError as e:

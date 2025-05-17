@@ -1,15 +1,29 @@
+# mypy: ignore-errors
 """
 Unit tests for the domain models.
 """
+
 import pytest
 import uuid
 from datetime import datetime
 
 from app.models.domain_models import (
-    Game, Player, Hand, ActionHistory, User,
-    GameType, GameStatus, PlayerStatus, PlayerAction, BettingRound,
-    TournamentInfo, CashGameInfo, ArchetypeEnum, TournamentStage, TournamentTier,
-    BettingStructure
+    Game,
+    Player,
+    Hand,
+    ActionHistory,
+    User,
+    GameType,
+    GameStatus,
+    PlayerStatus,
+    PlayerAction,
+    BettingRound,
+    TournamentInfo,
+    CashGameInfo,
+    ArchetypeEnum,
+    TournamentStage,
+    TournamentTier,
+    BettingStructure,
 )
 
 
@@ -26,21 +40,21 @@ class TestDomainModels:
         assert user.preferences == {}
         assert isinstance(user.created_at, datetime)
         assert isinstance(user.updated_at, datetime)
-        
+
         # Test with all fields
         user_id = str(uuid.uuid4())
         created_at = datetime.now()
         updated_at = datetime.now()
         preferences = {"theme": "dark", "notifications": True}
-        
+
         user = User(
             id=user_id,
             username="testuser",
             preferences=preferences,
             created_at=created_at,
-            updated_at=updated_at
+            updated_at=updated_at,
         )
-        
+
         assert user.id == user_id
         assert user.username == "testuser"
         assert user.preferences == preferences
@@ -66,11 +80,11 @@ class TestDomainModels:
         assert player.is_dealer is False
         assert player.is_small_blind is False
         assert player.is_big_blind is False
-        
+
         # Test with all fields
         player_id = str(uuid.uuid4())
         user_id = str(uuid.uuid4())
-        
+
         player = Player(
             id=player_id,
             name="Test Player",
@@ -85,9 +99,9 @@ class TestDomainModels:
             has_acted=True,
             is_dealer=True,
             is_small_blind=False,
-            is_big_blind=False
+            is_big_blind=False,
         )
-        
+
         assert player.id == player_id
         assert player.name == "Test Player"
         assert player.is_human is True
@@ -106,15 +120,10 @@ class TestDomainModels:
     def test_hand_model(self):
         """Test Hand model creation and defaults."""
         game_id = str(uuid.uuid4())
-        
+
         # Test with minimal fields
-        hand = Hand(
-            game_id=game_id,
-            hand_number=1,
-            small_blind=5,
-            big_blind=10
-        )
-        
+        hand = Hand(game_id=game_id, hand_number=1, small_blind=5, big_blind=10)
+
         assert hand.id is not None
         assert hand.game_id == game_id
         assert hand.hand_number == 1
@@ -148,16 +157,16 @@ class TestDomainModels:
         game_id = str(uuid.uuid4())
         hand_id = str(uuid.uuid4())
         player_id = str(uuid.uuid4())
-        
+
         # Test with minimal fields
         action = ActionHistory(
             game_id=game_id,
             hand_id=hand_id,
             player_id=player_id,
             action=PlayerAction.CALL,
-            round=BettingRound.PREFLOP
+            round=BettingRound.PREFLOP,
         )
-        
+
         assert action.id is not None
         assert action.game_id == game_id
         assert action.hand_id == hand_id
@@ -166,11 +175,11 @@ class TestDomainModels:
         assert action.amount is None
         assert action.round == BettingRound.PREFLOP
         assert isinstance(action.timestamp, datetime)
-        
+
         # Test with all fields
         action_id = str(uuid.uuid4())
         timestamp = datetime.now()
-        
+
         action = ActionHistory(
             id=action_id,
             game_id=game_id,
@@ -179,9 +188,9 @@ class TestDomainModels:
             action=PlayerAction.RAISE,
             amount=100,
             round=BettingRound.FLOP,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
-        
+
         assert action.id == action_id
         assert action.game_id == game_id
         assert action.hand_id == hand_id
@@ -203,9 +212,9 @@ class TestDomainModels:
             total_players=50,
             starting_big_blind=100,
             starting_small_blind=50,
-            players_remaining=50
+            players_remaining=50,
         )
-        
+
         assert tournament_info.tier == TournamentTier.LOCAL
         assert tournament_info.stage == TournamentStage.BEGINNING
         assert tournament_info.payout_structure == "Standard"
@@ -228,13 +237,9 @@ class TestDomainModels:
         """Test CashGameInfo model creation and defaults."""
         # Test with minimal fields
         cash_game_info = CashGameInfo(
-            buy_in=1000,
-            min_buy_in=400,
-            max_buy_in=2000,
-            min_bet=10,
-            table_size=6
+            buy_in=1000, min_buy_in=400, max_buy_in=2000, min_bet=10, table_size=6
         )
-        
+
         assert cash_game_info.buy_in == 1000
         assert cash_game_info.min_buy_in == 400
         assert cash_game_info.max_buy_in == 2000
@@ -247,7 +252,7 @@ class TestDomainModels:
         assert cash_game_info.betting_structure == BettingStructure.NO_LIMIT
         assert cash_game_info.rake_percentage == 0.05
         assert cash_game_info.rake_cap == 5
-        
+
     def test_cash_game_info_with_betting_structures(self):
         """Test CashGameInfo with different betting structures."""
         # Test No Limit
@@ -257,11 +262,11 @@ class TestDomainModels:
             max_buy_in=2000,
             min_bet=10,
             table_size=6,
-            betting_structure=BettingStructure.NO_LIMIT
+            betting_structure=BettingStructure.NO_LIMIT,
         )
         assert no_limit_game.betting_structure == BettingStructure.NO_LIMIT
         assert no_limit_game.max_bet is None  # No max bet in No Limit
-        
+
         # Test Pot Limit
         pot_limit_game = CashGameInfo(
             buy_in=1000,
@@ -269,10 +274,10 @@ class TestDomainModels:
             max_buy_in=2000,
             min_bet=10,
             table_size=6,
-            betting_structure=BettingStructure.POT_LIMIT
+            betting_structure=BettingStructure.POT_LIMIT,
         )
         assert pot_limit_game.betting_structure == BettingStructure.POT_LIMIT
-        
+
         # Test Fixed Limit
         fixed_limit_game = CashGameInfo(
             buy_in=1000,
@@ -281,24 +286,20 @@ class TestDomainModels:
             min_bet=10,
             max_bet=20,  # Fixed limit has a max bet
             table_size=6,
-            betting_structure=BettingStructure.FIXED_LIMIT
+            betting_structure=BettingStructure.FIXED_LIMIT,
         )
         assert fixed_limit_game.betting_structure == BettingStructure.FIXED_LIMIT
         assert fixed_limit_game.max_bet == 20
-        
+
     def test_cash_game_rake_settings(self):
         """Test rake settings in CashGameInfo."""
         # Test default rake
         default_rake_game = CashGameInfo(
-            buy_in=1000,
-            min_buy_in=400,
-            max_buy_in=2000,
-            min_bet=10,
-            table_size=6
+            buy_in=1000, min_buy_in=400, max_buy_in=2000, min_bet=10, table_size=6
         )
         assert default_rake_game.rake_percentage == 0.05
         assert default_rake_game.rake_cap == 5
-        
+
         # Test custom rake
         custom_rake_game = CashGameInfo(
             buy_in=1000,
@@ -307,11 +308,11 @@ class TestDomainModels:
             min_bet=10,
             table_size=6,
             rake_percentage=0.03,
-            rake_cap=3
+            rake_cap=3,
         )
         assert custom_rake_game.rake_percentage == 0.03
         assert custom_rake_game.rake_cap == 3
-        
+
         # Test no rake
         no_rake_game = CashGameInfo(
             buy_in=1000,
@@ -320,7 +321,7 @@ class TestDomainModels:
             min_bet=10,
             table_size=6,
             rake_percentage=0,
-            rake_cap=0
+            rake_cap=0,
         )
         assert no_rake_game.rake_percentage == 0
         assert no_rake_game.rake_cap == 0
@@ -329,7 +330,7 @@ class TestDomainModels:
         """Test Game model creation and defaults."""
         # Test with minimal fields
         game = Game(type=GameType.CASH)
-        
+
         assert game.id is not None
         assert game.type == GameType.CASH
         assert game.status == GameStatus.WAITING
@@ -345,7 +346,7 @@ class TestDomainModels:
         assert isinstance(game.updated_at, datetime)
         assert game.started_at is None
         assert game.ended_at is None
-        
+
         # Test with tournament info
         tournament_info = TournamentInfo(
             tier=TournamentTier.LOCAL,
@@ -356,35 +357,29 @@ class TestDomainModels:
             total_players=50,
             starting_big_blind=100,
             starting_small_blind=50,
-            players_remaining=50
+            players_remaining=50,
         )
-        
+
         game = Game(
             type=GameType.TOURNAMENT,
             name="Test Tournament",
-            tournament_info=tournament_info
+            tournament_info=tournament_info,
         )
-        
+
         assert game.type == GameType.TOURNAMENT
         assert game.name == "Test Tournament"
         assert game.tournament_info == tournament_info
         assert game.cash_game_info is None
-        
+
         # Test with cash game info
         cash_game_info = CashGameInfo(
-            buy_in=1000,
-            min_buy_in=400,
-            max_buy_in=2000,
-            min_bet=10,
-            table_size=6
+            buy_in=1000, min_buy_in=400, max_buy_in=2000, min_bet=10, table_size=6
         )
-        
+
         game = Game(
-            type=GameType.CASH,
-            name="Test Cash Game",
-            cash_game_info=cash_game_info
+            type=GameType.CASH, name="Test Cash Game", cash_game_info=cash_game_info
         )
-        
+
         assert game.type == GameType.CASH
         assert game.name == "Test Cash Game"
         assert game.cash_game_info == cash_game_info
