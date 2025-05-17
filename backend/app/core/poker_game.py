@@ -1891,6 +1891,30 @@ class PokerGame:
                 # Skip ahead to showdown - we don't broadcast here
                 return self._handle_showdown()
             
+        # Before moving to the next round, notify clients of finalized bets
+        if self.game_id:
+            try:
+                from app.core.websocket import game_notifier
+                import asyncio
+
+                player_bets = [
+                    {"player_id": p.player_id, "amount": p.current_bet}
+                    for p in self.players
+                ]
+                total_pot = sum(pot.amount for pot in self.pots)
+
+                async def _notify():
+                    await game_notifier.notify_round_bets_finalized(
+                        self.game_id, player_bets, total_pot
+                    )
+                    await asyncio.sleep(0.5)
+
+                asyncio.create_task(_notify())
+            except Exception as e:
+                logging.error(
+                    f"Error sending round bets finalized notification: {e}"
+                )
+
         # Move to the next round
         if self.current_round == BettingRound.PREFLOP:
             self.deal_flop()
