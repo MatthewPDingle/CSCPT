@@ -659,7 +659,7 @@ useEffect(() => {
                   ref.current.currentTime = 0;
                   // volume is already 1 but enforce
                   ref.current.volume = 1.0;
-                  ref.current.play().catch(() => {});
+                  ref.current.play().catch(e => { /* ignore error */ });
                 } catch {}
               };
 

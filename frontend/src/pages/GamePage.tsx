@@ -876,6 +876,10 @@ const connectionIndicator = (
         currentStreetTotal={currentStreetPot}
         betsToAnimate={betsToAnimate}
         updatePlayerSeatPosition={updatePlayerSeatPosition}
+        registerChipPosition={(playerId, pos) => {
+          // Placeholder for chip position registration
+          console.log("Registering chip position for", playerId, pos);
+        }}
         flashCurrentStreetPot={flashCurrentStreetPot}
         pendingStreetReveal={pendingStreetReveal}
         showdownHands={showdownHands}

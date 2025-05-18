@@ -4,7 +4,7 @@ import { useWebSocket } from './useWebSocket';
 // Mock the WebSocket
 class MockWebSocket {
   url: string;
-  readyState: number = 0;
+  readyState = 0;
   onopen: ((event: any) => void) | null = null;
   onmessage: ((event: any) => void) | null = null;
   onclose: ((event: any) => void) | null = null;

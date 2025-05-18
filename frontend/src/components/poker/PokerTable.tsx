@@ -5,6 +5,9 @@ import Card from './Card';
 import AnimatingBetChip from './AnimatingBetChip';
 import { CARD_STAGGER_DELAY_MS, POST_STREET_PAUSE_MS, POT_FLASH_DURATION_MS, CHIP_ANIMATION_DURATION_MS } from '../../constants/animation';
 
+// No-op function to avoid empty arrow functions
+const noop = () => { /* empty function */ };
+
 interface Player {
   id: string;
   name: string;
@@ -38,9 +41,9 @@ interface PokerTableProps {
   /** Target position for animating chips (center of currentStreetPot display) */
   animationTargetPosition?: { x: string; y: string };
   /** Callback for PlayerSeat to register its bet-stack position */
-  updatePlayerSeatPosition?: (playerId: string, pos: { x: string; y: string }) => void;
+  updatePlayerSeatPosition: (playerId: string, pos: { x: string; y: string }) => void;
   /** Register exact chip-stack position for end-of-hand animations */
-  registerChipPosition?: (playerId: string, pos: { x: string; y: string }) => void;
+  registerChipPosition: (playerId: string, pos: { x: string; y: string }) => void;
   /** Flash main pot pulse */
   flashMainPot?: boolean;
   /** Flash current street pot pulse */
@@ -250,8 +253,8 @@ const PokerTable: React.FC<PokerTableProps> = ({
   currentRound,
   currentStreetTotal = 0,
   betsToAnimate = [],
-  updatePlayerSeatPosition = () => {},
-  registerChipPosition = () => {},
+  updatePlayerSeatPosition,
+  registerChipPosition,
   flashMainPot = false,
   flashCurrentStreetPot = false,
   showdownActive = false,
@@ -267,7 +270,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   chipsDistributed = false,
   handVisuallyConcluded = false,
   currentStep = null,
-  onAnimationDone
+  onAnimationDone = () => { /* default empty callback */ }
 }) => {
   // Refs for table container and pot display (for animation coordinate calculations)
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -381,18 +384,18 @@ const PokerTable: React.FC<PokerTableProps> = ({
     // Handle batch reveal
     if (count >= 3) {
       setDisplayCount(d => d + 3);
-      flopAudioRef.current?.play().catch(() => {});
+      flopAudioRef.current?.play().catch(noop);
       if (count > 3) {
-        setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
-        setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS * 2);
+        setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(noop); }, CARD_STAGGER_DELAY_MS);
+        setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(noop); }, CARD_STAGGER_DELAY_MS * 2);
       }
     } else if (count === 2) {
       setDisplayCount(d => d + 1);
-      cardAudioRef.current?.play().catch(() => {});
-      setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(() => {}); }, CARD_STAGGER_DELAY_MS);
+      cardAudioRef.current?.play().catch(noop);
+      setTimeout(() => { setDisplayCount(d => d + 1); cardAudioRef.current?.play().catch(noop); }, CARD_STAGGER_DELAY_MS);
     } else if (count === 1) {
       setDisplayCount(d => d + 1);
-      cardAudioRef.current?.play().catch(() => {});
+      cardAudioRef.current?.play().catch(noop);
     }
     // Notify orchestrator when street reveal animation completes
     const totalRevealTime = count * CARD_STAGGER_DELAY_MS + POST_STREET_PAUSE_MS;
@@ -505,7 +508,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
                 amount={bet.amount}
                 fromPosition={bet.fromPosition}
                 targetPosition={animationTargetPosition}
-                onEnd={() => {}}
+                onEnd={noop}
               />
             )
           ))}
@@ -532,7 +535,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
               amount={anim.amount}
               fromPosition={fromPos}
               targetPosition={toPos}
-              onEnd={() => {}}
+              onEnd={noop}
             />
           );
         })}

@@ -72,7 +72,7 @@ export const gameApi = {
     }
   },
   // Create a new game
-  createGame: async (smallBlind: number = 10, bigBlind: number = 20) => {
+  createGame: async (smallBlind = 10, bigBlind = 20) => {
     try {
       const response = await api.post('/game/create', { smallBlind, bigBlind });
       return response.data;
@@ -94,7 +94,7 @@ export const gameApi = {
   },
   
   // Join a game
-  joinGame: async (gameId: string, playerName: string, buyIn: number = 1000) => {
+  joinGame: async (gameId: string, playerName: string, buyIn = 1000) => {
     try {
       const response = await api.post(`/game/join/${gameId}`, { playerName, buyIn });
       return response.data;
