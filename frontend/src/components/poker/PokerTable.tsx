@@ -48,6 +48,8 @@ interface PokerTableProps {
   flashMainPot?: boolean;
   /** Flash current street pot pulse */
   flashCurrentStreetPot?: boolean;
+  /** Whether betting round animation is in progress */
+  bettingRoundAnimating?: boolean;
   showdownActive?: boolean;
   handResultPlayers?: { player_id: string; cards?: string[] }[];
   /** IDs of players who won the last hand */
@@ -257,6 +259,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   registerChipPosition,
   flashMainPot = false,
   flashCurrentStreetPot = false,
+  bettingRoundAnimating = false,
   showdownActive = false,
   handResultPlayers,
   handWinners = [],
@@ -282,6 +285,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
    */
   useEffect(() => {
     if (!pendingStreetReveal) return;
+    console.log(`[ANIMATION] Street reveal triggered: ${pendingStreetReveal.street} with ${pendingStreetReveal.cards.length} cards`);
     setPendingRevealCount(prev => prev + pendingStreetReveal.cards.length);
   }, [pendingStreetReveal]);
   
@@ -477,21 +481,16 @@ const PokerTable: React.FC<PokerTableProps> = ({
           Pot: {displayedPot}
         </PotDisplay>
         {/*
-          Override the "Bets" textbox while chip animations are running so it
-          immediately resets to 0 and does **not** flash yellow.  This prevents
-          the stale amount from being shown during the 0.5 s animation where
-          each player's bet stack flies to the main pot.
-
-          The logic is:
-            • if there are bet-chip animations in progress (`betsToAnimate` is
-              non-empty) – force the value to 0 and disable the flash effect
-            • otherwise – use the real street-pot value and the flash flag that
-              comes from props
+          Updated logic for Bets display during animations:
+          • During betting round animation (chips flying), keep showing the amount
+            but disable flash to prevent visual noise
+          • Only show 0 after animation completes and new round starts
+          • This prevents the jarring immediate reset to 0
         */}
         <CurrentRoundPotDisplay
-          flash={betsToAnimate.length > 0 ? false : flashCurrentStreetPot}
+          flash={bettingRoundAnimating ? false : flashCurrentStreetPot}
         >
-          Bets: {betsToAnimate.length > 0 ? 0 : currentStreetTotal}
+          Bets: {currentStreetTotal}
         </CurrentRoundPotDisplay>
         
         <CommunityCardsArea>

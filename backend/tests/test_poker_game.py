@@ -1103,3 +1103,134 @@ async def test_new_round_notification(monkeypatch):
     assert args[1] == "FLOP"
     assert isinstance(args[2], list)
     assert args[3] is False
+
+
+def test_partial_all_in_with_remaining_active_players():
+    """Test that when some players go all-in but others still need to act, the betting round continues."""
+    game = setup_test_game(num_players=7, starting_chips=1000)
+    game.start_hand()
+    
+    # Preflop action setup:
+    # Player 0 (You): position 0 (button)
+    # Player 1 (Alice): position 1 (SB) - posts 10
+    # Player 2 (Bob): position 2 (BB) - posts 20
+    # Player 3 (Charlie): position 3 (UTG)
+    # Player 4 (Dan): position 4
+    # Player 5 (Ernesto): position 5
+    # Player 6 (Francis): position 6
+    
+    # Note: In this test, Player 7 (Gemma) doesn't exist, but we'll simulate the scenario
+    # by having Francis and another player bet, then some go all-in
+    
+    # UTG folds
+    run_action(game, game.players[3], PlayerAction.FOLD)
+    
+    # Dan calls 20
+    run_action(game, game.players[4], PlayerAction.CALL, 20)
+    
+    # Ernesto raises to 40 (min raise from BB of 20)
+    run_action(game, game.players[5], PlayerAction.RAISE, 40)
+    
+    # Francis calls 40
+    run_action(game, game.players[6], PlayerAction.CALL, 40)
+    
+    # Button (You) goes all-in
+    run_action(game, game.players[0], PlayerAction.ALL_IN, 1000)
+    
+    # SB (Alice) goes all-in
+    run_action(game, game.players[1], PlayerAction.ALL_IN, 990)  # 990 because already posted 10
+    
+    # BB (Bob) goes all-in
+    run_action(game, game.players[2], PlayerAction.ALL_IN, 980)  # 980 because already posted 20
+    
+    # Dan goes all-in
+    run_action(game, game.players[4], PlayerAction.ALL_IN, 980)  # 980 because already called 20
+    
+    # Ernesto goes all-in
+    run_action(game, game.players[5], PlayerAction.ALL_IN, 960)  # 960 because already bet 40
+    
+    # Now Francis (who has bet 40) is still active and needs to act
+    # The betting round should NOT be complete yet
+    assert game.current_round == BettingRound.PREFLOP
+    assert game.players[6].status == PlayerStatus.ACTIVE
+    assert game.players[6].player_id in game.to_act
+    assert game.current_bet == 1000
+    assert game.players[6].current_bet == 40
+    
+    # Francis should be able to fold, call, or raise
+    # If Francis folds, the round should complete
+    run_action(game, game.players[6], PlayerAction.FOLD)
+    
+    # Now all active players have acted, so the round should complete
+    # and we should move to showdown (since only all-in players remain)
+    assert game.current_round == BettingRound.SHOWDOWN
+    
+    # Verify side pots were created correctly
+    assert len(game.pots) > 1  # Should have main pot and side pots
+
+
+def test_partial_all_in_gemma_must_act():
+    """Test the exact scenario where Francis folds but Gemma (who also bet 25) must still act."""
+    game = setup_test_game(num_players=8, starting_chips=1000)
+    game.start_hand()
+    
+    # Setup matches the reported scenario more closely
+    # Player 0 (You): button
+    # Player 1 (Alice): SB
+    # Player 2 (Bob): BB
+    # Player 3 (Charlie): UTG
+    # Player 4 (Dan)
+    # Player 5 (Ernesto)
+    # Player 6 (Francis)
+    # Player 7 (Gemma)
+    
+    # Charlie folds
+    run_action(game, game.players[3], PlayerAction.FOLD)
+    
+    # Dan calls 20
+    run_action(game, game.players[4], PlayerAction.CALL, 20)
+    
+    # Ernesto calls 20
+    run_action(game, game.players[5], PlayerAction.CALL, 20)
+    
+    # Francis raises to 40 (min raise from BB of 20)
+    run_action(game, game.players[6], PlayerAction.RAISE, 40)
+    
+    # Gemma calls Francis's raise of 40
+    run_action(game, game.players[7], PlayerAction.CALL, 40)
+    
+    # Button (You) goes all-in
+    run_action(game, game.players[0], PlayerAction.ALL_IN, 1000)
+    
+    # Alice goes all-in
+    run_action(game, game.players[1], PlayerAction.ALL_IN, 990)
+    
+    # Bob goes all-in
+    run_action(game, game.players[2], PlayerAction.ALL_IN, 980)
+    
+    # Dan goes all-in
+    run_action(game, game.players[4], PlayerAction.ALL_IN, 980)
+    
+    # Ernesto goes all-in
+    run_action(game, game.players[5], PlayerAction.ALL_IN, 980)
+    
+    # Francis folds (facing the all-ins)
+    run_action(game, game.players[6], PlayerAction.FOLD)
+    
+    # CRITICAL: Gemma should still be active and need to act!
+    assert game.current_round == BettingRound.PREFLOP
+    assert game.players[7].status == PlayerStatus.ACTIVE
+    assert game.players[7].player_id in game.to_act
+    assert game.current_bet == 1000
+    assert game.players[7].current_bet == 40
+    
+    # Gemma should need to call 960 more to match the all-in
+    call_amount = game.current_bet - game.players[7].current_bet
+    assert call_amount == 960
+    
+    # Gemma decides to call the all-in
+    run_action(game, game.players[7], PlayerAction.CALL, 1000)
+    
+    # Now the betting round should complete and move to showdown
+    assert game.current_round == BettingRound.SHOWDOWN
+    assert game.players[7].status == PlayerStatus.ALL_IN

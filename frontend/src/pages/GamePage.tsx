@@ -314,6 +314,7 @@ const GamePage: React.FC = () => {
     betsToAnimate,
     flashMainPot,
     flashCurrentStreetPot,
+    bettingRoundAnimating,
     updatePlayerSeatPosition,
     // Community card reveal events
     pendingStreetReveal,
@@ -881,6 +882,7 @@ const connectionIndicator = (
           console.log("Registering chip position for", playerId, pos);
         }}
         flashCurrentStreetPot={flashCurrentStreetPot}
+        bettingRoundAnimating={bettingRoundAnimating}
         pendingStreetReveal={pendingStreetReveal}
         showdownHands={showdownHands}
         potWinners={potWinners}

@@ -300,12 +300,21 @@ export const useGameWebSocket = (wsUrl: string) => {
   const [handVisuallyConcluded, setHandVisuallyConcluded] = useState<boolean>(false);
   // Deferred game state for post-showdown chip distribution
   const [pendingGameState, setPendingGameState] = useState<GameState | null>(null);
+  // Track when betting round animation is in progress
+  const [bettingRoundAnimating, setBettingRoundAnimating] = useState<boolean>(false);
+  // Buffer for game state updates that clear bets during animation
+  const [pendingBetClearUpdate, setPendingBetClearUpdate] = useState<GameState | null>(null);
   
   // Orchestrate bet-to-pot animation when bets are finalized
 // Animate end-of-betting-round: collect bets into pot, flash, then advance orchestrator
 useEffect(() => {
   if (!roundBetsFinalized) return;
   const { player_bets, pot } = roundBetsFinalized;
+  
+  // Mark animation as starting
+  setBettingRoundAnimating(true);
+  console.log('[ANIMATION] Round bets finalized - starting chip animations');
+  
   // Step 3: animate each player's bet into the pot
   const anims = (player_bets || []).map(pb => ({
     playerId: pb.player_id,
@@ -313,14 +322,39 @@ useEffect(() => {
     fromPosition: playerSeatPositionsRef.current.get(pb.player_id)
   }));
   setBetsToAnimate(anims);
+  
   // After chip animation, move to pot and flash
   const chipTimer = window.setTimeout(() => {
     setBetsToAnimate([]);
     setAccumulatedPot(pot);
     setFlashMainPot(true);
+    console.log('[ANIMATION] Chip animation complete, starting pot flash');
+    
     // After pot flash, clear and signal completion
     const flashTimer = window.setTimeout(() => {
       setFlashMainPot(false);
+      
+      // NOW it's safe to clear the bets in the UI
+      setGameState(prev => {
+        if (!prev) return prev;
+        const cleared = prev.players.map(p => ({ ...p, current_bet: 0 }));
+        const newState = { ...prev, players: cleared };
+        gameStateRef.current = newState;
+        return newState;
+      });
+      
+      // Mark animation as complete
+      setBettingRoundAnimating(false);
+      console.log('[ANIMATION] Betting round animation complete');
+      
+      // Apply any pending game state update that was buffered
+      if (pendingBetClearUpdate) {
+        console.log('[ANIMATION] Applying buffered game state update');
+        setGameState(pendingBetClearUpdate);
+        gameStateRef.current = pendingBetClearUpdate;
+        setPendingBetClearUpdate(null);
+      }
+      
       // clear currentStep to allow next animation
       setCurrentStep(null);
       // notify server that animation is complete
@@ -328,14 +362,15 @@ useEffect(() => {
         sendMessageRef.current({ type: 'animation_done', data: { stepType: 'round_bets_finalized' } });
       }
     }, POT_FLASH_DURATION_MS);
-    // clear individual bets in UI
-    setGameState(prev => {
-      if (!prev) return prev;
-      const cleared = prev.players.map(p => ({ ...p, current_bet: 0 }));
-      return { ...prev, players: cleared };
-    });
+    
+    return () => window.clearTimeout(flashTimer);
   }, CHIP_ANIMATION_DURATION_MS);
-  return () => window.clearTimeout(chipTimer);
+  
+  return () => {
+    window.clearTimeout(chipTimer);
+    // Ensure we reset animation state on cleanup
+    setBettingRoundAnimating(false);
+  };
 }, [roundBetsFinalized]);
   
   // Append winner messages after the final pulse
@@ -370,6 +405,7 @@ useEffect(() => {
     if (chipsDistributed && pendingGameState) {
       // Update the game state to reflect new chip counts
       setGameState(pendingGameState);
+      gameStateRef.current = pendingGameState;
       setPendingGameState(null);
     }
   }, [chipsDistributed, pendingGameState]);
@@ -380,7 +416,12 @@ useEffect(() => {
 
   // Enqueue an animation step
   const enqueueStep = useCallback((msg: WebSocketMessage) => {
-    setStepQueue(q => [...q, msg]);
+    console.log(`[ANIMATION] Enqueuing step: ${msg.type}`);
+    setStepQueue(q => {
+      const newQueue = [...q, msg];
+      console.log(`[ANIMATION] Queue length after enqueue: ${newQueue.length}`);
+      return newQueue;
+    });
   }, []);
 
   // Process next step whenever idle
@@ -388,6 +429,7 @@ useEffect(() => {
     setStepQueue(queue => {
       if (queue.length === 0) return [];
       const [next, ...rest] = queue;
+      console.log(`[ANIMATION] Processing next step: ${next.type}, remaining in queue: ${rest.length}`);
       setCurrentStep(next);
       return rest;
     });
@@ -479,6 +521,19 @@ useEffect(() => {
   const aiTurnTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const postActionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Refs to track current turn state for timeout callbacks to avoid stale closures
+  const currentTurnPlayerIdRef = useRef<string | null>(null);
+  const showTurnHighlightRef = useRef<boolean>(false);
+  const gameStateRef = useRef<GameState | null>(null);
+  
+  // Keep refs in sync with state to avoid stale closures in timeout callbacks
+  useEffect(() => {
+    currentTurnPlayerIdRef.current = currentTurnPlayerId;
+  }, [currentTurnPlayerId]);
+  
+  useEffect(() => {
+    showTurnHighlightRef.current = showTurnHighlight;
+  }, [showTurnHighlight]);
   
   // Reference to track changes in community cards to play sounds at the right time
   const prevCommunityCardsRef = useRef<number>(0);
@@ -566,6 +621,7 @@ useEffect(() => {
                 0
               );
               if (newStreetSum !== currentStreetPot) {
+                console.log(`[ANIMATION] Current street pot updated: ${currentStreetPot} -> ${newStreetSum}`);
                 setCurrentStreetPot(newStreetSum);
               }
               // New hand reset: clear accumulated pot on new preflop
@@ -614,7 +670,7 @@ useEffect(() => {
               setCurrentTurnPlayerId(currentPlayerId);
               
               // Enable the golden highlight immediately for all players
-              console.log('Setting turn highlight to TRUE');
+              console.log(`[TURN] Setting turn highlight to TRUE for player ${currentPlayerId} (game round: ${message.data.current_round})`);
               setShowTurnHighlight(true);
               
               // For AI players, just highlight them and the backend will handle timing
@@ -635,8 +691,46 @@ useEffect(() => {
               }
             }
             
-            // Proceed with setting state after validation
-            setGameState(message.data);
+            // Check if we should buffer this update
+            const allBetsCleared = message.data.players.every((p: any) => 
+              p.current_bet === 0 || p.current_bet === undefined
+            );
+            
+            if (bettingRoundAnimating && allBetsCleared) {
+              // Buffer this update until animation completes
+              console.log('[ANIMATION] Buffering game state update - all bets cleared during animation');
+              setPendingBetClearUpdate(message.data);
+            } else {
+              // Safe to apply immediately
+              setGameState(message.data);
+              gameStateRef.current = message.data;
+            }
+            
+            // Handle showdown transition - clear all turn-related states
+            if (message.data.current_round === 'SHOWDOWN') {
+              console.log('[TURN] Entering SHOWDOWN - clearing all turn highlights and states');
+              console.log(`[TURN] Pre-showdown state - highlight: ${showTurnHighlight}, currentTurn: ${currentTurnPlayerId}`);
+              
+              // Clear any pending timeouts FIRST to prevent them from re-setting highlights
+              if (postActionTimeoutRef.current) {
+                console.log('[TURN] Clearing post-action timeout due to SHOWDOWN');
+                clearTimeout(postActionTimeoutRef.current);
+                postActionTimeoutRef.current = null;
+              }
+              if (aiTurnTimeoutRef.current) {
+                console.log('[TURN] Clearing AI turn timeout due to SHOWDOWN');
+                clearTimeout(aiTurnTimeoutRef.current);
+                aiTurnTimeoutRef.current = null;
+              }
+              
+              // Then clear all turn-related states
+              setShowTurnHighlight(false);
+              setCurrentTurnPlayerId(null);
+              setProcessingAITurn(false);
+              setFoldedPlayerId(null);
+              
+              console.log('[TURN] SHOWDOWN transition cleanup completed');
+            }
             break;
             
           case 'player_action':
@@ -686,11 +780,21 @@ useEffect(() => {
             const matchesCurrentTurn = message.data.player_id === currentTurnPlayerId;
             const isHumanAction = message.data.player_id === playerId;
             
-            console.log(`Received player_action - player: ${message.data.player_id}, action: ${message.data.action}`);
-            console.log(`Action matches current turn: ${matchesCurrentTurn}, isHumanAction: ${isHumanAction}`);
-            console.log(`Current turn player: ${currentTurnPlayerId}, showTurnHighlight: ${showTurnHighlight}`);
+            // Special handling for last player going all-in
+            // This handles the case where the last active player goes all-in and the game
+            // immediately transitions to showdown, potentially changing current_player_idx
+            const activePlayers = gameState?.players.filter((p: any) => p.status === 'ACTIVE') || [];
+            const isLastActivePlayer = activePlayers.length === 1 && 
+                                      activePlayers[0]?.player_id === message.data.player_id;
+            const isAllInAction = message.data.action.toUpperCase() === 'ALL_IN';
+            const isLastPlayerAllIn = isLastActivePlayer && isAllInAction;
             
-            if (matchesCurrentTurn) {
+            console.log(`[TURN] Received player_action - player: ${message.data.player_id}, action: ${message.data.action}`);
+            console.log(`[TURN] Action matches current turn: ${matchesCurrentTurn}, isHumanAction: ${isHumanAction}`);
+            console.log(`[TURN] Current turn player: ${currentTurnPlayerId}, showTurnHighlight: ${showTurnHighlight}`);
+            console.log(`[TURN] Is last player all-in: ${isLastPlayerAllIn} (active players: ${activePlayers.length})`);
+            
+            if (matchesCurrentTurn || isLastPlayerAllIn) {
               // Steps 3-6 of the turn sequence:
               
               // 3. Player made their play (this action message)
@@ -700,7 +804,7 @@ useEffect(() => {
               // 3a. If fold, first show gold highlight, then set foldedPlayerId to
               // trigger gray highlight after a delay but before removing the highlight completely
               const isFoldAction = message.data.action.toUpperCase() === 'FOLD';
-              console.log(`Is FOLD action: ${isFoldAction}`);
+              console.log(`[TURN] Processing ${message.data.action} action for turn player ${message.data.player_id}`);
               
               // For fold actions, control the fold styling sequence
               if (isFoldAction) {
@@ -795,16 +899,51 @@ useEffect(() => {
               }
               
               // 5. Pause 0.6 second before removing highlight (increased from 0.5s to allow fold state to update)
-              console.log(`Setting post-action timeout for ${isHumanAction ? 'Human' : 'AI'} player`);
+              console.log(`[TURN] Setting post-action timeout for ${isHumanAction ? 'Human' : 'AI'} player ${message.data.player_id}`);
+              
+              // Store the action player ID to ensure we handle the correct player
+              const actionPlayerId = message.data.player_id;
               
               postActionTimeoutRef.current = setTimeout(() => {
                 // 6. Remove golden highlight and complete the turn
-                console.log(`${isHumanAction ? 'Human' : 'AI'} action post-delay completed, removing highlight`);
-                console.log(`Turn state before removing highlight - playerId: ${message.data.player_id}, action: ${message.data.action}`);
-                console.log(`Removing highlight for player ${message.data.player_id}. Current turn player state: ${currentTurnPlayerId}`);
+                console.log(`[TURN-TIMEOUT] ${isHumanAction ? 'Human' : 'AI'} action post-delay completed for ${actionPlayerId}`);
                 
-                // First remove the highlight
-                setShowTurnHighlight(false);
+                // Get current state using refs to avoid stale closures
+                const currentTurnId = currentTurnPlayerIdRef.current;
+                const isHighlightShown = showTurnHighlightRef.current;
+                const currentGameState = gameStateRef.current;
+                
+                // Check if we're already in showdown - if so, don't modify highlights
+                const isNowInShowdown = currentGameState?.current_round === 'SHOWDOWN';
+                
+                console.log(`[TURN-TIMEOUT] Current state - round: ${currentGameState?.current_round}, highlight: ${isHighlightShown}, currentTurn: ${currentTurnId}`);
+                console.log(`[TURN-TIMEOUT] Action player: ${actionPlayerId}, isLastPlayerAllIn: ${isLastPlayerAllIn}, isInShowdown: ${isNowInShowdown}`);
+                
+                if (isNowInShowdown) {
+                  console.log('[TURN-TIMEOUT] Already in SHOWDOWN, skipping highlight removal (handled by showdown transition)');
+                  return;
+                }
+                
+                // Calculate isLastPlayerAllIn using current game state to avoid stale closure
+                const currentActivePlayers = currentGameState?.players.filter((p: any) => p.status === 'ACTIVE') || [];
+                const isCurrentlyLastActive = currentActivePlayers.length === 1 && 
+                                            currentActivePlayers[0]?.player_id === actionPlayerId;
+                const wasAllInAction = message.data.action.toUpperCase() === 'ALL_IN';
+                const isCurrentlyLastPlayerAllIn = isCurrentlyLastActive && wasAllInAction;
+                
+                // Safeguard: Only remove highlight if this player is still considered the current turn
+                // This prevents removing highlight for the wrong player in race conditions
+                if (currentTurnId === actionPlayerId || isCurrentlyLastPlayerAllIn) {
+                  console.log(`[TURN-TIMEOUT] Removing highlight for player ${actionPlayerId} (currentTurn: ${currentTurnId === actionPlayerId}, lastPlayerAllIn: ${isCurrentlyLastPlayerAllIn})`);
+                  setShowTurnHighlight(false);
+                } else {
+                  console.log(`[TURN-TIMEOUT] WARNING: Turn player changed during timeout (was ${actionPlayerId}, now ${currentTurnId})`);
+                  // Still remove highlight if it's stuck on
+                  if (isHighlightShown) {
+                    console.log(`[TURN-TIMEOUT] Forcing highlight removal due to stale state`);
+                    setShowTurnHighlight(false);
+                  }
+                }
                 
                 // We no longer need to clear the foldedPlayerId immediately
                 // The fold styling will now be controlled by the player's status from game state
@@ -829,7 +968,7 @@ useEffect(() => {
               // This is an action from a player who is not the current turn player
               // May happen in certain game situations - still update last action but don't
               // change the turn sequence
-              console.log('Received action from player who is not the current turn player');
+              console.log(`[TURN] WARNING: Received action from non-turn player ${message.data.player_id} (current turn: ${currentTurnPlayerId})`);
               setLastAction(message.data);
             }
             
@@ -1419,6 +1558,22 @@ useEffect(() => {
     }
   }, [currentStep, sendMessage]);
 
+  // Cleanup timeouts on unmount to prevent memory leaks and stale state updates
+  useEffect(() => {
+    return () => {
+      if (aiTurnTimeoutRef.current) {
+        console.log('[CLEANUP] Clearing AI turn timeout on unmount');
+        clearTimeout(aiTurnTimeoutRef.current);
+        aiTurnTimeoutRef.current = null;
+      }
+      if (postActionTimeoutRef.current) {
+        console.log('[CLEANUP] Clearing post-action timeout on unmount');
+        clearTimeout(postActionTimeoutRef.current);
+        postActionTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   return {
     status,
     gameState,
@@ -1440,6 +1595,7 @@ useEffect(() => {
     betsToAnimate,
     flashMainPot,
     flashCurrentStreetPot,
+    bettingRoundAnimating,
     updatePlayerSeatPosition,
     // Turn highlighting states
     currentTurnPlayerId,

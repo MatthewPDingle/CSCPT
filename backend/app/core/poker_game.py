@@ -1249,8 +1249,32 @@ class PokerGame:
                 logging.info(f"[ACTION-{execution_id}] Player {player.name} FOLDED. Removed from to_act. Remaining: {self.to_act}")
             
             # Check if only one active player remains
-            active_count = sum(1 for p in self.players if p.status == PlayerStatus.ACTIVE)
+            active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+            active_count = len(active_players)
+            
+            # Only trigger early showdown if:
+            # 1. There's at most one active player AND
+            # 2. That player (if any) has matched the current bet OR is unable to call
+            should_showdown = False
             if active_count <= 1:
+                if active_count == 0:
+                    # No active players, definitely showdown
+                    should_showdown = True
+                else:
+                    # One active player - check if they've matched the bet or need to act
+                    last_active = active_players[0]
+                    if last_active.current_bet >= self.current_bet or last_active.chips == 0:
+                        # Player has matched the bet or can't bet more
+                        should_showdown = True
+                    elif last_active.player_id not in self.to_act:
+                        # Player has already acted this round and matched the bet
+                        should_showdown = True
+                    else:
+                        # Player still needs to act on the current bet
+                        logging.info(f"[ACTION-{execution_id}] One active player remains ({last_active.name}) but they need to act (bet: {last_active.current_bet}, table: {self.current_bet})")
+                        should_showdown = False
+                        
+            if should_showdown:
                 logging.info(f"[ACTION-{execution_id}] Only {active_count} active player(s) remain after fold. Handling early showdown.")
                 # Record the action before handling showdown
                 if self.hand_history_recorder and self.current_hand_id:
@@ -1697,6 +1721,8 @@ class PokerGame:
         if not active_players:
             logging.warning(f"[ROUND-CHECK-{execution_id}] No active players left - round is over")
             return True  # Round is trivially over
+        
+        logging.info(f"[ROUND-CHECK-{execution_id}] Found {len(active_players)} active players")
 
         # Condition 2: If any ACTIVE player still needs to act or has not yet matched the current bet, the round continues
         for p in self.players:
@@ -1860,14 +1886,33 @@ class PokerGame:
         
         # Log player statuses for debugging
         logging.info(f"[END-ROUND-{execution_id}] Active players: {[p.name for p in active_not_all_in]}, All-in players: {[p.name for p in all_in_players]}")
+        logging.info(f"[END-ROUND-{execution_id}] Active player details: {[(p.name, p.player_id, p.current_bet, 'in_to_act' if p.player_id in self.to_act else 'acted') for p in active_not_all_in]}")
         
         # Create side pots if there are all-in players
         if all_in_players:
             self._create_side_pots()
             
-            # If no active (non–all-in) players remain, proceed directly to showdown
-            if len(active_not_all_in) == 0:
-                logging.info(f"[END-ROUND-{execution_id}] All-in showdown: dealing remaining community cards and skipping to showdown")
+            # Check if we should proceed directly to showdown
+            logging.info(f"[END-ROUND-{execution_id}] Checking for all-in showdown conditions:")
+            logging.info(f"[END-ROUND-{execution_id}] - Active (non-all-in) players: {len(active_not_all_in)} - {[p.name for p in active_not_all_in]}")
+            logging.info(f"[END-ROUND-{execution_id}] - Players in to_act: {len(self.to_act)} - {list(self.to_act)}")
+            logging.info(f"[END-ROUND-{execution_id}] - Current bet: {self.current_bet}")
+            
+            # Log player bet status for active players
+            for p in active_not_all_in:
+                logging.info(f"[END-ROUND-{execution_id}] - Player {p.name}: current_bet={p.current_bet}, needs to call {self.current_bet - p.current_bet}")
+            
+            logging.info(f"[END-ROUND-{execution_id}] - Betting round complete: {self._check_betting_round_completion()}")
+            
+            # Only proceed to immediate showdown if:
+            # 1. No active (non-all-in) players remain AND
+            # 2. The betting round is actually complete (all players have acted)
+            betting_complete = self._check_betting_round_completion()
+            logging.info(f"[END-ROUND-{execution_id}] Betting round completion check returned: {betting_complete}")
+            logging.info(f"[END-ROUND-{execution_id}] DECISION POINT: len(active_not_all_in)={len(active_not_all_in)}, betting_complete={betting_complete}")
+            logging.info(f"[END-ROUND-{execution_id}] Will go to showdown: {len(active_not_all_in) == 0 and betting_complete}")
+            if len(active_not_all_in) == 0 and betting_complete:
+                logging.info(f"[END-ROUND-{execution_id}] All-in showdown confirmed: all players have acted, dealing remaining community cards and skipping to showdown")
                 # Deal all remaining community cards to complete the board
                 while len(self.community_cards) < 5:
                     if len(self.community_cards) == 0:
@@ -1889,8 +1934,15 @@ class PokerGame:
                         card = self.deck.draw()
                         if card:
                             self.community_cards.append(card)
-                # Skip ahead to showdown - we don't broadcast here
+                # Skip ahead to showdown
+                logging.info(f"[END-ROUND-{execution_id}] Transitioning directly to showdown")
                 return self._handle_showdown()
+            else:
+                # Betting round not complete or active players remain
+                if len(active_not_all_in) > 0:
+                    logging.info(f"[END-ROUND-{execution_id}] Not going to immediate showdown - active players still remain: {[p.name for p in active_not_all_in]}")
+                else:
+                    logging.info(f"[END-ROUND-{execution_id}] Not going to immediate showdown - betting round not complete, players still need to act")
             
         # Before moving to the next round, notify clients of finalized bets
         if self.game_id:
@@ -1906,7 +1958,19 @@ class PokerGame:
                 await game_notifier.notify_round_bets_finalized(
                     self.game_id, player_bets, total_pot
                 )
-                await asyncio.sleep(0.5)
+                # Wait for full animation sequence (0.5s chips + 0.5s flash = 1.0s total)
+                logging.info(f"[ANIMATION] Waiting for betting round animation to complete")
+                await asyncio.sleep(1.0)
+                
+                # Also wait for animation_done confirmation with increased timeout
+                try:
+                    await game_notifier.wait_for_animation(
+                        self.game_id, "round_bets_finalized", timeout=3.0
+                    )
+                except Exception as timeout_e:
+                    logging.warning(
+                        f"Animation confirmation timeout for round_bets_finalized: {timeout_e}"
+                    )
             except Exception as e:
                 logging.error(
                     f"Error sending round bets finalized notification: {e}"
@@ -1918,6 +1982,8 @@ class PokerGame:
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
+                    # Small buffer to ensure previous animations are complete
+                    await asyncio.sleep(0.1)
                     await game_notifier.notify_new_round(
                         self.game_id,
                         self.current_round.name,
@@ -1926,7 +1992,7 @@ class PokerGame:
                     )
                     try:
                         await game_notifier.wait_for_animation(
-                            self.game_id, "street_dealt", timeout=2.0
+                            self.game_id, "street_dealt", timeout=3.0
                         )
                     except Exception:
                         await asyncio.sleep(1.0)
@@ -1939,6 +2005,8 @@ class PokerGame:
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
+                    # Small buffer to ensure previous animations are complete
+                    await asyncio.sleep(0.1)
                     await game_notifier.notify_new_round(
                         self.game_id,
                         self.current_round.name,
@@ -1947,7 +2015,7 @@ class PokerGame:
                     )
                     try:
                         await game_notifier.wait_for_animation(
-                            self.game_id, "street_dealt", timeout=2.0
+                            self.game_id, "street_dealt", timeout=3.0
                         )
                     except Exception:
                         await asyncio.sleep(1.0)
@@ -1960,6 +2028,8 @@ class PokerGame:
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
+                    # Small buffer to ensure previous animations are complete
+                    await asyncio.sleep(0.1)
                     await game_notifier.notify_new_round(
                         self.game_id,
                         self.current_round.name,
@@ -1968,7 +2038,7 @@ class PokerGame:
                     )
                     try:
                         await game_notifier.wait_for_animation(
-                            self.game_id, "street_dealt", timeout=2.0
+                            self.game_id, "street_dealt", timeout=3.0
                         )
                     except Exception:
                         await asyncio.sleep(1.0)
@@ -2053,6 +2123,7 @@ class PokerGame:
         self.current_round = BettingRound.SHOWDOWN
         logging.info(f"[_handle_showdown] Starting showdown. Pots: {[ (pot.name, pot.amount) for pot in self.pots ]}")
         logging.info(f"[_handle_showdown] Community cards: {self.community_cards}")
+        logging.info(f"[_handle_showdown] Current round set to SHOWDOWN - clients will be notified via game update")
         
         # Make sure side pots are properly created
         self._create_side_pots()
