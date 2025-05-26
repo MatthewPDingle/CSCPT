@@ -920,7 +920,9 @@ useEffect(() => {
                 console.log(`[TURN-TIMEOUT] Action player: ${actionPlayerId}, isLastPlayerAllIn: ${isLastPlayerAllIn}, isInShowdown: ${isNowInShowdown}`);
                 
                 if (isNowInShowdown) {
-                  console.log('[TURN-TIMEOUT] Already in SHOWDOWN, skipping highlight removal (handled by showdown transition)');
+                  console.log('[TURN-TIMEOUT] Already in SHOWDOWN, removing highlight before skipping further handling');
+                  setShowTurnHighlight(false);
+                  setCurrentTurnPlayerId(null);
                   return;
                 }
                 
