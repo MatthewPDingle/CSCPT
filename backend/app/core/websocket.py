@@ -506,6 +506,48 @@ class GameStateNotifier:
         }
         await self.connection_manager.broadcast_to_game(game_id, message)
 
+    async def notify_turn_highlight_removed(self, game_id: str, player_id: str):
+        """
+        Notify clients to remove the turn highlight for a player.
+
+        Args:
+            game_id: ID of the game
+            player_id: ID of the player whose highlight to remove
+        """
+        message = {
+            "type": "turn_highlight_removed",
+            "data": {"player_id": player_id, "timestamp": datetime.now().isoformat()}
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_showdown_transition(self, game_id: str):
+        """
+        Notify all clients about transition to showdown.
+        This ensures proper cleanup of UI elements like turn highlights.
+
+        Args:
+            game_id: ID of the game
+        """
+        message = {
+            "type": "showdown_transition",
+            "data": {"timestamp": datetime.now().isoformat()}
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
+    async def notify_bet_input_reset(self, game_id: str, player_id: str):
+        """
+        Notify clients to reset the betting input for a player.
+
+        Args:
+            game_id: ID of the game
+            player_id: ID of the player whose bet input to reset
+        """
+        message = {
+            "type": "bet_input_reset",
+            "data": {"player_id": player_id, "timestamp": datetime.now().isoformat()}
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
+
     async def notify_street_dealt(self, game_id: str, street_name: str, cards: list):
         """
         Notify clients that a community card street has been dealt.
@@ -589,9 +631,39 @@ class GameStateNotifier:
             }
         }
         await self.connection_manager.broadcast_to_game(game_id, message)
+    
+    async def notify_hand_evaluations(self, game_id: str, evaluations: dict):
+        """
+        Display hand rankings/descriptions before winner determination.
+        
+        Args:
+            game_id: ID of game
+            evaluations: Dict mapping player_id to (rank, description) tuples
+        """
+        evaluations_list = []
+        for player_id, (rank, description) in evaluations.items():
+            evaluations_list.append({
+                "player_id": player_id,
+                "description": description
+            })
+        
+        message = {
+            "type": "hand_evaluations",
+            "data": {
+                "evaluations": evaluations_list,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        await self.connection_manager.broadcast_to_game(game_id, message)
 
-    async def wait_for_animation(self, game_id: str, step_type: str, timeout: float = 2.0) -> None:
+    async def wait_for_animation(self, game_id: str, step_type: str, timeout: float = None) -> None:
         """Wait until the client confirms an animation is finished."""
+        from app.core.config import ANIMATION_TIMEOUTS
+        
+        # Use configured timeout or fall back to default
+        if timeout is None:
+            timeout = ANIMATION_TIMEOUTS.get(step_type, 2.0)
+            
         event = asyncio.Event()
         self.animation_events[(game_id, step_type)] = event
         try:
@@ -603,9 +675,20 @@ class GameStateNotifier:
 
     def signal_animation_done(self, game_id: str, step_type: str) -> None:
         """Signal that an animation step has completed."""
+        # First try exact match
         event = self.animation_events.get((game_id, step_type))
         if event:
             event.set()
+            return
+            
+        # Handle generic street_dealt by checking for any specific street_dealt_* waiting
+        if step_type == "street_dealt":
+            for street in ["flop", "turn", "river"]:
+                specific_key = (game_id, f"street_dealt_{street}")
+                event = self.animation_events.get(specific_key)
+                if event:
+                    event.set()
+                    return
         
     async def notify_game_update(self, game_id: str, game: PokerGame, game_to_model_func=None):
         """
@@ -1125,6 +1208,21 @@ class GameStateNotifier:
                     logging.error(f"Failed to send action request after all retries")
                     import traceback
                     logging.error(traceback.format_exc())
+
+    async def send_error_to_player(self, game_id: str, player_id: str, error_data: dict):
+        """
+        Send an error message to a specific player.
+        
+        Args:
+            game_id: The ID of the game
+            player_id: The ID of the player to send the error to
+            error_data: Dictionary containing error code and message
+        """
+        message = {
+            "type": "error",
+            "data": error_data
+        }
+        await self.connection_manager.send_to_player(game_id, player_id, message)
 
 
 # Create game notifier instance

@@ -77,36 +77,71 @@ This specification outlines the development of an interactive poker training app
 
 ### End-of-Betting-Round Sequence
 
-When a betting round completes (and the hand continues), the frontend must follow these non-overlapping steps:
-1. The last player action is received and applied.
-2. The Bets text box resets to 0.
-3. All player bet indicators from that round animate into the Pot text box (0.5s).
-4. The Pot text box updates to the new total and pulses yellow (0.5s).
-5. If additional streets remain (Flop, Turn, River), reveal the next street:
-   a. Flop: reveal three cards at once with sound, then pause 1s.
-   b. Turn: reveal one card with sound, then pause 1s.
-   c. River: reveal one card with sound, then pause 1s.
-6. After the pause, gameplay resumes with the next betting round.
+The canonical end-of-betting-round events should always be as follows and none of these should overlap:
 
-### Showdown Sequence (All-In Runout)
+1. **Player Action Processed**: The last player in `to_act` makes their action via `process_action()`.
+2. **Turn Highlight Removed**: `showTurnHighlight` is set to `false`, removing the yellow border from the acting player.
+3. **Side Pots Created**: If any players have `PlayerStatus.ALL_IN`, `_create_side_pots()` is called to calculate side pots.
+4. **Backend Notification**: `notify_round_bets_finalized()` sends WebSocket message with:
+   - `player_bets`: Array of `{player_id, amount}` for each player's `current_bet`
+   - `pot`: Total pot amount (sum of all `pot.amount` in `self.pots`)
+5. **Chip Animation Start**: Frontend receives `round_bets_finalized` and sets `betsToAnimate` with player positions.
+6. **Chip Movement**: `AnimatingBetChip` components move from player positions to pot center over 500ms (`CHIP_ANIMATION_DURATION_MS`).
+7. **Pot Update**: After chips reach destination, `accumulatedPot` is updated with new total.
+8. **Pot Pulse**: `flashMainPot` triggers yellow pulse animation for 500ms (`POT_FLASH_DURATION_MS`).
+9. **Animation Acknowledgment**: Frontend sends `{type: 'animation_done', data: {animation_type: 'round_bets_finalized'}}`.
+10. **Backend State Clear**: Upon receiving acknowledgment, backend sets all `player.current_bet = 0`.
+11. **Betting Input Reset**: Frontend's `betAmount` state resets to 0, clearing the bet slider/input.
+12. **Street Dealing**: If `current_round` is not `RIVER`, backend calls appropriate method:
+    - `PREFLOP` → `deal_flop()` 
+    - `FLOP` → `deal_turn()`
+    - `TURN` → `deal_river()`
+13. **Street Notification**: `notify_street_dealt()` sends message with:
+    - `street`: New `current_round.name`
+    - `cards`: Array of new `community_cards`
+14. **Card Reveal Animation**: Frontend reveals cards with 150ms stagger (`CARD_STAGGER_DELAY_MS`) and plays sound.
+15. **Street Animation Acknowledgment**: Frontend sends `{type: 'animation_done', data: {animation_type: 'street_dealt'}}`.
+16. **Post-Street Pause**: 1000ms wait (`POST_STREET_PAUSE_MS`).
+17. **Next Action Request**: `notify_action_request()` highlights next player in `to_act` set.
 
-When the hand proceeds to showdown, the frontend must follow these non-overlapping steps:
-1. The last player action is received and applied.
-2. The Bets text box resets to 0.
-3. Player bets animate into the Pot text box (0.5s).
-4. The Pot text box updates to the new total and pulses yellow (0.5s).
-5. All players reveal their hole cards face-up (pause 1s).
-6. If undealt community cards remain, reveal each street with sound and a 1s pause:
-   a. Flop: three cards reveal, sound, pause 1s.
-   b. Turn: one card reveal, sound, pause 1s.
-   c. River: one card reveal, sound, pause 1s.
-7. Repeat steps 5–6 until all streets are shown.
-8. Reset the Pot text box to 0.
-9. Animate the Pot icon moving to the winning player(s) (0.5s).
-10. Update the winning player(s)’ chip count.
-11. Pulse the winning player(s)’ seat with a yellow border (0.5s).
-12. Pause 1s to allow players to absorb the result.
-13. Proceed to set up and deal the next hand.
+### Showdown Sequence
+
+The canonical showdown events should always be as follows and none of these should overlap:
+
+1. **Player Action Processed**: The last player in `to_act` makes their action via `process_action()`.
+2. **Turn Highlight Removed**: `showTurnHighlight` is set to `false`, removing the yellow border from the acting player.
+3. **Showdown Triggered**: `_check_betting_round_completion()` returns `true` and `current_round == RIVER`.
+4. **Side Pots Finalized**: `_create_side_pots()` ensures all side pots are properly created with `eligible_players`.
+5. **Final Bets Collected**: `notify_round_bets_finalized()` sends final betting round's bets.
+6. **Chip Animation**: `AnimatingBetChip` components move to pot over 500ms.
+7. **Pot Update & Pulse**: `accumulatedPot` updated, `flashMainPot` triggers 500ms pulse.
+8. **Animation Acknowledgment**: Frontend sends `animation_done` for `round_bets_finalized`.
+9. **Backend State Clear**: All `player.current_bet = 0`.
+10. **Showdown State Set**: `current_round = BettingRound.SHOWDOWN`.
+11. **Hands Revealed**: `notify_showdown_hands_revealed()` sends:
+    - `player_hands`: Array of `{player_id, cards}` for all non-folded players
+12. **Card Display**: Frontend sets `showdownHands` state, revealing all hole cards simultaneously.
+13. **All-In Street Dealing** (if needed): For each missing street:
+    - Backend calls `deal_flop()`, `deal_turn()`, or `deal_river()`
+    - `notify_street_dealt()` sends each street
+    - Frontend reveals with 150ms card stagger
+    - 1000ms pause between streets
+    - `animation_done` sent for each street
+14. **Hand Evaluation**: Backend calls `evaluate_hands()` and `_format_hand_description()`.
+15. **Winners Determined**: `_handle_showdown()` populates `hand_winners` dict with `pot_id: [players]`.
+16. **Winner Notification**: `notify_pot_winners_determined()` sends:
+    - `pots`: Array of `{pot_id, amount, winners: [{player_id, amount, hand_description}]}`
+17. **Pot Clear Animation**: Frontend sets main pot display to 0 (visual only).
+18. **Chip Distribution Animation**: `potToPlayerAnimations` creates `AnimatingBetChip` components from pot to each winner over 500ms.
+19. **Animation Acknowledgment**: Frontend sends `animation_done` for `pot_winners_determined`.
+20. **Chip Count Update**: Backend updates `player.chips` and sends `notify_chips_distributed()` with full game state.
+21. **Visual Chip Update**: Frontend updates displayed chip counts from new game state.
+22. **Animation Acknowledgment**: Frontend sends `animation_done` for `chips_distributed`.
+23. **Hand Conclusion**: Backend sends `notify_hand_visually_concluded()`.
+24. **Winner Highlight**: Frontend applies `winner-pulse` CSS class (500ms yellow border animation).
+25. **Animation Acknowledgment**: Frontend sends `animation_done` for `hand_visually_concluded`.
+26. **Post-Hand Pause**: 1000ms wait before next hand.
+27. **Next Hand Setup**: Backend calls `setup_next_hand()` → `deal_new_hand()`.
 
 ### Technical Architecture
 

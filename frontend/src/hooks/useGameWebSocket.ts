@@ -295,6 +295,7 @@ export const useGameWebSocket = (wsUrl: string) => {
   // Pending street reveal animation data (street: FLOP/TURN/RIVER, cards to reveal)
   const [pendingStreetReveal, setPendingStreetReveal] = useState<{ street: string; cards: any[] } | null>(null);
   const [showdownHands, setShowdownHands] = useState<{ player_id: string; cards: string[]; }[] | null>(null);
+  const [handEvaluations, setHandEvaluations] = useState<{ player_id: string; description: string; }[] | null>(null);
   const [potWinners, setPotWinners] = useState<any[] | null>(null);
   const [chipsDistributed, setChipsDistributed] = useState<boolean>(false);
   const [handVisuallyConcluded, setHandVisuallyConcluded] = useState<boolean>(false);
@@ -313,7 +314,10 @@ useEffect(() => {
   
   // Mark animation as starting
   setBettingRoundAnimating(true);
+  setCurrentStreetPot(0); // Clear immediately to prevent display during animation
   console.log('[ANIMATION] Round bets finalized - starting chip animations');
+  console.log('[BETTING-ANIMATION] Starting, currentStreetPot cleared');
+  console.log('[EVENT-SEQUENCE] Step 5-6: Chip Animation Start');
   
   // Step 3: animate each player's bet into the pot
   const anims = (player_bets || []).map(pb => ({
@@ -329,6 +333,7 @@ useEffect(() => {
     setAccumulatedPot(pot);
     setFlashMainPot(true);
     console.log('[ANIMATION] Chip animation complete, starting pot flash');
+    console.log('[EVENT-SEQUENCE] Step 7-8: Pot Update & Pulse');
     
     // After pot flash, clear and signal completion
     const flashTimer = window.setTimeout(() => {
@@ -450,6 +455,7 @@ useEffect(() => {
     setFlashMainPot(false);
     setPendingStreetReveal(null);
     setShowdownHands(null);
+    setHandEvaluations(null);
     setPotWinners(null);
     setChipsDistributed(false);
     setHandVisuallyConcluded(false);
@@ -466,9 +472,13 @@ useEffect(() => {
       case 'showdown_hands_revealed':
         setShowdownHands(data.player_hands);
         break;
+      case 'hand_evaluations':
+        setHandEvaluations(data.evaluations);
+        break;
       case 'pot_winners_determined':
-        // Clear accumulated pot and show pot winners info for animation
+        // Clear pot displays (canonical step 17) before animating to winners
         setAccumulatedPot(0);
+        setCurrentStreetPot(0);
         setPotWinners(data.pots);
         break;
       case 'chips_distributed':
@@ -587,6 +597,7 @@ useEffect(() => {
           case 'round_bets_finalized':
           case 'street_dealt':
           case 'showdown_hands_revealed':
+          case 'hand_evaluations':
           case 'pot_winners_determined':
           case 'chips_distributed':
           case 'hand_visually_concluded':
@@ -696,9 +707,9 @@ useEffect(() => {
               p.current_bet === 0 || p.current_bet === undefined
             );
             
-            if (bettingRoundAnimating && allBetsCleared) {
-              // Buffer this update until animation completes
-              console.log('[ANIMATION] Buffering game state update - all bets cleared during animation');
+            if (bettingRoundAnimating) {
+              // During betting round animation, buffer ALL game state updates to prevent visual glitches
+              console.log('[ANIMATION] Buffering game state update during betting round animation');
               setPendingBetClearUpdate(message.data);
             } else {
               // Safe to apply immediately
@@ -731,6 +742,31 @@ useEffect(() => {
               
               console.log('[TURN] SHOWDOWN transition cleanup completed');
             }
+            break;
+
+          case 'showdown_transition':
+            console.log('[SHOWDOWN] *** EXPLICIT SHOWDOWN TRANSITION RECEIVED ***');
+            console.log('[SHOWDOWN] Transition received, clearing highlights');
+            console.log('[EVENT-SEQUENCE] Showdown Step 2: Turn Highlight Removed via explicit transition');
+            // Immediately clear all turn highlights
+            setShowTurnHighlight(false);
+            setCurrentTurnPlayerId(null);
+            
+            // Cancel any pending highlight timeouts
+            if (postActionTimeoutRef.current) {
+              console.log('[SHOWDOWN] Cancelling post-action timeout');
+              clearTimeout(postActionTimeoutRef.current);
+              postActionTimeoutRef.current = null;
+            }
+            if (aiTurnTimeoutRef.current) {
+              console.log('[SHOWDOWN] Cancelling AI turn timeout');
+              clearTimeout(aiTurnTimeoutRef.current);
+              aiTurnTimeoutRef.current = null;
+            }
+            
+            // Clear other turn-related states
+            setProcessingAITurn(false);
+            setFoldedPlayerId(null);
             break;
             
           case 'player_action':
@@ -920,9 +956,7 @@ useEffect(() => {
                 console.log(`[TURN-TIMEOUT] Action player: ${actionPlayerId}, isLastPlayerAllIn: ${isLastPlayerAllIn}, isInShowdown: ${isNowInShowdown}`);
                 
                 if (isNowInShowdown) {
-                  console.log('[TURN-TIMEOUT] Already in SHOWDOWN, removing highlight before skipping further handling');
-                  setShowTurnHighlight(false);
-                  setCurrentTurnPlayerId(null);
+                  console.log('[TURN-TIMEOUT] Already in SHOWDOWN, skipping highlight modifications');
                   return;
                 }
                 
@@ -1559,6 +1593,18 @@ useEffect(() => {
       sendMessage({ type: 'animation_done', data: { stepType } });
     }
   }, [currentStep, sendMessage]);
+  
+  // Handle hand evaluations display timing
+  useEffect(() => {
+    if (!handEvaluations || currentStep?.type !== 'hand_evaluations') return;
+    
+    // Allow 1.5 seconds for players to read hand evaluations
+    const timer = setTimeout(() => {
+      onAnimationDone('hand_evaluations');
+    }, 1500);
+    
+    return () => clearTimeout(timer);
+  }, [handEvaluations, currentStep, onAnimationDone]);
 
   // Cleanup timeouts on unmount to prevent memory leaks and stale state updates
   useEffect(() => {
@@ -1609,6 +1655,7 @@ useEffect(() => {
     roundBetsFinalized,
     pendingStreetReveal,
     showdownHands,
+    handEvaluations,
     potWinners,
     chipsDistributed,
     handVisuallyConcluded

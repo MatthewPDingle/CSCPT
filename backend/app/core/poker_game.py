@@ -12,6 +12,10 @@ import uuid
 
 from app.core.cards import Card, Deck, Hand
 from app.core.hand_evaluator import HandEvaluator, HandRank
+from app.core.game_events import (
+    GameActionResult, GameEventType, AnimationSequence, 
+    PlayerBet, StreetCards
+)
 
 
 class BettingRound(Enum):
@@ -1179,6 +1183,290 @@ class PokerGame:
                 
         return results
     
+    def process_action_pure(self, player: Player, action: PlayerAction, amount: Optional[int] = None) -> GameActionResult:
+        """
+        Pure game logic version of process_action.
+        
+        Processes a player's action and returns a GameActionResult describing
+        what happened, without any side effects like WebSocket notifications.
+        
+        This follows the Command Pattern - pure logic that returns a result
+        describing what occurred.
+        
+        Args:
+            player: The player taking the action
+            action: The action being taken
+            amount: The bet/raise amount (if applicable)
+            
+        Returns:
+            GameActionResult describing what happened and what notifications are needed
+        """
+        import time
+        execution_id = f"{time.time():.6f}"
+        
+        # Input validation
+        if not player or not action:
+            return GameActionResult(
+                success=False,
+                events=[],
+                current_round=self.current_round,
+                current_player_id=None,
+                to_act=self.to_act.copy(),
+                action_player_id=player.player_id if player else "unknown",
+                action_type=action,
+                action_amount=amount,
+                animation_sequence=AnimationSequence.NONE,
+                error_message="Invalid player or action"
+            )
+        
+        # Process the action using existing logic but capture the results
+        old_status = player.status
+        old_bet = player.current_bet
+        old_chips = player.chips
+        old_to_act = self.to_act.copy()
+        old_round = self.current_round
+        
+        # Execute the action logic (simplified version without notifications)
+        success = self._execute_action_logic(player, action, amount, execution_id)
+        
+        if not success:
+            return GameActionResult(
+                success=False,
+                events=[],
+                current_round=self.current_round,
+                current_player_id=self._get_current_player_id(),
+                to_act=self.to_act.copy(),
+                action_player_id=player.player_id,
+                action_type=action,
+                action_amount=amount,
+                animation_sequence=AnimationSequence.NONE,
+                error_message=f"Action {action.name} failed validation"
+            )
+        
+        # Determine what events occurred and what needs to happen next
+        return self._build_action_result(player, action, amount, execution_id, old_round)
+    
+    def _execute_action_logic(self, player: Player, action: PlayerAction, amount: Optional[int], execution_id: str) -> bool:
+        """Execute the core action logic without side effects."""
+        # Store original state for potential rollback
+        original_status = player.status
+        original_bet = player.current_bet
+        original_chips = player.chips
+        original_to_act = self.to_act.copy()
+        
+        try:
+            # Basic validation
+            if player.status != PlayerStatus.ACTIVE:
+                logging.warning(f"[ACTION-{execution_id}] Player {player.name} is not active (status: {player.status.name})")
+                return False
+            
+            # Process each action type
+            if action == PlayerAction.FOLD:
+                player.status = PlayerStatus.FOLDED
+                if player.player_id in self.to_act:
+                    self.to_act.remove(player.player_id)
+                    
+            elif action == PlayerAction.CHECK:
+                if player.current_bet < self.current_bet:
+                    logging.warning(f"[ACTION-{execution_id}] Cannot check: player bet {player.current_bet} < current bet {self.current_bet}")
+                    return False
+                if player.player_id in self.to_act:
+                    self.to_act.remove(player.player_id)
+                    
+            elif action == PlayerAction.CALL:
+                call_amount = self.current_bet - player.current_bet
+                if call_amount <= 0:
+                    logging.warning(f"[ACTION-{execution_id}] Invalid call: call_amount={call_amount}")
+                    return False
+                if call_amount >= player.chips:
+                    # This becomes an all-in
+                    actual_bet = player.bet(player.chips)
+                    player.status = PlayerStatus.ALL_IN
+                else:
+                    actual_bet = player.bet(call_amount)
+                
+                self.pots[0].add(actual_bet, player.player_id)
+                if player.player_id in self.to_act:
+                    self.to_act.remove(player.player_id)
+                    
+            elif action == PlayerAction.BET:
+                if self.current_bet > 0 or amount is None:
+                    logging.warning(f"[ACTION-{execution_id}] Invalid bet: current_bet={self.current_bet}, amount={amount}")
+                    return False
+                if amount < self.big_blind or amount > player.chips:
+                    logging.warning(f"[ACTION-{execution_id}] Invalid bet amount: {amount}")
+                    return False
+                    
+                if amount == player.chips:
+                    player.status = PlayerStatus.ALL_IN
+                    
+                actual_bet = player.bet(amount)
+                self.current_bet = player.current_bet
+                self.min_raise = amount
+                self.pots[0].add(actual_bet, player.player_id)
+                
+                # Reset to_act for all other active players
+                self.to_act = {p.player_id for p in self.players 
+                             if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+                             
+            elif action == PlayerAction.RAISE:
+                if amount is None or amount <= self.current_bet:
+                    logging.warning(f"[ACTION-{execution_id}] Invalid raise amount: {amount}")
+                    return False
+                if amount > player.chips:
+                    # This becomes an all-in
+                    amount = player.chips
+                    player.status = PlayerStatus.ALL_IN
+                    
+                actual_bet = player.bet(amount - player.current_bet)
+                self.current_bet = player.current_bet
+                self.min_raise = amount - self.current_bet
+                self.pots[0].add(actual_bet, player.player_id)
+                
+                # Reset to_act for all other active players
+                self.to_act = {p.player_id for p in self.players 
+                             if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+                             
+            elif action == PlayerAction.ALL_IN:
+                if player.chips <= 0:
+                    logging.warning(f"[ACTION-{execution_id}] Cannot go all-in: no chips remaining")
+                    return False
+                    
+                all_in_amount = player.chips
+                actual_bet = player.bet(all_in_amount)
+                player.status = PlayerStatus.ALL_IN
+                
+                if player.current_bet > self.current_bet:
+                    # All-in is a raise
+                    self.current_bet = player.current_bet
+                    self.min_raise = player.current_bet - self.current_bet
+                    # Reset to_act
+                    self.to_act = {p.player_id for p in self.players 
+                                 if p.status == PlayerStatus.ACTIVE and p.player_id != player.player_id}
+                else:
+                    # All-in is a call
+                    if player.player_id in self.to_act:
+                        self.to_act.remove(player.player_id)
+                        
+                self.pots[0].add(actual_bet, player.player_id)
+                
+            else:
+                logging.warning(f"[ACTION-{execution_id}] Unknown action: {action}")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            # Rollback on error
+            player.status = original_status
+            player.current_bet = original_bet
+            player.chips = original_chips
+            self.to_act = original_to_act
+            logging.error(f"[ACTION-{execution_id}] Error processing action: {e}")
+            return False
+    
+    def _build_action_result(self, player: Player, action: PlayerAction, amount: Optional[int], 
+                           execution_id: str, old_round: BettingRound) -> GameActionResult:
+        """Build a GameActionResult based on the current game state after action processing."""
+        events = []
+        animation_sequence = AnimationSequence.NONE
+        
+        # Check if betting round is complete
+        round_complete = self._check_betting_round_completion()
+        
+        # Determine what type of completion this is
+        active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
+        all_in_players = [p for p in self.players if p.status == PlayerStatus.ALL_IN]
+        remaining_players = active_players + all_in_players
+        
+        # Check for hand completion scenarios
+        if len(remaining_players) <= 1:
+            events.append(GameEventType.EARLY_SHOWDOWN_TRIGGERED)
+            animation_sequence = AnimationSequence.CHIP_COLLECTION
+        elif round_complete and self.current_round == BettingRound.RIVER:
+            events.append(GameEventType.SHOWDOWN_TRIGGERED)
+            animation_sequence = AnimationSequence.CHIP_COLLECTION
+        elif round_complete and len(active_players) == 0:
+            # All remaining players are all-in
+            events.append(GameEventType.SHOWDOWN_TRIGGERED)
+            animation_sequence = AnimationSequence.CHIP_COLLECTION
+        elif round_complete:
+            events.append(GameEventType.BETTING_ROUND_COMPLETED)
+            animation_sequence = AnimationSequence.CHIP_COLLECTION
+        
+        # Always include player action processed
+        events.insert(0, GameEventType.PLAYER_ACTION_PROCESSED)
+        
+        # Prepare betting data for animations
+        player_bets = None
+        total_pot = None
+        if animation_sequence == AnimationSequence.CHIP_COLLECTION:
+            player_bets = [
+                PlayerBet(player_id=p.player_id, amount=p.current_bet)
+                for p in self.players if p.current_bet > 0
+            ]
+            total_pot = sum(pot.amount for pot in self.pots)
+        
+        # Determine streets that need to be dealt for all-in showdowns
+        remaining_streets = []
+        if GameEventType.SHOWDOWN_TRIGGERED in events and len(active_players) == 0:
+            # All-in showdown - need to deal remaining streets
+            if len(self.community_cards) == 0:
+                remaining_streets = ["FLOP", "TURN", "RIVER"]
+            elif len(self.community_cards) == 3:
+                remaining_streets = ["TURN", "RIVER"]
+            elif len(self.community_cards) == 4:
+                remaining_streets = ["RIVER"]
+        
+        # Determine next street for normal round completion
+        street_cards = None
+        if GameEventType.BETTING_ROUND_COMPLETED in events:
+            if self.current_round == BettingRound.PREFLOP:
+                street_cards = StreetCards("FLOP", [])  # Cards will be dealt by orchestrator
+            elif self.current_round == BettingRound.FLOP:
+                street_cards = StreetCards("TURN", [])
+            elif self.current_round == BettingRound.TURN:
+                street_cards = StreetCards("RIVER", [])
+        
+        return GameActionResult(
+            success=True,
+            events=events,
+            current_round=self.current_round,
+            current_player_id=self._get_current_player_id(),
+            to_act=self.to_act.copy(),
+            action_player_id=player.player_id,
+            action_type=action,
+            action_amount=amount,
+            animation_sequence=animation_sequence,
+            player_bets=player_bets,
+            total_pot=total_pot,
+            street_cards=street_cards,
+            is_showdown=GameEventType.SHOWDOWN_TRIGGERED in events,
+            is_early_showdown=GameEventType.EARLY_SHOWDOWN_TRIGGERED in events,
+            remaining_streets=remaining_streets,
+            turn_highlight_removed=True,  # Always remove highlight after action
+            next_player_id=self._get_next_player_id() if not round_complete else None
+        )
+    
+    def _get_current_player_id(self) -> Optional[str]:
+        """Get the current player's ID."""
+        if 0 <= self.current_player_idx < len(self.players):
+            return self.players[self.current_player_idx].player_id
+        return None
+    
+    def _get_next_player_id(self) -> Optional[str]:
+        """Get the next player's ID after advancing turn."""
+        # This is a simulation - we don't actually advance the turn here
+        # The orchestrator will handle turn advancement
+        current_idx = self.current_player_idx
+        for _ in range(len(self.players)):
+            current_idx = (current_idx + 1) % len(self.players)
+            next_player = self.players[current_idx]
+            if (next_player.status == PlayerStatus.ACTIVE and 
+                next_player.player_id in self.to_act):
+                return next_player.player_id
+        return None
+    
     async def process_action(self, player: Player, action: PlayerAction, amount: Optional[int] = None) -> bool:
         """
         Process a player's action during betting.
@@ -1248,49 +1536,9 @@ class PokerGame:
                 self.to_act.remove(player.player_id)
                 logging.info(f"[ACTION-{execution_id}] Player {player.name} FOLDED. Removed from to_act. Remaining: {self.to_act}")
             
-            # Check if only one active player remains
-            active_players = [p for p in self.players if p.status == PlayerStatus.ACTIVE]
-            active_count = len(active_players)
-            
-            # Only trigger early showdown if:
-            # 1. There's at most one active player AND
-            # 2. That player (if any) has matched the current bet OR is unable to call
-            should_showdown = False
-            if active_count <= 1:
-                if active_count == 0:
-                    # No active players, definitely showdown
-                    should_showdown = True
-                else:
-                    # One active player - check if they've matched the bet or need to act
-                    last_active = active_players[0]
-                    if last_active.current_bet >= self.current_bet or last_active.chips == 0:
-                        # Player has matched the bet or can't bet more
-                        should_showdown = True
-                    elif last_active.player_id not in self.to_act:
-                        # Player has already acted this round and matched the bet
-                        should_showdown = True
-                    else:
-                        # Player still needs to act on the current bet
-                        logging.info(f"[ACTION-{execution_id}] One active player remains ({last_active.name}) but they need to act (bet: {last_active.current_bet}, table: {self.current_bet})")
-                        should_showdown = False
-                        
-            if should_showdown:
-                logging.info(f"[ACTION-{execution_id}] Only {active_count} active player(s) remain after fold. Handling early showdown.")
-                # Record the action before handling showdown
-                if self.hand_history_recorder and self.current_hand_id:
-                    self.hand_history_recorder.record_action(
-                        player_id=player.player_id,
-                        action_type=action,
-                        amount=None,
-                        betting_round=self.current_round,
-                        player=player,
-                        pot_before=pot_before,
-                        pot_after=self.pot,
-                        bet_facing=bet_facing
-                    )
-                
-                self._handle_early_showdown()
-                return True
+            # Don't trigger early showdown here - let the normal betting round completion handle it
+            # This prevents showdown from starting before all players have acted
+            logging.info(f"[ACTION-{execution_id}] Player {player.name} folded. Continuing normal action sequence.")
                 
             success = True
             
@@ -1878,7 +2126,7 @@ class PokerGame:
                          if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
         
         if len(active_players) <= 1:
-            return self._handle_early_showdown()
+            return await self._handle_early_showdown()
         
         # Check for all-in players
         all_in_players = [p for p in active_players if p.status == PlayerStatus.ALL_IN]
@@ -1912,31 +2160,76 @@ class PokerGame:
             logging.info(f"[END-ROUND-{execution_id}] DECISION POINT: len(active_not_all_in)={len(active_not_all_in)}, betting_complete={betting_complete}")
             logging.info(f"[END-ROUND-{execution_id}] Will go to showdown: {len(active_not_all_in) == 0 and betting_complete}")
             if len(active_not_all_in) == 0 and betting_complete:
-                logging.info(f"[END-ROUND-{execution_id}] All-in showdown confirmed: all players have acted, dealing remaining community cards and skipping to showdown")
-                # Deal all remaining community cards to complete the board
-                while len(self.community_cards) < 5:
-                    if len(self.community_cards) == 0:
-                        # Burn and deal the flop (3 cards)
-                        self.deck.draw()
-                        for _ in range(3):
-                            card = self.deck.draw()
-                            if card:
-                                self.community_cards.append(card)
-                    elif len(self.community_cards) == 3:
-                        # Burn and deal the turn
-                        self.deck.draw()
-                        card = self.deck.draw()
-                        if card:
-                            self.community_cards.append(card)
-                    elif len(self.community_cards) == 4:
-                        # Burn and deal the river
-                        self.deck.draw()
-                        card = self.deck.draw()
-                        if card:
-                            self.community_cards.append(card)
-                # Skip ahead to showdown
-                logging.info(f"[END-ROUND-{execution_id}] Transitioning directly to showdown")
-                return self._handle_showdown()
+                logging.info(f"[END-ROUND-{execution_id}] All-in showdown confirmed: all players have acted")
+                
+                # First, finalize bets like normal end of round
+                if self.game_id:
+                    try:
+                        from app.core.websocket import game_notifier
+                        from app.core.config import ANIMATION_FALLBACK_DELAYS
+
+                        player_bets = [
+                            {"player_id": p.player_id, "amount": p.current_bet}
+                            for p in self.players
+                        ]
+                        total_pot = sum(pot.amount for pot in self.pots)
+
+                        await game_notifier.notify_round_bets_finalized(
+                            self.game_id, player_bets, total_pot
+                        )
+                        
+                        # Wait for animation
+                        try:
+                            await game_notifier.wait_for_animation(
+                                self.game_id, "round_bets_finalized"
+                            )
+                        except asyncio.TimeoutError:
+                            await asyncio.sleep(
+                                ANIMATION_FALLBACK_DELAYS["round_bets_finalized"]
+                            )
+                        
+                        # Clear bets after animation
+                        for pl in self.players:
+                            pl.current_bet = 0
+                    except Exception as e:
+                        logging.error(f"Error sending round bets finalized notification: {e}")
+
+                # Deal flop if needed
+                if len(self.community_cards) == 0:
+                    self.deal_flop()
+                    await game_notifier.notify_street_dealt(
+                        self.game_id, "FLOP", self.community_cards[-3:]
+                    )
+                    try:
+                        await game_notifier.wait_for_animation(self.game_id, "street_dealt_flop")
+                    except asyncio.TimeoutError:
+                        await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["street_dealt_flop"])
+                
+                # Deal turn if needed
+                if len(self.community_cards) == 3:
+                    self.deal_turn()
+                    await game_notifier.notify_street_dealt(
+                        self.game_id, "TURN", [self.community_cards[-1]]
+                    )
+                    try:
+                        await game_notifier.wait_for_animation(self.game_id, "street_dealt_turn")
+                    except asyncio.TimeoutError:
+                        await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["street_dealt_turn"])
+                
+                # Deal river if needed
+                if len(self.community_cards) == 4:
+                    self.deal_river()
+                    await game_notifier.notify_street_dealt(
+                        self.game_id, "RIVER", [self.community_cards[-1]]
+                    )
+                    try:
+                        await game_notifier.wait_for_animation(self.game_id, "street_dealt_river")
+                    except asyncio.TimeoutError:
+                        await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["street_dealt_river"])
+                
+                # Now transition to showdown
+                logging.info(f"[END-ROUND-{execution_id}] All streets dealt, transitioning to showdown")
+                return await self._handle_showdown()
             else:
                 # Betting round not complete or active players remain
                 if len(active_not_all_in) > 0:
@@ -1958,19 +2251,26 @@ class PokerGame:
                 await game_notifier.notify_round_bets_finalized(
                     self.game_id, player_bets, total_pot
                 )
-                # Wait for full animation sequence (0.5s chips + 0.5s flash = 1.0s total)
-                logging.info(f"[ANIMATION] Waiting for betting round animation to complete")
-                await asyncio.sleep(1.0)
                 
-                # Also wait for animation_done confirmation with increased timeout
+                # Wait for animation_done confirmation
+                from app.core.config import ANIMATION_FALLBACK_DELAYS
+                
+                logging.info(f"[ANIMATION] Waiting for round_bets_finalized animation acknowledgment")
                 try:
                     await game_notifier.wait_for_animation(
-                        self.game_id, "round_bets_finalized", timeout=3.0
+                        self.game_id, "round_bets_finalized"
                     )
-                except Exception as timeout_e:
+                    logging.info(f"[ANIMATION] round_bets_finalized animation acknowledged")
+                except asyncio.TimeoutError:
                     logging.warning(
-                        f"Animation confirmation timeout for round_bets_finalized: {timeout_e}"
+                        f"Animation acknowledgment timeout for round_bets_finalized - using fallback delay"
                     )
+                    # Fallback to expected animation duration if no acknowledgment
+                    await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["round_bets_finalized"])
+                
+                # Clear player bets AFTER animation completes (canonical step 10)
+                for player in self.players:
+                    player.current_bet = 0
             except Exception as e:
                 logging.error(
                     f"Error sending round bets finalized notification: {e}"
@@ -1982,20 +2282,20 @@ class PokerGame:
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
-                    # Small buffer to ensure previous animations are complete
-                    await asyncio.sleep(0.1)
-                    await game_notifier.notify_new_round(
+                    await game_notifier.notify_street_dealt(
                         self.game_id,
                         self.current_round.name,
-                        self.community_cards,
-                        auto_request=False,
+                        self.community_cards[-3:]  # Just the flop cards
                     )
+                    logging.info(f"[ANIMATION] Waiting for street_dealt (FLOP) animation acknowledgment")
                     try:
                         await game_notifier.wait_for_animation(
-                            self.game_id, "street_dealt", timeout=3.0
+                            self.game_id, "street_dealt_flop"
                         )
-                    except Exception:
-                        await asyncio.sleep(1.0)
+                        logging.info(f"[ANIMATION] street_dealt (FLOP) animation acknowledged")
+                    except asyncio.TimeoutError:
+                        logging.warning(f"Animation acknowledgment timeout for street_dealt (FLOP) - using fallback delay")
+                        await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["street_dealt_flop"])
                     await game_notifier.notify_action_request(self.game_id, self)
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
@@ -2005,20 +2305,20 @@ class PokerGame:
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
-                    # Small buffer to ensure previous animations are complete
-                    await asyncio.sleep(0.1)
-                    await game_notifier.notify_new_round(
+                    await game_notifier.notify_street_dealt(
                         self.game_id,
                         self.current_round.name,
-                        self.community_cards,
-                        auto_request=False,
+                        [self.community_cards[-1]]  # Just the turn card
                     )
+                    logging.info(f"[ANIMATION] Waiting for street_dealt (TURN) animation acknowledgment")
                     try:
                         await game_notifier.wait_for_animation(
-                            self.game_id, "street_dealt", timeout=3.0
+                            self.game_id, "street_dealt_turn"
                         )
-                    except Exception:
-                        await asyncio.sleep(1.0)
+                        logging.info(f"[ANIMATION] street_dealt (TURN) animation acknowledged")
+                    except asyncio.TimeoutError:
+                        logging.warning(f"Animation acknowledgment timeout for street_dealt (TURN) - using fallback delay")
+                        await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["street_dealt_turn"])
                     await game_notifier.notify_action_request(self.game_id, self)
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
@@ -2028,30 +2328,30 @@ class PokerGame:
             if self.game_id:
                 try:
                     from app.core.websocket import game_notifier
-                    # Small buffer to ensure previous animations are complete
-                    await asyncio.sleep(0.1)
-                    await game_notifier.notify_new_round(
+                    await game_notifier.notify_street_dealt(
                         self.game_id,
                         self.current_round.name,
-                        self.community_cards,
-                        auto_request=False,
+                        [self.community_cards[-1]]  # Just the river card
                     )
+                    logging.info(f"[ANIMATION] Waiting for street_dealt (RIVER) animation acknowledgment")
                     try:
                         await game_notifier.wait_for_animation(
-                            self.game_id, "street_dealt", timeout=3.0
+                            self.game_id, "street_dealt_river"
                         )
-                    except Exception:
-                        await asyncio.sleep(1.0)
+                        logging.info(f"[ANIMATION] street_dealt (RIVER) animation acknowledged")
+                    except asyncio.TimeoutError:
+                        logging.warning(f"Animation acknowledgment timeout for street_dealt (RIVER) - using fallback delay")
+                        await asyncio.sleep(ANIMATION_FALLBACK_DELAYS["street_dealt_river"])
                     await game_notifier.notify_action_request(self.game_id, self)
                 except Exception as e:
                     logging.error(f"Error sending new round notification: {e}")
             return False
         elif self.current_round == BettingRound.RIVER:
-            return self._handle_showdown()
+            return await self._handle_showdown()
             
         return False
     
-    def _handle_early_showdown(self) -> bool:
+    async def _handle_early_showdown(self) -> bool:
         """
         Handle the case where all but one player has folded.
         
@@ -2063,6 +2363,9 @@ class PokerGame:
                            if p.status in {PlayerStatus.ACTIVE, PlayerStatus.ALL_IN}]
         
         if len(remaining_players) == 1:
+            # Transition to showdown state first
+            await self._transition_to_showdown()
+            
             # Award entire pot(s) to the remaining player without showdown
             winner = remaining_players[0]
             for pot in self.pots:
@@ -2102,9 +2405,7 @@ class PokerGame:
                     if card:
                         self.community_cards.append(card)
             # Now perform showdown with full board
-            self._handle_showdown()
-            
-        self.current_round = BettingRound.SHOWDOWN
+            await self._handle_showdown()
         
         # End the hand in the hand history
         if self.hand_history_recorder and self.current_hand_id:
@@ -2113,14 +2414,40 @@ class PokerGame:
             
         return True
     
-    def _handle_showdown(self) -> bool:
+    async def _transition_to_showdown(self) -> None:
+        """
+        Clean transition to showdown state with proper cleanup.
+        Notifies frontend to remove all turn highlights and clears turn management state.
+        """
+        # Clear all turn management state
+        self.to_act.clear()
+        self.current_player_idx = -1
+        
+        # Notify frontend to remove all turn highlights
+        if self.game_id:
+            from app.core.websocket import game_notifier
+            await game_notifier.notify_showdown_transition(self.game_id)
+        
+        # Set showdown state
+        self.current_round = BettingRound.SHOWDOWN
+        
+        # Log the transition for debugging
+        logging.warning(f"[SHOWDOWN-TRANSITION] Game {self.game_id} entering showdown. "
+                       f"Cleared to_act set and current_player_idx. "
+                       f"Active players: {len([p for p in self.players if p.status == PlayerStatus.ACTIVE])}, "
+                       f"All-in players: {len([p for p in self.players if p.status == PlayerStatus.ALL_IN])}")
+
+    async def _handle_showdown(self) -> bool:
         """
         Handle the showdown where hands are compared and pots awarded.
         
         Returns:
             True indicating hand is complete
         """
-        self.current_round = BettingRound.SHOWDOWN
+        logging.warning(f"[SHOWDOWN] _handle_showdown called for game {self.game_id}")
+        
+        # Use the transition method for clean state management
+        await self._transition_to_showdown()
         logging.info(f"[_handle_showdown] Starting showdown. Pots: {[ (pot.name, pot.amount) for pot in self.pots ]}")
         logging.info(f"[_handle_showdown] Community cards: {self.community_cards}")
         logging.info(f"[_handle_showdown] Current round set to SHOWDOWN - clients will be notified via game update")

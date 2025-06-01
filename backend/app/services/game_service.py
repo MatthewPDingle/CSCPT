@@ -1568,10 +1568,12 @@ class GameService:
                     notify_amount,
                     total_street_bet=post_street_bet,
                     # If the action is an all-in or a call that leaves player with zero chips, treat as all-in
-                    total_hand_bet=(post_hand_bet if (poker_action == PokerPlayerAction.ALL_IN or 
+                    total_hand_bet=(post_hand_bet if (poker_action == PokerPlayerAction.ALL_IN or \
                                                    (poker_action == PokerPlayerAction.CALL and poker_player.chips == 0))
                                      else None),
                 )
+                await game_notifier.notify_turn_highlight_removed(game_id, player_id)
+                await game_notifier.notify_bet_input_reset(game_id, player_id)
                 
                 # Update game state in the repository
                 self.game_repo.update(game)
@@ -1858,6 +1860,8 @@ class GameService:
                         total_street_bet=fs_post_street,
                         total_hand_bet=(fs_post_hand if fallback_action_name.upper() in ["ALL_IN", "ALL-IN"] else None),
                     )
+                    await game_notifier.notify_turn_highlight_removed(game_id, player_id)
+                    await game_notifier.notify_bet_input_reset(game_id, player_id)
                     await game_notifier.notify_game_update(game_id, poker_game)
                 else:
                     logging.error(f"AI Action Error: Cannot process action because poker_player or poker_game is invalid.")

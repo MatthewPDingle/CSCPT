@@ -62,6 +62,7 @@ interface PokerTableProps {
   /** Animation trigger for upcoming community street reveal */
   pendingStreetReveal?: { street: string; cards: string[] } | null;
   showdownHands?: { player_id: string; cards: string[] }[] | null;
+  handEvaluations?: { player_id: string; description: string }[] | null;
   potWinners?: { pot_id: string; amount: number; winners: { player_id: string; hand_rank: string; share: number }[] }[] | null;
   chipsDistributed?: boolean;
   handVisuallyConcluded?: boolean;
@@ -269,6 +270,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
   humanPlayerId,
   pendingStreetReveal = null,
   showdownHands = null,
+  handEvaluations = null,
   potWinners = null,
   chipsDistributed = false,
   handVisuallyConcluded = false,
@@ -403,9 +405,12 @@ const PokerTable: React.FC<PokerTableProps> = ({
     }
     // Notify orchestrator when street reveal animation completes
     const totalRevealTime = count * CARD_STAGGER_DELAY_MS + POST_STREET_PAUSE_MS;
-    const doneTimer = window.setTimeout(() => onAnimationDone?.('street_dealt'), totalRevealTime);
+    // Determine the specific street type for backend acknowledgment
+    const streetType = pendingStreetReveal?.street?.toLowerCase();
+    const animationType = streetType ? `street_dealt_${streetType}` : 'street_dealt';
+    const doneTimer = window.setTimeout(() => onAnimationDone?.(animationType), totalRevealTime);
     return () => window.clearTimeout(doneTimer);
-  }, [pendingRevealCount, onAnimationDone]);
+  }, [pendingRevealCount, onAnimationDone, pendingStreetReveal]);
 
   // Pot-to-winner animations
   const [potMoveDelta, setPotMoveDelta] = useState<{ dx: number; dy: number } | null>(null);

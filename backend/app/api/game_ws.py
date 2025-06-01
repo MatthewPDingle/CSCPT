@@ -666,13 +666,31 @@ async def process_action_message(
         total_street_bet=post_street_bet,
         total_hand_bet=(post_hand_bet if action_type == PlayerAction.ALL_IN else None),
     )
+    # Remove highlight and reset bet input after action
+    await game_notifier.notify_turn_highlight_removed(game_id, player_id)
+    await game_notifier.notify_bet_input_reset(game_id, player_id)
 
     # Notify about updated game state
     await game_notifier.notify_game_update(game_id, poker_game)
 
     # If hand is complete, notify about results and start next hand
     if poker_game.current_round == BettingRound.SHOWDOWN:
-        # Broadcast final hand results (winner action_log messages)
+        # First show hand evaluations (canonical step 14)
+        try:
+            evaluations = poker_game.evaluate_hands()
+            formatted_evaluations = {}
+            for player, (rank, kickers) in evaluations.items():
+                if player.status != PlayerStatus.FOLDED:
+                    description = poker_game._format_hand_description(rank, kickers)
+                    formatted_evaluations[player.player_id] = (rank, description)
+            
+            await game_notifier.notify_hand_evaluations(game_id, formatted_evaluations)
+            # Wait for frontend to display evaluations
+            await asyncio.sleep(1.5)  # Time for players to read hand rankings
+        except Exception as e:
+            logging.error(f"Error showing hand evaluations: {e}")
+        
+        # Then broadcast final hand results (winner action_log messages)
         await game_notifier.notify_hand_result(game_id, poker_game)
         # Next hand will be started when client signals animation_done('hand_visually_concluded')
         return
@@ -880,3 +898,186 @@ async def process_chat_message(
                 "data": {"received": True, "timestamp": datetime.now().isoformat()},
             },
         )
+
+
+async def process_action_message_new(
+    websocket: WebSocket,
+    game_id: str,
+    message: Dict[str, Any],
+    player_id: Optional[str],
+    service: GameService,
+):
+    """
+    New event-driven version of action message processing.
+    
+    Uses the EventOrchestrator pattern to separate game logic
+    from UI coordination, eliminating race conditions.
+    """
+    from app.core.event_orchestrator import event_orchestrator
+    from app.core.game_events import EventContext
+    from app.core.poker_game import PlayerAction
+    from app.models.domain_models import DomainPlayerAction
+    
+    import logging
+    import time
+    import traceback
+    execution_id = f"{time.time():.6f}"
+    
+    connection_manager = service.connection_manager
+    
+    logging.info(f"[WS-ACTION-NEW-{execution_id}] Processing action message from {player_id}")
+    
+    try:
+        # Extract action data from message
+        data = message.get("data", {})
+        action_type_str = data.get("action")
+        action_amount = data.get("amount")
+        
+        if not action_type_str:
+            await connection_manager.send_personal_message(websocket, {
+                "type": "error",
+                "data": {"code": "missing_action", "message": "Action type is required"}
+            })
+            return
+        
+        # Get game and player objects
+        poker_game = service.get_poker_game(game_id)
+        if not poker_game:
+            logging.error(f"[WS-ACTION-NEW-{execution_id}] Game {game_id} not found")
+            await connection_manager.send_personal_message(websocket, {
+                "type": "error",
+                "data": {"code": "game_not_found", "message": "Game not found"}
+            })
+            return
+        
+        player = next((p for p in poker_game.players if p.player_id == player_id), None)
+        if not player:
+            logging.error(f"[WS-ACTION-NEW-{execution_id}] Player {player_id} not found in game")
+            await connection_manager.send_personal_message(websocket, {
+                "type": "error", 
+                "data": {"code": "player_not_found", "message": "Player not found"}
+            })
+            return
+        
+        # Parse action type
+        try:
+            action_type = PlayerAction[action_type_str.upper()]
+        except (KeyError, AttributeError):
+            await connection_manager.send_personal_message(websocket, {
+                "type": "error",
+                "data": {"code": "invalid_action", "message": f"Invalid action: {action_type_str}"}
+            })
+            return
+        
+        # Validate it's the player's turn  
+        from app.core.poker_game import PlayerStatus
+        if player.player_id not in poker_game.to_act or player.status != PlayerStatus.ACTIVE:
+            await connection_manager.send_personal_message(websocket, {
+                "type": "error",
+                "data": {"code": "not_your_turn", "message": "Not your turn to act"}
+            })
+            return
+        
+        # Record action history (keep existing functionality)
+        try:
+            action_map = {
+                PlayerAction.FOLD: DomainPlayerAction.FOLD,
+                PlayerAction.CHECK: DomainPlayerAction.CHECK,
+                PlayerAction.CALL: DomainPlayerAction.CALL,
+                PlayerAction.BET: DomainPlayerAction.BET,
+                PlayerAction.RAISE: DomainPlayerAction.RAISE,
+                PlayerAction.ALL_IN: DomainPlayerAction.ALL_IN,
+            }
+            domain_action = action_map.get(action_type)
+            
+            if domain_action:
+                from app.models.domain_models import ActionHistory
+                game = service.get_game(game_id)
+                if game and game.current_hand:
+                    action_history = ActionHistory(
+                        game_id=game_id,
+                        hand_id=game.current_hand.id,
+                        player_id=player_id,
+                        action=domain_action,
+                        amount=action_amount,
+                        round=game.current_hand.current_round
+                    )
+                    service.action_repo.create(action_history)
+                    game.current_hand.actions.append(action_history)
+        except Exception as e:
+            logging.error(f"Error recording action history: {str(e)}")
+        
+        # Acquire game lock for thread safety
+        if game_id not in service.game_locks:
+            service.game_locks[game_id] = asyncio.Lock()
+        game_lock = service.game_locks[game_id]
+        
+        async with game_lock:
+            logging.info(f"[WS-ACTION-NEW-{execution_id}] Lock acquired - Processing {action_type.name}")
+            
+            # Process the action using pure game logic
+            action_result = poker_game.process_action_pure(player, action_type, action_amount)
+            
+            if not action_result.success:
+                logging.warning(f"[WS-ACTION-NEW-{execution_id}] Action failed: {action_result.error_message}")
+                await connection_manager.send_personal_message(websocket, {
+                    "type": "error",
+                    "data": {
+                        "code": "action_failed", 
+                        "message": action_result.error_message
+                    }
+                })
+                return
+            
+            logging.info(f"[WS-ACTION-NEW-{execution_id}] Action successful, events: {[e.name for e in action_result.events]}")
+            
+            # Create event context for orchestrator
+            context = EventContext(
+                game_id=game_id,
+                poker_game=poker_game,
+                action_result=action_result,
+                connection_manager=connection_manager
+            )
+            
+            # Let the orchestrator handle all notifications and animations
+            await event_orchestrator.handle_action_result(context)
+            
+        # Handle AI players if the hand continues
+        if not action_result.is_showdown and not action_result.is_early_showdown:
+            await _handle_next_player_if_ai_new(game_id, poker_game, service)
+            
+    except Exception as e:
+        logging.error(f"[WS-ACTION-NEW-{execution_id}] Critical error: {str(e)}")
+        logging.error(traceback.format_exc())
+        
+        try:
+            await connection_manager.send_personal_message(websocket, {
+                "type": "error",
+                "data": {
+                    "code": "internal_error",
+                    "message": "Internal server error"
+                }
+            })
+        except Exception as send_error:
+            logging.error(f"Failed to send error message: {send_error}")
+
+
+async def _handle_next_player_if_ai_new(game_id: str, poker_game, service: GameService) -> None:
+    """Handle AI player turns after human action."""
+    if not (0 <= poker_game.current_player_idx < len(poker_game.players)):
+        return
+        
+    next_player = poker_game.players[poker_game.current_player_idx]
+    
+    if (next_player.status == PlayerStatus.ACTIVE and 
+        next_player.player_id in poker_game.to_act):
+        
+        # Check if this is an AI player
+        game = service.get_game(game_id)
+        if game:
+            next_player_domain = next((p for p in game.players if p.id == next_player.player_id), None)
+            if next_player_domain and not next_player_domain.is_human:
+                logging.info(f"Triggering AI action for {next_player.name}")
+                # Use the new action processing for AI as well
+                # This ensures consistent behavior between human and AI actions
+                await service._request_and_process_ai_action(game_id, next_player.player_id)

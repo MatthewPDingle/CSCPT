@@ -320,6 +320,8 @@ const GamePage: React.FC = () => {
     pendingStreetReveal,
     // Showdown hole cards
     showdownHands,
+    // Hand evaluations
+    handEvaluations,
     // Pot winners and chip distribution
     potWinners,
     chipsDistributed,
@@ -896,6 +898,7 @@ const connectionIndicator = (
         currentTurnPlayerId={currentTurnPlayerId}
         showTurnHighlight={showTurnHighlight}
         foldedPlayerId={foldedPlayerId}
+        handEvaluations={handEvaluations}
         // Animation orchestrator props
         currentStep={currentStep}
         onAnimationDone={onAnimationDone}
