@@ -132,7 +132,11 @@ class ConnectionManager:
             # Make a copy of the connections to avoid modification during iteration
             connections_to_broadcast = list(self.active_connections[game_id])
             connection_count = len(connections_to_broadcast)
-            logging.debug(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
+            # Log more details for showdown messages
+            if message.get("type") == "showdown_transition":
+                logging.warning(f"[BROADCAST] Broadcasting showdown_transition to {connection_count} connection(s) in game {game_id}")
+            else:
+                logging.debug(f"Broadcasting to {connection_count} connection(s) in game {game_id}")
             
         # Convert message to JSON string (preserve unicode characters)
         json_message = json.dumps(message, ensure_ascii=False)
@@ -528,11 +532,15 @@ class GameStateNotifier:
         Args:
             game_id: ID of the game
         """
+        import time
+        timestamp = time.time()
         message = {
             "type": "showdown_transition",
             "data": {"timestamp": datetime.now().isoformat()}
         }
+        logging.warning(f"[{timestamp:.3f}] [SHOWDOWN] Broadcasting showdown_transition to game {game_id}")
         await self.connection_manager.broadcast_to_game(game_id, message)
+        logging.warning(f"[{timestamp:.3f}] [SHOWDOWN] showdown_transition broadcast complete")
 
     async def notify_bet_input_reset(self, game_id: str, player_id: str):
         """

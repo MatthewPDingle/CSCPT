@@ -83,6 +83,10 @@ def game_to_model(game_id: str, game: PokerGame) -> GameStateModel:
                     current_bet = getattr(player, 'current_bet', 0)
                     total_bet = getattr(player, 'total_bet', 0)
 
+                    # Log player chip count for debugging all-in issues
+                    if status_name == "ALL_IN" and chips > 0:
+                        logging.warning(f"[GAME-STATE] WARNING: Player {name} has status ALL_IN but chips={chips}")
+                    
                     players.append(
                         PlayerModel(
                             player_id=player_id,

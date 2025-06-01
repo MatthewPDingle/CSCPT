@@ -443,7 +443,7 @@ const PokerTable: React.FC<PokerTableProps> = ({
         setHighlightWinnerActive(true);
         // Pulse duration
         setTimeout(() => setHighlightWinnerActive(false), POT_FLASH_DURATION_MS);
-        // Notify orchestrator
+        // Notify orchestrator - parent will handle clearing pot
         onAnimationDone?.('pot_winners_determined');
       }, transferTime);
       return () => clearTimeout(transferTimer);
@@ -640,8 +640,11 @@ const PokerTable: React.FC<PokerTableProps> = ({
                   updatePlayerSeatPosition={updatePlayerSeatPosition}
                   registerChipPosition={registerChipPosition}
                   tableContainerRef={tableContainerRef}
-                  // Suppress static bet display when animating chips to pot
-                  suppressBetStack={betsToAnimate.some(b => b.playerId === playerId)}
+                  // Suppress static bet display when animating chips to pot or during betting round animation
+                  suppressBetStack={
+                    betsToAnimate.some(b => b.playerId === playerId) || 
+                    (bettingRoundAnimating && sanitizedPlayer.currentBet > 0)
+                  }
                   // highlight winning player's cards
                   isWinner={highlightWinnerActive && handWinners.includes(playerId)}
                 />

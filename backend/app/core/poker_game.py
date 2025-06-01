@@ -7,8 +7,15 @@ from collections import defaultdict
 import random
 import logging
 import asyncio
+import time
 logger = logging.getLogger(__name__)
 import uuid
+
+def log_with_timestamp(level, message):
+    """Log with millisecond timestamp."""
+    timestamp = time.time()
+    formatted_time = f"{timestamp:.3f}"
+    getattr(logging, level)(f"[{formatted_time}] {message}")
 
 from app.core.cards import Card, Deck, Hand
 from app.core.hand_evaluator import HandEvaluator, HandRank
@@ -1574,11 +1581,12 @@ class PokerGame:
                 chips_after = player.chips
                 self.pots[0].add(actual_bet, player.player_id)
                 logging.info(f"[ACTION-{execution_id}] Player {player.name} CALLED with {actual_bet} chips. Current bet: {self.current_bet}")
-                logging.info(f"[ACTION-{execution_id}] Player {player.name} chips before call: {chips_before}, after call: {chips_after}")
+                log_with_timestamp("warning", f"[ACTION-{execution_id}] Player {player.name} chips before call: {chips_before}, after call: {chips_after}")
                 # If this call made the player all-in, update status
                 if player.chips == 0:
                     player.status = PlayerStatus.ALL_IN
-                    logging.info(f"[ACTION-{execution_id}] Player {player.name} is now ALL-IN after calling")
+                    log_with_timestamp("warning", f"[ACTION-{execution_id}] Player {player.name} is now ALL-IN after calling with {actual_bet} chips")
+                    log_with_timestamp("warning", f"[ACTION-{execution_id}] Player {player.name} final state: chips={player.chips}, status={player.status.name}, current_bet={player.current_bet}")
                 # proceed to remove from to_act below
                 success = True
             
@@ -1748,8 +1756,8 @@ class PokerGame:
                 return False
                 
             # Enhanced logging for all-in actions
-            logging.info(f"[ACTION-{execution_id}] Player {player.name} going ALL-IN for {all_in_amount}")
-            logging.info(f"[ACTION-{execution_id}] ALL-IN DETAILS - Current chips: {player.chips}, Current bet: {player.current_bet}, Total bet: {player.total_bet}")
+            log_with_timestamp("warning", f"[ACTION-{execution_id}] Player {player.name} going ALL-IN for {all_in_amount}")
+            log_with_timestamp("warning", f"[ACTION-{execution_id}] ALL-IN DETAILS - Current chips: {player.chips}, Current bet: {player.current_bet}, Total bet: {player.total_bet}")
             
             # Process the all-in bet and log chip counts before and after
             chips_before = player.chips
@@ -2161,6 +2169,7 @@ class PokerGame:
             logging.info(f"[END-ROUND-{execution_id}] Will go to showdown: {len(active_not_all_in) == 0 and betting_complete}")
             if len(active_not_all_in) == 0 and betting_complete:
                 logging.info(f"[END-ROUND-{execution_id}] All-in showdown confirmed: all players have acted")
+                logging.warning(f"[SHOWDOWN-SEQUENCE] Step 1: All-in showdown triggered - {len([p for p in self.players if p.status == PlayerStatus.ALL_IN])} players all-in")
                 
                 # First, finalize bets like normal end of round
                 if self.game_id:
@@ -2196,10 +2205,12 @@ class PokerGame:
 
                 # Deal flop if needed
                 if len(self.community_cards) == 0:
+                    log_with_timestamp("warning", f"[SHOWDOWN] Dealing flop for all-in showdown")
                     self.deal_flop()
                     await game_notifier.notify_street_dealt(
                         self.game_id, "FLOP", self.community_cards[-3:]
                     )
+                    log_with_timestamp("warning", f"[SHOWDOWN] Flop dealt: {self.community_cards[-3:]}")
                     try:
                         await game_notifier.wait_for_animation(self.game_id, "street_dealt_flop")
                     except asyncio.TimeoutError:
@@ -2207,10 +2218,12 @@ class PokerGame:
                 
                 # Deal turn if needed
                 if len(self.community_cards) == 3:
+                    log_with_timestamp("warning", f"[SHOWDOWN] Dealing turn for all-in showdown")
                     self.deal_turn()
                     await game_notifier.notify_street_dealt(
                         self.game_id, "TURN", [self.community_cards[-1]]
                     )
+                    log_with_timestamp("warning", f"[SHOWDOWN] Turn dealt: {self.community_cards[-1]}")
                     try:
                         await game_notifier.wait_for_animation(self.game_id, "street_dealt_turn")
                     except asyncio.TimeoutError:
@@ -2218,10 +2231,12 @@ class PokerGame:
                 
                 # Deal river if needed
                 if len(self.community_cards) == 4:
+                    log_with_timestamp("warning", f"[SHOWDOWN] Dealing river for all-in showdown")
                     self.deal_river()
                     await game_notifier.notify_street_dealt(
                         self.game_id, "RIVER", [self.community_cards[-1]]
                     )
+                    log_with_timestamp("warning", f"[SHOWDOWN] River dealt: {self.community_cards[-1]}")
                     try:
                         await game_notifier.wait_for_animation(self.game_id, "street_dealt_river")
                     except asyncio.TimeoutError:
@@ -2444,7 +2459,17 @@ class PokerGame:
         Returns:
             True indicating hand is complete
         """
-        logging.warning(f"[SHOWDOWN] _handle_showdown called for game {self.game_id}")
+        log_with_timestamp("warning", f"[SHOWDOWN] _handle_showdown called for game {self.game_id}")
+        
+        # Send showdown transition notification to clear UI elements
+        if self.game_id:
+            try:
+                from app.core.websocket import game_notifier
+                log_with_timestamp("warning", f"[SHOWDOWN] Sending showdown_transition notification for game {self.game_id}")
+                await game_notifier.notify_showdown_transition(self.game_id)
+                log_with_timestamp("warning", f"[SHOWDOWN] showdown_transition notification sent successfully")
+            except Exception as e:
+                log_with_timestamp("error", f"[SHOWDOWN] Error sending showdown transition notification: {e}")
         
         # Use the transition method for clean state management
         await self._transition_to_showdown()

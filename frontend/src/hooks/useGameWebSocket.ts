@@ -329,6 +329,7 @@ useEffect(() => {
   
   // After chip animation, move to pot and flash
   const chipTimer = window.setTimeout(() => {
+    console.log('[BETTING-ANIMATION] Chip animation complete, clearing betsToAnimate array');
     setBetsToAnimate([]);
     setAccumulatedPot(pot);
     setFlashMainPot(true);
@@ -467,6 +468,7 @@ useEffect(() => {
         setRoundBetsFinalized(data);
         break;
       case 'street_dealt':
+        console.log(`[${Date.now()}] [SHOWDOWN] street_dealt animation step: ${data.street}, cards:`, data.cards);
         setPendingStreetReveal({ street: data.street, cards: data.cards });
         break;
       case 'showdown_hands_revealed':
@@ -476,9 +478,10 @@ useEffect(() => {
         setHandEvaluations(data.evaluations);
         break;
       case 'pot_winners_determined':
-        // Clear pot displays (canonical step 17) before animating to winners
-        setAccumulatedPot(0);
-        setCurrentStreetPot(0);
+        console.log(`[${Date.now()}] [SHOWDOWN] pot_winners_determined received, pots:`, data.pots);
+        // Do NOT clear the pot amount yet - we need it for the animation
+        // The pot will be visually "moved" to winners via animation
+        // Only clear after animation completes
         setPotWinners(data.pots);
         break;
       case 'chips_distributed':
@@ -596,6 +599,9 @@ useEffect(() => {
         switch (message.type) {
           case 'round_bets_finalized':
           case 'street_dealt':
+            console.log(`[${Date.now()}] [ANIMATION] Enqueuing ${message.type}:`, message.data);
+            enqueueStep(message);
+            break;
           case 'showdown_hands_revealed':
           case 'hand_evaluations':
           case 'pot_winners_determined':
@@ -745,9 +751,15 @@ useEffect(() => {
             break;
 
           case 'showdown_transition':
-            console.log('[SHOWDOWN] *** EXPLICIT SHOWDOWN TRANSITION RECEIVED ***');
-            console.log('[SHOWDOWN] Transition received, clearing highlights');
-            console.log('[EVENT-SEQUENCE] Showdown Step 2: Turn Highlight Removed via explicit transition');
+            console.log(`[${Date.now()}] [SHOWDOWN] *** EXPLICIT SHOWDOWN TRANSITION RECEIVED ***`);
+            console.log(`[${Date.now()}] [SHOWDOWN] Transition received, clearing highlights`);
+            console.log(`[${Date.now()}] [SHOWDOWN] Current states:`, {
+              showTurnHighlight,
+              currentTurnPlayerId,
+              bettingRoundAnimating,
+              betsToAnimate: betsToAnimate.length
+            });
+            console.log(`[${Date.now()}] [EVENT-SEQUENCE] Showdown Step 2: Turn Highlight Removed via explicit transition`);
             // Immediately clear all turn highlights
             setShowTurnHighlight(false);
             setCurrentTurnPlayerId(null);
@@ -1586,6 +1598,15 @@ useEffect(() => {
    * Callback invoked by UI when an animation step completes
    */
   const onAnimationDone = useCallback((stepType: string) => {
+    console.log(`[${Date.now()}] [ANIMATION] Animation complete: ${stepType}`);
+    
+    // Handle pot clearing after winners animation
+    if (stepType === 'pot_winners_determined') {
+      console.log(`[${Date.now()}] [ANIMATION] Clearing pot displays after winner animation`);
+      setAccumulatedPot(0);
+      setCurrentStreetPot(0);
+    }
+    
     if (currentStep?.type === stepType) {
       // Advance to next step in our orchestrator
       setCurrentStep(null);
